@@ -249,3 +249,101 @@ class TestScannerErrorHandling:
         # bad.txt 的内容读取抛错被 _scan_entry 捕获，记录为 error
         assert report.stats.errors >= 1
         assert report.stats.matched_files == 1  # good.txt 命中
+
+
+class TestScannerConcurrency:
+    """多线程扫描测试：验证并发结果与单线程一致。"""
+
+    def test_concurrent_matches_sequential(self, tmp_path: Path) -> None:
+        """多线程扫描结果应与单线程一致（按路径排序后比较）。"""
+        for i in range(20):
+            (tmp_path / f"secret_{i}.txt").write_text(f"password_{i}", encoding="utf-8")
+        (tmp_path / "normal.md").write_text("nothing", encoding="utf-8")
+
+        rs = _build_ruleset(
+            _filename_rule("fn", "secret"),
+            _content_rule("ct", "password"),
+        )
+
+        # 单线程
+        seq_scanner = Scanner(rs)
+        seq_report = seq_scanner.scan(tmp_path)
+
+        # 多线程
+        con_scanner = Scanner(rs, max_workers=4)
+        con_report = con_scanner.scan(tmp_path)
+
+        # 统计一致
+        assert con_report.stats.total_files == seq_report.stats.total_files
+        assert con_report.stats.scanned_files == seq_report.stats.scanned_files
+        assert con_report.stats.matched_files == seq_report.stats.matched_files
+        assert con_report.stats.skipped_files == seq_report.stats.skipped_files
+        assert con_report.stats.errors == seq_report.stats.errors
+
+        # 命中文件集合一致（顺序可能不同，按路径排序比较）
+        seq_paths = sorted(str(r.path) for r in seq_report.hits)
+        con_paths = sorted(str(r.path) for r in con_report.hits)
+        assert seq_paths == con_paths
+
+    def test_max_workers_none_is_sequential(self, tmp_path: Path) -> None:
+        """max_workers=None 应退化为单线程。"""
+        (tmp_path / "a.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("r", "password"))
+        scanner = Scanner(rs, max_workers=None)
+        assert scanner._max_workers is None
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 1
+
+    def test_max_workers_one_is_sequential(self, tmp_path: Path) -> None:
+        """max_workers=1 应走单线程路径。"""
+        (tmp_path / "a.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("r", "password"))
+        scanner = Scanner(rs, max_workers=1)
+        assert scanner._max_workers == 1
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 1
+
+    def test_concurrent_error_handling(self, tmp_path: Path) -> None:
+        """多线程模式下错误处理应正常工作。"""
+        from pyfilescan.scanner.context import FileEntry
+
+        for i in range(10):
+            (tmp_path / f"file_{i}.txt").write_text("password", encoding="utf-8")
+
+        def faulty_provider(entry: FileEntry) -> str:
+            if "file_0" in entry.path.name or "file_5" in entry.path.name:
+                raise RuntimeError("read error")
+            return "password"
+
+        rs = _build_ruleset(_content_rule("r", "password"))
+        scanner = Scanner(rs, content_provider=faulty_provider, max_workers=4)
+        report = scanner.scan(tmp_path)
+        assert report.stats.errors >= 2
+        assert report.stats.matched_files == 8
+
+    def test_concurrent_with_file_extensions_filter(self, tmp_path: Path) -> None:
+        """多线程模式下 file_extensions 过滤应正常工作。"""
+        rule = Rule(
+            name="conf-only",
+            severity=Severity.WARNING,
+            match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            file_extensions=("conf",),
+        )
+        rs = _build_ruleset(rule)
+        for i in range(10):
+            (tmp_path / f"a_{i}.conf").write_text("password", encoding="utf-8")
+            (tmp_path / f"b_{i}.txt").write_text("password", encoding="utf-8")
+
+        scanner = Scanner(rs, max_workers=4)
+        report = scanner.scan(tmp_path)
+        assert report.stats.total_files == 20
+        assert report.stats.scanned_files == 10  # 只扫描 .conf
+        assert report.stats.matched_files == 10
+
+    def test_concurrent_empty_dir(self, tmp_path: Path) -> None:
+        """多线程模式扫描空目录应正常。"""
+        rs = _build_ruleset(_filename_rule("r", "x"))
+        scanner = Scanner(rs, max_workers=4)
+        report = scanner.scan(tmp_path)
+        assert report.stats.total_files == 0
+        assert report.stats.matched_files == 0

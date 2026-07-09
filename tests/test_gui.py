@@ -392,3 +392,242 @@ class TestLaunchApp:
         assert rc == 0
         assert len(created) == 0  # 复用现有实例，不创建新的
         assert len(shown) == 1
+
+
+class TestHitDetailDialogHelpers:
+    """详情对话框辅助函数测试。"""
+
+    def test_format_size_bytes(self) -> None:
+        from pyfilescan.gui.detail_dialog import _format_size
+
+        assert _format_size(0) == "0 B"
+        assert _format_size(512) == "512 B"
+        assert _format_size(1023) == "1023 B"
+
+    def test_format_size_kb(self) -> None:
+        from pyfilescan.gui.detail_dialog import _format_size
+
+        assert _format_size(1024) == "1.0 KB"
+        assert _format_size(2048) == "2.0 KB"
+
+    def test_format_size_mb(self) -> None:
+        from pyfilescan.gui.detail_dialog import _format_size
+
+        assert _format_size(1024 * 1024) == "1.0 MB"
+
+    def test_format_size_gb(self) -> None:
+        from pyfilescan.gui.detail_dialog import _format_size
+
+        assert "GB" in _format_size(1024 * 1024 * 1024)
+
+    def test_extract_keywords_contains(self) -> None:
+        from pyfilescan.gui.detail_dialog import _extract_keywords
+        from pyfilescan.scanner import RuleHit
+
+        hits = (
+            RuleHit("r1", Severity.WARNING, "包含 'password'"),
+            RuleHit("r2", Severity.CRITICAL, "包含 'secret'"),
+        )
+        kws = _extract_keywords(hits)
+        assert "password" in kws
+        assert "secret" in kws
+
+    def test_extract_keywords_regex(self) -> None:
+        from pyfilescan.gui.detail_dialog import _extract_keywords
+        from pyfilescan.scanner import RuleHit
+
+        hits = (RuleHit("r", Severity.CRITICAL, "正则命中: 'AKIA1234'"),)
+        kws = _extract_keywords(hits)
+        assert "AKIA1234" in kws
+
+    def test_extract_keywords_dedup(self) -> None:
+        from pyfilescan.gui.detail_dialog import _extract_keywords
+        from pyfilescan.scanner import RuleHit
+
+        hits = (
+            RuleHit("r1", Severity.WARNING, "包含 'password'"),
+            RuleHit("r2", Severity.WARNING, "包含 'password'"),
+        )
+        kws = _extract_keywords(hits)
+        assert kws.count("password") == 1
+
+    def test_extract_keywords_no_match(self) -> None:
+        from pyfilescan.gui.detail_dialog import _extract_keywords
+        from pyfilescan.scanner import RuleHit
+
+        hits = (RuleHit("r", Severity.INFO, "完全相等"),)
+        kws = _extract_keywords(hits)
+        assert kws == []
+
+    def test_build_preview_html_no_keywords(self) -> None:
+        from pyfilescan.gui.detail_dialog import _build_preview_html
+
+        result = _build_preview_html("hello world", [])
+        assert "hello" in result
+        assert "<span" not in result
+
+    def test_build_preview_html_with_keywords(self) -> None:
+        from pyfilescan.gui.detail_dialog import _build_preview_html
+
+        result = _build_preview_html("hello password world", ["password"])
+        assert "span" in result
+        assert "background-color: yellow" in result
+
+    def test_build_preview_html_escapes_html(self) -> None:
+        from pyfilescan.gui.detail_dialog import _build_preview_html
+
+        result = _build_preview_html("<script>alert(1)</script>", [])
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_build_preview_html_case_insensitive(self) -> None:
+        from pyfilescan.gui.detail_dialog import _build_preview_html
+
+        result = _build_preview_html("PASSWORD password Password", ["password"])
+        # 所有大小的 password 都应被高亮（3 次匹配 = 6 个 span 标签：开+关）
+        assert result.count("<span") == 3
+
+
+class TestHitDetailDialog:
+    """详情对话框测试。"""
+
+    def test_dialog_shows_file_info(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框应展示文件路径、大小等信息。"""
+        from pyfilescan.gui.detail_dialog import HitDetailDialog
+        from pyfilescan.scanner import RuleHit, ScanResult
+
+        path = tmp_path / "secret.txt"
+        path.write_text("my password here", encoding="utf-8")
+
+        result = ScanResult(
+            path=path,
+            size=path.stat().st_size,
+            hits=(RuleHit("r1", Severity.WARNING, "包含 'password'"),),
+        )
+        dialog = HitDetailDialog(result)
+        info_text = dialog._info_label.text()
+        assert "secret.txt" in info_text
+        assert "命中规则数" in info_text
+        dialog.close()
+
+    def test_dialog_hits_table(self, qapp: QApplication, tmp_path: Path) -> None:
+        """命中规则表应正确显示。"""
+        from pyfilescan.gui.detail_dialog import HitDetailDialog
+        from pyfilescan.scanner import RuleHit, ScanResult
+
+        path = tmp_path / "test.txt"
+        path.write_text("content", encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=7,
+            hits=(
+                RuleHit("rule-a", Severity.WARNING, "包含 'a'"),
+                RuleHit("rule-b", Severity.CRITICAL, "包含 'b'"),
+            ),
+        )
+        dialog = HitDetailDialog(result)
+        assert dialog._hits_table.rowCount() == 2
+        assert dialog._hits_table.item(0, 0).text() == "rule-a"
+        assert dialog._hits_table.item(1, 0).text() == "rule-b"
+        dialog.close()
+
+    def test_dialog_preview_highlights_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
+        """内容预览应高亮关键词。"""
+        from pyfilescan.gui.detail_dialog import HitDetailDialog
+        from pyfilescan.scanner import RuleHit, ScanResult
+
+        path = tmp_path / "data.txt"
+        path.write_text("the password is secret123", encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len("the password is secret123"),
+            hits=(
+                RuleHit("r1", Severity.WARNING, "包含 'password'"),
+                RuleHit("r2", Severity.CRITICAL, "正则命中: 'secret123'"),
+            ),
+        )
+        dialog = HitDetailDialog(result)
+        html = dialog._preview.toHtml()
+        assert "password" in html
+        assert "span" in html  # 有高亮标签
+        dialog.close()
+
+    def test_dialog_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
+        """空文件预览应显示提示。"""
+        from pyfilescan.gui.detail_dialog import HitDetailDialog
+        from pyfilescan.scanner import RuleHit, ScanResult
+
+        path = tmp_path / "empty.txt"
+        path.write_text("", encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=0,
+            hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
+        )
+        dialog = HitDetailDialog(result)
+        text = dialog._preview.toPlainText()
+        assert "为空" in text or "二进制" in text
+        dialog.close()
+
+    def test_dialog_preview_nonexistent_file(self, qapp: QApplication, tmp_path: Path) -> None:
+        """文件不存在时预览应显示错误提示。"""
+        from pyfilescan.gui.detail_dialog import HitDetailDialog
+        from pyfilescan.scanner import RuleHit, ScanResult
+
+        result = ScanResult(
+            path=tmp_path / "nonexistent.txt",
+            size=0,
+            hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
+        )
+        dialog = HitDetailDialog(result)
+        assert "无法读取" in dialog._preview.toPlainText()
+        dialog.close()
+
+    def test_double_click_opens_dialog(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """双击结果项应弹出详情对话框。"""
+        from pyfilescan.gui import main_window as mw_module
+        from pyfilescan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+
+        # 模拟 exec_ 避免模态阻塞
+        called = {"count": 0}
+
+        def fake_exec(self) -> int:  # type: ignore[no-untyped-def]
+            called["count"] += 1
+            return 1
+
+        monkeypatch.setattr(mw_module.HitDetailDialog, "exec_", fake_exec)
+
+        # 双击顶层项
+        top_item = window._result_tree.topLevelItem(0)
+        window._on_result_double_clicked(top_item, 0)
+        assert called["count"] == 1
+
+        # 双击子项也应触发
+        if top_item.childCount() > 0:
+            child_item = top_item.child(0)
+            window._on_result_double_clicked(child_item, 0)
+            assert called["count"] == 2
+
+        window.close()
+
+    def test_double_click_no_data_does_nothing(self, qapp: QApplication) -> None:
+        """无双击数据时不弹对话框。"""
+        from PySide2.QtWidgets import QTreeWidgetItem
+
+        window = MainWindow()
+        # 创建一个没有 UserRole 数据的项
+        item = QTreeWidgetItem(["test", "", "", ""])
+        window._result_tree.addTopLevelItem(item)
+        # 不应抛异常
+        window._on_result_double_clicked(item, 0)
+        window.close()

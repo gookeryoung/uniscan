@@ -42,6 +42,7 @@ class ScanWorker(QThread):
         root: Path,
         max_depth: Optional[int] = None,
         scan_archives: bool = False,
+        max_workers: Optional[int] = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -49,6 +50,7 @@ class ScanWorker(QThread):
         self._root = root
         self._max_depth = max_depth
         self._scan_archives = scan_archives
+        self._max_workers = max_workers
         self._scanner: Optional[Scanner] = None
 
     def run(self) -> None:
@@ -58,6 +60,7 @@ class ScanWorker(QThread):
                 ruleset=self._ruleset,
                 max_depth=self._max_depth,
                 scan_archives=self._scan_archives,
+                max_workers=self._max_workers,
             )
             # 包装 emit 进度（当前 Scanner 无回调，完成后一次性 emit）
             report: ScanReport = self._scanner.scan(self._root)

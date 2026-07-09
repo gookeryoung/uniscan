@@ -43,6 +43,7 @@ from PySide2.QtWidgets import (
     QWidget,
 )
 
+from pyfilescan.gui.detail_dialog import HitDetailDialog
 from pyfilescan.gui.worker import ScanWorker
 from pyfilescan.rules import RuleError, load_ruleset
 from pyfilescan.rules.model import RuleSet
@@ -116,6 +117,7 @@ class MainWindow(QMainWindow):
         self._result_tree.setHeaderLabels(["路径", "规则", "严重等级", "详情"])
         self._result_tree.setColumnWidth(0, 400)
         self._result_tree.setColumnWidth(1, 200)
+        self._result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
         splitter.addWidget(self._result_tree)
 
         splitter.setStretchFactor(0, 1)
@@ -230,6 +232,7 @@ class MainWindow(QMainWindow):
             ruleset=self._ruleset,
             root=self._scan_root,
             scan_archives=True,
+            max_workers=8,
         )
         self._worker.progress.connect(self._on_scan_progress)
         self._worker.finished_report.connect(self._on_scan_finished)
@@ -293,8 +296,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 pyfilescan",
-            f"pyfilescan {__version__}\n\n通用文件扫描器\n支持多格式与压缩文件扫描\n\n"
-            "技术栈: Python + PySide2",
+            f"pyfilescan {__version__}\n\n通用文件扫描器\n支持多格式与压缩文件扫描\n\n技术栈: Python + PySide2",
         )
 
     # ----------------------------- 辅助方法 -----------------------------
@@ -322,6 +324,8 @@ class MainWindow(QMainWindow):
                 result.max_severity.value,
                 f"{len(result.hits)} 条命中",
             ])
+            # 将 ScanResult 存入 UserRole，供双击详情对话框使用
+            file_item.setData(0, Qt.UserRole, result)
             for hit in result.hits:
                 child = QTreeWidgetItem([
                     "",
@@ -331,6 +335,16 @@ class MainWindow(QMainWindow):
                 ])
                 file_item.addChild(child)
             self._result_tree.addTopLevelItem(file_item)
+
+    def _on_result_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        """双击结果项弹出详情对话框。"""
+        # 子项双击时取其父项（文件项）的 UserRole 数据
+        top_item = item.parent() if item.parent() is not None else item
+        result = top_item.data(0, Qt.UserRole)
+        if result is None:
+            return
+        dialog = HitDetailDialog(result, self)
+        dialog.exec_()
 
     def _update_scan_button(self) -> None:
         """根据规则与路径是否就绪更新扫描按钮。"""

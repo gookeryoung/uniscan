@@ -1,9 +1,15 @@
-"""扫描器：协调遍历器与匹配引擎，输出扫描报告。"""
+"""扫描器：协调遍历器与匹配引擎，输出扫描报告。
+
+支持多线程并发扫描以提升 I/O 密集型场景的吞吐量：
+``max_workers`` 控制线程池大小，``None`` 或 ``<=1`` 时退化为单线程。
+压缩包内条目扫描始终顺序执行（避免 ArchiveScanner 的潜在线程安全问题）。
+"""
 
 from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
@@ -40,7 +46,7 @@ class Scanner:
     - 构造时一次性编译规则集为 Matcher 列表，避免重复编译
     - 默认使用提取器注册表（extractors）提取文件内容，支持多格式
     - 支持自定义内容提供器覆盖默认提取逻辑
-    - 单线程实现，并发版可在 P5 阶段扩展
+    - ``max_workers > 1`` 时用线程池并发扫描，提升 I/O 密集型场景吞吐量
     """
 
     def __init__(
@@ -51,6 +57,7 @@ class Scanner:
         follow_symlinks: bool = False,
         scan_archives: bool = False,
         archive_password: Optional[str] = None,
+        max_workers: Optional[int] = None,
     ) -> None:
         self.ruleset = ruleset
         self._content_provider: ContentProvider = content_provider or default_extract_content
@@ -62,6 +69,7 @@ class Scanner:
             follow_symlinks=follow_symlinks,
         )
         self._scan_archives = scan_archives
+        self._max_workers = max_workers
         self._archive_scanner: Optional[ArchiveScanner] = None
         if scan_archives:
             # 惰性导入避免与 archive.scanner 模块的循环依赖
@@ -73,39 +81,46 @@ class Scanner:
             )
 
     def scan(self, root: Path) -> ScanReport:
-        """扫描根目录，返回完整报告。"""
-        start = time.perf_counter()
-        results: List[ScanResult] = []
-        total = 0
-        scanned = 0
-        matched = 0
-        skipped = 0
-        errors = 0
+        """扫描根目录，返回完整报告。
 
+        ``max_workers > 1`` 时用线程池并发扫描文件，压缩包内条目始终顺序扫描。
+        """
+        start = time.perf_counter()
+
+        # 阶段 1：遍历收集待扫描 entry（单线程，I/O 轻量）
+        entries: List[FileEntry] = []
+        total = 0
+        skipped = 0
         for entry in self._walker.walk(root):
             total += 1
             if not self._should_scan(entry):
                 skipped += 1
                 continue
-            try:
-                result = self._scan_entry(entry)
-                scanned += 1
-                if result.has_hit:
-                    matched += 1
-                errors += result.errors
-                results.append(result)
-            except Exception:
-                errors += 1
-                scanned += 1
-                logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
+            entries.append(entry)
 
-            # 递归扫描压缩包内条目
-            if self._scan_archives and self._archive_scanner is not None:
-                # 惰性导入避免循环依赖
-                from pyfilescan.archive import get_reader
+        # 阶段 2：扫描文件（单线程或并发）
+        results: List[ScanResult] = []
+        scanned = 0
+        matched = 0
+        errors = 0
 
+        if self._max_workers and self._max_workers > 1:
+            scanned, matched, errors = self._scan_concurrent(entries, results)
+        else:
+            scanned, matched, errors = self._scan_sequential(entries, results)
+
+        # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
+        if self._scan_archives and self._archive_scanner is not None:
+            from pyfilescan.archive import get_reader
+
+            for entry in entries:
                 if get_reader(entry.path) is not None:
-                    archive_results = self._archive_scanner.scan_archive(entry.path)
+                    try:
+                        archive_results = self._archive_scanner.scan_archive(entry.path)
+                    except Exception:
+                        errors += 1
+                        logger.warning("压缩包扫描失败 %s", entry.path, exc_info=True)
+                        continue
                     for ar in archive_results:
                         scanned += 1
                         if ar.has_hit:
@@ -123,6 +138,50 @@ class Scanner:
             duration_seconds=duration,
         )
         return ScanReport(root=root, results=tuple(results), stats=stats)
+
+    def _scan_sequential(self, entries: List[FileEntry], results: List[ScanResult]) -> Tuple[int, int, int]:
+        """单线程顺序扫描，返回 (scanned, matched, errors)。"""
+        scanned = 0
+        matched = 0
+        errors = 0
+        for entry in entries:
+            try:
+                result = self._scan_entry(entry)
+                scanned += 1
+                if result.has_hit:
+                    matched += 1
+                errors += result.errors
+                results.append(result)
+            except Exception:
+                errors += 1
+                scanned += 1
+                logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
+        return scanned, matched, errors
+
+    def _scan_concurrent(self, entries: List[FileEntry], results: List[ScanResult]) -> Tuple[int, int, int]:
+        """多线程并发扫描，返回 (scanned, matched, errors)。
+
+        每个文件的提取+匹配作为独立任务提交到线程池，
+        通过 as_completed 收集结果。_scan_entry 无共享可变状态，线程安全。
+        """
+        scanned = 0
+        matched = 0
+        errors = 0
+        with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+            future_to_entry = {pool.submit(self._scan_entry, entry): entry for entry in entries}
+            for future in as_completed(future_to_entry):
+                entry = future_to_entry[future]
+                scanned += 1
+                try:
+                    result = future.result()
+                    if result.has_hit:
+                        matched += 1
+                    errors += result.errors
+                    results.append(result)
+                except Exception:
+                    errors += 1
+                    logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
+        return scanned, matched, errors
 
     def scan_file(self, path: Path) -> ScanResult:
         """扫描单个文件。"""
