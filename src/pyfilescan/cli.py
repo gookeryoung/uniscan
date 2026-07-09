@@ -6,6 +6,7 @@
 - ``rules``：校验规则文件格式
 - ``version``：显示版本信息
 - ``gui``：启动图形界面
+- ``tray``：启动托盘驻守（监控新增文件并增量扫描）
 
 用法示例：
 
@@ -69,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     # gui 子命令
     subparsers.add_parser("gui", help="启动图形界面")
 
+    # tray 子命令
+    tray_parser = subparsers.add_parser("tray", help="启动托盘驻守（监控新增文件并增量扫描）")
+    tray_parser.add_argument("-r", "--rules", type=Path, required=True, help="规则文件路径（YAML）")
+    tray_parser.add_argument("-w", "--watch", action="append", default=[], metavar="DIR", help="监控目录（可重复）")
+    tray_parser.add_argument("--state", type=Path, default=None, help="扫描状态文件路径（用于增量扫描持久化）")
+
     # version 子命令
     subparsers.add_parser("version", help="显示版本信息")
 
@@ -93,6 +100,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return _cmd_rules(args)
         if args.command == "gui":
             return _cmd_gui(args)
+        if args.command == "tray":
+            return _cmd_tray(args)
         if args.command == "version":
             print(f"pyfilescan {__version__}")
             return 0
@@ -168,6 +177,32 @@ def _cmd_gui(args: argparse.Namespace) -> int:
         print(f"GUI 启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
         return 3
     return launch()
+
+
+def _cmd_tray(args: argparse.Namespace) -> int:
+    """执行 tray 子命令：启动托盘驻守。"""
+    try:
+        from PySide2.QtWidgets import QApplication
+
+        from pyfilescan.watcher.tray import TrayApp
+    except ImportError as exc:
+        print(f"托盘启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
+        return 3
+
+    rules_path: Path = args.rules
+    if not rules_path.exists():
+        print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
+        return 1
+
+    ruleset = load_ruleset(rules_path)
+    watch_paths = [Path(w) for w in args.watch]
+    state_file: Optional[Path] = args.state
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
+    tray = TrayApp(ruleset=ruleset, watch_paths=watch_paths, state_file=state_file)
+    return tray.start(show_window=False)
 
 
 def _merge_ignore_dirs(ruleset: RuleSet, extra_dirs: List[str]) -> RuleSet:

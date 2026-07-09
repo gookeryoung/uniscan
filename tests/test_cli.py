@@ -67,20 +67,18 @@ class TestBuildParser:
 
     def test_parse_scan_with_options(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(
-            [
-                "scan",
-                "scan_path",
-                "-r",
-                "r.yaml",
-                "-o",
-                "json",
-                "-f",
-                "out.json",
-                "--max-depth",
-                "3",
-            ]
-        )
+        args = parser.parse_args([
+            "scan",
+            "scan_path",
+            "-r",
+            "r.yaml",
+            "-o",
+            "json",
+            "-f",
+            "out.json",
+            "--max-depth",
+            "3",
+        ])
         assert args.output_format == "json"
         assert args.max_depth == 3
 
@@ -200,16 +198,14 @@ class TestScanCommand:
         extra_dir.mkdir()
         (extra_dir / "password.txt").write_text("", encoding="utf-8")
 
-        rc = main(
-            [
-                "scan",
-                str(scan_root),
-                "-r",
-                str(rules_file),
-                "--ignore-dir",
-                "exclude_me",
-            ]
-        )
+        rc = main([
+            "scan",
+            str(scan_root),
+            "-r",
+            str(rules_file),
+            "--ignore-dir",
+            "exclude_me",
+        ])
         assert rc == 0
         out = capsys.readouterr().out
         # exclude_me 内的 password.txt 应被忽略
@@ -276,3 +272,11 @@ class TestMainErrorHandling:
     def test_invalid_command_exits(self) -> None:
         with pytest.raises(SystemExit):
             main(["invalid-command"])
+
+
+class TestMainModuleImport:
+    def test_main_module_importable(self) -> None:
+        """``python -m pyfilescan`` 入口模块可被导入。"""
+        import pyfilescan.__main__ as main_mod
+
+        assert hasattr(main_mod, "main")
