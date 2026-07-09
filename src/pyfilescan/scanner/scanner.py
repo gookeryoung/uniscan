@@ -65,6 +65,7 @@ class Scanner:
         self._walker = FileWalker(
             ignore_dirs=ruleset.ignore_dirs,
             ignore_extensions=ruleset.ignore_extensions,
+            ignore_paths=ruleset.ignore_paths,
             max_depth=max_depth,
             follow_symlinks=follow_symlinks,
         )

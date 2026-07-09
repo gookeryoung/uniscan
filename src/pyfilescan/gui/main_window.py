@@ -28,6 +28,7 @@ from typing import Optional
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import (
     QAction,
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -43,6 +44,7 @@ from PySide2.QtWidgets import (
     QWidget,
 )
 
+from pyfilescan.builtin import load_with_builtin
 from pyfilescan.gui.detail_dialog import HitDetailDialog
 from pyfilescan.gui.worker import ScanWorker
 from pyfilescan.rules import RuleError, load_ruleset
@@ -67,11 +69,13 @@ class MainWindow(QMainWindow):
         self._scan_root: Optional[Path] = None
         self._last_report: Optional[ScanReport] = None
         self._worker: Optional[ScanWorker] = None
+        self._use_builtin: bool = True
 
         self._init_ui()
         self._init_menu()
         self._init_toolbar()
         self._init_statusbar()
+        self._init_rules()
 
     # ----------------------------- UI 初始化 -----------------------------
 
@@ -94,12 +98,18 @@ class MainWindow(QMainWindow):
         self._select_path_btn = QPushButton("选择路径...")
         self._select_path_btn.clicked.connect(self._on_select_path)
 
+        self._use_builtin_checkbox = QCheckBox("使用通用规则")
+        self._use_builtin_checkbox.setChecked(True)
+        self._use_builtin_checkbox.setToolTip("勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则")
+        self._use_builtin_checkbox.stateChanged.connect(self._on_toggle_builtin)
+
         self._scan_btn = QPushButton("开始扫描")
         self._scan_btn.clicked.connect(self._on_scan)
         self._scan_btn.setEnabled(False)
 
         top_layout.addWidget(self._load_rules_btn)
         top_layout.addWidget(self._rules_label, stretch=1)
+        top_layout.addWidget(self._use_builtin_checkbox)
         top_layout.addWidget(self._select_path_btn)
         top_layout.addWidget(self._path_label, stretch=1)
         top_layout.addWidget(self._scan_btn)
@@ -178,6 +188,50 @@ class MainWindow(QMainWindow):
         self._stats_label = QLabel("就绪")
         self._status_bar.addWidget(self._stats_label)
 
+    # ----------------------------- 规则加载 -----------------------------
+
+    def _init_rules(self) -> None:
+        """启动时加载规则：默认加载内置通用规则。"""
+        try:
+            self._reload_ruleset()
+            self._refresh_rules_tree()
+            self._update_scan_button()
+            if self._ruleset is not None:
+                self._rules_label.setText("规则: 内置通用规则")
+                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条通用规则")
+        except RuleError as exc:
+            logger.warning("内置规则加载失败: %s", exc)
+            self._rules_label.setText("规则文件: 内置规则加载失败")
+
+    def _reload_ruleset(self) -> None:
+        """根据当前通用规则开关与用户规则路径重新加载规则集。"""
+        if self._use_builtin:
+            self._ruleset = load_with_builtin(self._rules_path)
+        elif self._rules_path is not None:
+            self._ruleset = load_ruleset(self._rules_path)
+        else:
+            self._ruleset = None
+
+    def _on_toggle_builtin(self, state: int) -> None:
+        """通用规则复选框状态变更。"""
+        self._use_builtin = bool(state)
+        try:
+            self._reload_ruleset()
+            self._refresh_rules_tree()
+            self._update_scan_button()
+            if self._ruleset is not None:
+                if self._use_builtin:
+                    label = "通用规则" if self._rules_path is None else f"通用规则 + {self._rules_path.name}"
+                else:
+                    label = self._rules_path.name if self._rules_path is not None else "未加载"
+                self._rules_label.setText(f"规则: {label}")
+                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+            else:
+                self._rules_label.setText("规则: 未加载")
+                self._stats_label.setText("未加载规则")
+        except RuleError as exc:
+            QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
+
     # ----------------------------- 槽函数 -----------------------------
 
     def _on_load_rules(self) -> None:
@@ -191,14 +245,18 @@ class MainWindow(QMainWindow):
         if not path_str:
             return
         path = Path(path_str)
+        old_path = self._rules_path
+        self._rules_path = path
         try:
-            self._ruleset = load_ruleset(path)
-            self._rules_path = path
-            self._rules_label.setText(f"规则文件: {path.name}")
+            self._reload_ruleset()
+            label = f"规则: {path.name}" if not self._use_builtin else f"规则: 通用规则 + {path.name}"
+            self._rules_label.setText(label)
             self._refresh_rules_tree()
             self._update_scan_button()
-            self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+            if self._ruleset is not None:
+                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
         except RuleError as exc:
+            self._rules_path = old_path
             QMessageBox.warning(self, "规则错误", f"加载规则失败:\n{exc}")
 
     def _on_select_path(self) -> None:

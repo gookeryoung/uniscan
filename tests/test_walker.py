@@ -99,3 +99,106 @@ class TestFileWalker:
         names = {e.name for e in entries}
         assert "log.LOG" not in names
         assert "data.txt" in names
+
+
+class TestIgnorePaths:
+    """ignore_paths 路径 glob 过滤测试。"""
+
+    def test_ignore_paths_skips_root_vendor(self, tmp_path: Path) -> None:
+        """``vendor/*`` 应跳过根级 vendor 目录及其子目录。"""
+        (tmp_path / "vendor").mkdir()
+        (tmp_path / "vendor" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "vendor" / "sub").mkdir()
+        (tmp_path / "vendor" / "sub" / "deep.js").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=("vendor/*",))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "lib.js" not in names
+        assert "deep.js" not in names
+        assert "main.py" in names
+
+    def test_ignore_paths_nested(self, tmp_path: Path) -> None:
+        """``*/vendor/*`` 应跳过嵌套目录中的 vendor。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "vendor").mkdir()
+        (tmp_path / "src" / "vendor" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "src" / "app.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=("*/vendor/*",))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "lib.js" not in names
+        assert "app.py" in names
+
+    def test_ignore_paths_multiple_patterns(self, tmp_path: Path) -> None:
+        """多个 glob 模式同时生效。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "vendor").mkdir()
+        (tmp_path / "src" / "vendor" / "v.js").write_text("", encoding="utf-8")
+        (tmp_path / "src" / ".cache").mkdir()
+        (tmp_path / "src" / ".cache" / "c.txt").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=("*/vendor/*", "*/.cache/*"))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "v.js" not in names
+        assert "c.txt" not in names
+        assert "main.py" in names
+
+    def test_ignore_paths_case_insensitive(self, tmp_path: Path) -> None:
+        """glob 模式匹配应大小写不敏感。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "Vendor").mkdir()
+        (tmp_path / "src" / "Vendor" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=("*/vendor/*",))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "lib.js" not in names
+        assert "main.py" in names
+
+    def test_ignore_paths_empty_no_effect(self, tmp_path: Path) -> None:
+        """空 ignore_paths 不影响遍历。"""
+        (tmp_path / "vendor").mkdir()
+        (tmp_path / "vendor" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=())
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "lib.js" in names
+        assert "main.py" in names
+
+    def test_ignore_paths_partial_match_not_skipped(self, tmp_path: Path) -> None:
+        """部分匹配的目录不应被跳过。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "vendors").mkdir()
+        (tmp_path / "src" / "vendors" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_paths=("*/vendor/*",))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        # vendors 不匹配 */vendor/*，应保留
+        assert "lib.js" in names
+        assert "main.py" in names
+
+    def test_ignore_paths_combined_with_ignore_dirs(self, tmp_path: Path) -> None:
+        """ignore_paths 与 ignore_dirs 可同时生效。"""
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "config").write_text("", encoding="utf-8")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "vendor").mkdir()
+        (tmp_path / "src" / "vendor" / "lib.js").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+
+        walker = FileWalker(ignore_dirs=(".git",), ignore_paths=("*/vendor/*",))
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert "config" not in names
+        assert "lib.js" not in names
+        assert "main.py" in names

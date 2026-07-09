@@ -115,9 +115,14 @@ class Rule:
 
 @dataclass(frozen=True)
 class RuleSet:
-    """规则集合：版本、全局忽略项、规则列表。"""
+    """规则集合：版本、全局忽略项、规则列表。
+
+    ``ignore_dirs`` 按目录名匹配（任意层级），``ignore_paths`` 按相对路径
+    glob 通配符匹配（如 ``*/vendor/*``），两者均可跳过目录及其子目录。
+    """
 
     version: str
     rules: Tuple[Rule, ...] = field(default_factory=tuple)
     ignore_dirs: Tuple[str, ...] = field(default_factory=tuple)
     ignore_extensions: Tuple[str, ...] = field(default_factory=tuple)
+    ignore_paths: Tuple[str, ...] = field(default_factory=tuple)

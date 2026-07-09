@@ -149,6 +149,9 @@ def parse_ruleset(data: Any) -> RuleSet:
     ignore_ext_raw = data.get("ignore_extensions", [])
     ignore_extensions = _as_str_tuple(ignore_ext_raw, field="ignore_extensions", strip_dot=True)
 
+    ignore_paths_raw = data.get("ignore_paths", [])
+    ignore_paths = _as_str_tuple(ignore_paths_raw, field="ignore_paths")
+
     rules_raw = data.get("rules", [])
     if not isinstance(rules_raw, Sequence) or isinstance(rules_raw, (str, bytes)):
         raise RuleParseError("rules 必须是列表")
@@ -159,6 +162,7 @@ def parse_ruleset(data: Any) -> RuleSet:
         rules=rules,
         ignore_dirs=ignore_dirs,
         ignore_extensions=ignore_extensions,
+        ignore_paths=ignore_paths,
     )
 
 

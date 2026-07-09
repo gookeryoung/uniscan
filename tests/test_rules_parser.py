@@ -44,28 +44,24 @@ class TestParseMatch:
         assert match.mode == MatchMode.ENDSWITH
 
     def test_parse_and(self) -> None:
-        match = parse_match(
-            {
-                "type": "and",
-                "children": [
-                    {"type": "filename", "mode": "equals", "pattern": "a.txt"},
-                    {"type": "content", "mode": "contains", "pattern": "secret"},
-                ],
-            }
-        )
+        match = parse_match({
+            "type": "and",
+            "children": [
+                {"type": "filename", "mode": "equals", "pattern": "a.txt"},
+                {"type": "content", "mode": "contains", "pattern": "secret"},
+            ],
+        })
         assert isinstance(match, AndMatch)
         assert len(match.children) == 2
 
     def test_parse_or(self) -> None:
-        match = parse_match(
-            {
-                "type": "or",
-                "children": [
-                    {"type": "content", "mode": "contains", "pattern": "a"},
-                    {"type": "content", "mode": "contains", "pattern": "b"},
-                ],
-            }
-        )
+        match = parse_match({
+            "type": "or",
+            "children": [
+                {"type": "content", "mode": "contains", "pattern": "a"},
+                {"type": "content", "mode": "contains", "pattern": "b"},
+            ],
+        })
         assert isinstance(match, OrMatch)
         assert len(match.children) == 2
 
@@ -122,24 +118,20 @@ class TestParseRule:
         assert rule.severity == Severity.INFO
 
     def test_parse_rule_with_extensions(self) -> None:
-        rule = parse_rule(
-            {
-                "name": "r1",
-                "match": {"type": "filename", "mode": "contains", "pattern": "x"},
-                "file_extensions": [".conf", "ini", "YAML"],
-            }
-        )
+        rule = parse_rule({
+            "name": "r1",
+            "match": {"type": "filename", "mode": "contains", "pattern": "x"},
+            "file_extensions": [".conf", "ini", "YAML"],
+        })
         assert rule.file_extensions == ("conf", "ini", "yaml")
 
     def test_parse_rule_unknown_severity_raises(self) -> None:
         with pytest.raises(RuleParseError, match="严重等级"):
-            parse_rule(
-                {
-                    "name": "r1",
-                    "match": {"type": "filename", "mode": "contains", "pattern": "x"},
-                    "severity": "fatal",
-                }
-            )
+            parse_rule({
+                "name": "r1",
+                "match": {"type": "filename", "mode": "contains", "pattern": "x"},
+                "severity": "fatal",
+            })
 
     def test_parse_rule_missing_name_raises(self) -> None:
         with pytest.raises(RuleParseError, match="name"):
@@ -155,13 +147,11 @@ class TestParseRule:
 
     def test_parse_rule_extensions_wrong_type_raises(self) -> None:
         with pytest.raises(RuleParseError, match="file_extensions"):
-            parse_rule(
-                {
-                    "name": "r1",
-                    "match": {"type": "filename", "mode": "contains", "pattern": "x"},
-                    "file_extensions": "conf",
-                }
-            )
+            parse_rule({
+                "name": "r1",
+                "match": {"type": "filename", "mode": "contains", "pattern": "x"},
+                "file_extensions": "conf",
+            })
 
 
 class TestParseRuleset:
@@ -171,16 +161,30 @@ class TestParseRuleset:
         assert rs.rules == ()
 
     def test_parse_ruleset_with_ignores(self) -> None:
-        rs = parse_ruleset(
-            {
-                "version": "1.0",
-                "ignore_dirs": [".git", "node_modules"],
-                "ignore_extensions": ["pyc", ".pyo"],
-                "rules": [],
-            }
-        )
+        rs = parse_ruleset({
+            "version": "1.0",
+            "ignore_dirs": [".git", "node_modules"],
+            "ignore_extensions": ["pyc", ".pyo"],
+            "rules": [],
+        })
         assert rs.ignore_dirs == (".git", "node_modules")
         assert rs.ignore_extensions == ("pyc", "pyo")
+
+    def test_parse_ruleset_with_ignore_paths(self) -> None:
+        rs = parse_ruleset({
+            "version": "1.0",
+            "ignore_paths": ["*/vendor/*", "*/.cache/*"],
+            "rules": [],
+        })
+        assert rs.ignore_paths == ("*/vendor/*", "*/.cache/*")
+
+    def test_parse_ruleset_ignore_paths_default_empty(self) -> None:
+        rs = parse_ruleset({"version": "1.0", "rules": []})
+        assert rs.ignore_paths == ()
+
+    def test_parse_ruleset_ignore_paths_wrong_type_raises(self) -> None:
+        with pytest.raises(RuleParseError, match="ignore_paths"):
+            parse_ruleset({"version": "1.0", "ignore_paths": "vendor"})
 
     def test_parse_ruleset_default_version(self) -> None:
         rs = parse_ruleset({"rules": []})

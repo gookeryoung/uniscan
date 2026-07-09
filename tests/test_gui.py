@@ -159,7 +159,7 @@ rules:
         window.close()
 
     def test_load_rules_via_dialog(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """通过模拟文件对话框测试规则加载。"""
+        """通过模拟文件对话框测试规则加载（关闭通用规则后仅加载用户规则）。"""
         rules_yaml = tmp_path / "rules.yaml"
         rules_yaml.write_text(
             'version: "1.0"\nrules:\n  - name: r1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: secret\n',
@@ -167,6 +167,8 @@ rules:
         )
 
         window = MainWindow()
+        # 关闭通用规则，确保仅加载用户规则
+        window._use_builtin_checkbox.setChecked(False)
 
         # mock QFileDialog.getOpenFileName 返回规则文件路径
         monkeypatch.setattr(
@@ -182,18 +184,21 @@ rules:
         window.close()
 
     def test_load_rules_cancelled(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """取消文件对话框不加载规则。"""
+        """取消文件对话框不改变当前规则集。"""
         window = MainWindow()
+        # 启动时已加载通用规则
+        assert window._ruleset is not None
         monkeypatch.setattr(
             "pyfilescan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: ("", ""),
         )
         window._on_load_rules()
-        assert window._ruleset is None
+        # 取消后规则集仍保留
+        assert window._ruleset is not None
         window.close()
 
     def test_load_rules_invalid(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """加载无效规则文件应弹出警告。"""
+        """加载无效规则文件应弹出警告且保留原规则集。"""
         # 使用未知匹配类型触发 RuleParseError
         bad_rules = tmp_path / "bad.yaml"
         bad_rules.write_text(
@@ -202,6 +207,9 @@ rules:
         )
 
         window = MainWindow()
+        # 关闭通用规则，使初始 ruleset 为 None
+        window._use_builtin_checkbox.setChecked(False)
+        assert window._ruleset is None
         monkeypatch.setattr(
             "pyfilescan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (str(bad_rules), ""),
@@ -258,6 +266,88 @@ rules:
         # 不启动 worker，直接关闭
         window.close()
         assert window._worker is None or not window._worker.isRunning()
+
+
+class TestBuiltinRulesToggle:
+    """通用规则开关测试。"""
+
+    def test_builtin_loaded_at_startup(self, qapp: QApplication) -> None:
+        """启动时应默认加载内置通用规则。"""
+        window = MainWindow()
+        assert window._ruleset is not None
+        assert len(window._ruleset.rules) > 0
+        assert window._use_builtin is True
+        assert window._use_builtin_checkbox.isChecked()
+        # 规则树应非空
+        assert window._rules_tree.topLevelItemCount() > 0
+        window.close()
+
+    def test_uncheck_builtin_clears_ruleset(self, qapp: QApplication) -> None:
+        """取消勾选通用规则且无用户规则时 ruleset 为 None。"""
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        assert window._use_builtin is False
+        assert window._ruleset is None
+        assert window._rules_tree.topLevelItemCount() == 0
+        # 扫描按钮应禁用
+        assert not window._scan_btn.isEnabled()
+        window.close()
+
+    def test_recheck_builtin_reloads_ruleset(self, qapp: QApplication) -> None:
+        """重新勾选通用规则应重新加载规则集。"""
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        assert window._ruleset is None
+        window._use_builtin_checkbox.setChecked(True)
+        assert window._ruleset is not None
+        assert len(window._ruleset.rules) > 0
+        window.close()
+
+    def test_builtin_label_updated_on_toggle(self, qapp: QApplication) -> None:
+        """切换通用规则开关时标签应更新。"""
+        window = MainWindow()
+        assert "通用规则" in window._rules_label.text()
+        window._use_builtin_checkbox.setChecked(False)
+        assert "未加载" in window._rules_label.text()
+        window._use_builtin_checkbox.setChecked(True)
+        assert "通用规则" in window._rules_label.text()
+        window.close()
+
+    def test_load_user_rules_with_builtin(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """勾选通用规则时加载用户规则应合并。"""
+        rules_yaml = tmp_path / "rules.yaml"
+        rules_yaml.write_text(
+            'version: "1.0"\nrules:\n  - name: 用户规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: secret\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        builtin_count = window._rules_tree.topLevelItemCount()
+
+        monkeypatch.setattr(
+            "pyfilescan.gui.main_window.QFileDialog.getOpenFileName",
+            lambda *args, **kwargs: (str(rules_yaml), ""),
+        )
+        window._on_load_rules()
+        # 合并后规则数应大于内置规则数
+        assert window._rules_tree.topLevelItemCount() > builtin_count
+        assert "通用规则" in window._rules_label.text()
+        assert "rules.yaml" in window._rules_label.text()
+        window.close()
+
+    def test_scan_enabled_with_builtin_only(self, qapp: QApplication, tmp_path: Path) -> None:
+        """仅加载内置规则并选择路径后扫描按钮应可用。"""
+        window = MainWindow()
+        assert window._ruleset is not None
+        # 未选路径时按钮禁用
+        assert not window._scan_btn.isEnabled()
+        # 选择路径后按钮启用
+        window._scan_root = tmp_path
+        window._update_scan_button()
+        assert window._scan_btn.isEnabled()
+        window.close()
 
 
 class TestScanWorker:

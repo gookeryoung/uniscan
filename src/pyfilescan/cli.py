@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from pyfilescan import __version__
+from pyfilescan.builtin import load_with_builtin
 from pyfilescan.rules import RuleError, RuleSet, load_ruleset
 from pyfilescan.scanner import Scanner, ScanReport
 
@@ -52,7 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
     # scan 子命令
     scan_parser = subparsers.add_parser("scan", help="扫描指定路径")
     scan_parser.add_argument("path", type=Path, help="要扫描的目录或文件路径")
-    scan_parser.add_argument("-r", "--rules", type=Path, required=True, help="规则文件路径（YAML）")
+    scan_parser.add_argument(
+        "-r", "--rules", type=Path, default=None, help="规则文件路径（YAML，未指定则仅用内置通用规则）"
+    )
     scan_parser.add_argument(
         "-o", "--output-format", choices=["text", "json", "csv"], default="text", help="输出格式，默认 text"
     )
@@ -61,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--ignore-dir", action="append", default=[], metavar="DIR", help="额外忽略目录名（可重复）"
     )
+    scan_parser.add_argument("--no-builtin", action="store_true", help="禁用内置通用规则（需配合 -r 使用）")
     scan_parser.add_argument("--no-color", action="store_true", help="禁用彩色输出")
 
     # rules 子命令
@@ -72,9 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     # tray 子命令
     tray_parser = subparsers.add_parser("tray", help="启动托盘驻守（监控新增文件并增量扫描）")
-    tray_parser.add_argument("-r", "--rules", type=Path, required=True, help="规则文件路径（YAML）")
+    tray_parser.add_argument(
+        "-r", "--rules", type=Path, default=None, help="规则文件路径（YAML，未指定则仅用内置通用规则）"
+    )
     tray_parser.add_argument("-w", "--watch", action="append", default=[], metavar="DIR", help="监控目录（可重复）")
     tray_parser.add_argument("--state", type=Path, default=None, help="扫描状态文件路径（用于增量扫描持久化）")
+    tray_parser.add_argument("--no-builtin", action="store_true", help="禁用内置通用规则（需配合 -r 使用）")
 
     # version 子命令
     subparsers.add_parser("version", help="显示版本信息")
@@ -123,21 +130,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 def _cmd_scan(args: argparse.Namespace) -> int:
     """执行 scan 子命令。"""
     scan_path: Path = args.path
-    rules_path: Path = args.rules
+    rules_path: Optional[Path] = args.rules
 
     if not scan_path.exists():
         print(f"错误: 扫描路径不存在: {scan_path}", file=sys.stderr)
         return 1
-    if not rules_path.exists():
-        print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-        return 1
 
-    ruleset = load_ruleset(rules_path)
+    # 规则加载：--no-builtin 需配合 -r，否则按需合并内置规则
+    if args.no_builtin:
+        if rules_path is None:
+            print("错误: --no-builtin 需要配合 -r/--rules 使用", file=sys.stderr)
+            return 1
+        if not rules_path.exists():
+            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
+            return 1
+        ruleset = load_ruleset(rules_path)
+    else:
+        if rules_path is not None and not rules_path.exists():
+            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
+            return 1
+        ruleset = load_with_builtin(rules_path)
+
     if args.ignore_dir:
         ruleset = _merge_ignore_dirs(ruleset, args.ignore_dir)
 
     scanner = Scanner(ruleset, max_depth=args.max_depth)
-    logger.info("开始扫描 %s（规则: %s，规则数: %d）", scan_path, rules_path, len(ruleset.rules))
+    rules_desc = f"规则: {rules_path}" if rules_path else "内置通用规则"
+    logger.info("开始扫描 %s（%s，规则数: %d）", scan_path, rules_desc, len(ruleset.rules))
     report = scanner.scan(scan_path)
 
     output = _format_report(report, args.output_format)
@@ -160,6 +179,7 @@ def _cmd_rules(args: argparse.Namespace) -> int:
     print(f"  规则数: {len(ruleset.rules)}")
     print(f"  忽略目录: {', '.join(ruleset.ignore_dirs) or '(无)'}")
     print(f"  忽略扩展名: {', '.join(ruleset.ignore_extensions) or '(无)'}")
+    print(f"  忽略路径: {', '.join(ruleset.ignore_paths) or '(无)'}")
     print("  规则列表:")
     for i, rule in enumerate(ruleset.rules, 1):
         exts = f" [扩展名: {', '.join(rule.file_extensions)}]" if rule.file_extensions else ""
@@ -189,12 +209,23 @@ def _cmd_tray(args: argparse.Namespace) -> int:
         print(f"托盘启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
         return 3
 
-    rules_path: Path = args.rules
-    if not rules_path.exists():
-        print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-        return 1
+    rules_path: Optional[Path] = args.rules
 
-    ruleset = load_ruleset(rules_path)
+    # 规则加载：--no-builtin 需配合 -r，否则按需合并内置规则
+    if args.no_builtin:
+        if rules_path is None:
+            print("错误: --no-builtin 需要配合 -r/--rules 使用", file=sys.stderr)
+            return 1
+        if not rules_path.exists():
+            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
+            return 1
+        ruleset = load_ruleset(rules_path)
+    else:
+        if rules_path is not None and not rules_path.exists():
+            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
+            return 1
+        ruleset = load_with_builtin(rules_path)
+
     watch_paths = [Path(w) for w in args.watch]
     state_file: Optional[Path] = args.state
 

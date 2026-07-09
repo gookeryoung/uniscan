@@ -55,7 +55,7 @@ pyfilescan = "pyfilescan.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-pyfilescan = ["py.typed", "assets/*.png", "assets/*.ico"]
+pyfilescan = ["py.typed", "assets/*.png", "assets/*.ico", "builtin/*.yaml"]
 
 [tool.ruff]
 line-length = 120

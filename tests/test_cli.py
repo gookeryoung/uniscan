@@ -46,7 +46,7 @@ def scan_root(tmp_path: Path) -> Path:
     root = tmp_path / "scan_root"
     root.mkdir()
     (root / "password.txt").write_text("normal", encoding="utf-8")
-    (root / "doc.conf").write_text("key=AKIA1234", encoding="utf-8")
+    (root / "doc.conf").write_text("key=AKIA1234567890ABCDEF", encoding="utf-8")
     (root / "readme.md").write_text("hello world", encoding="utf-8")
     (root / ".git").mkdir()
     (root / ".git" / "password.txt").write_text("ignored", encoding="utf-8")
@@ -221,6 +221,69 @@ class TestScanCommand:
         )
         rc = main(["scan", str(scan_root), "-r", str(bad_rules)])
         assert rc == 2
+
+
+class TestBuiltinRules:
+    """内置通用规则集成测试。"""
+
+    def test_scan_with_builtin_only(self, scan_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """不带 -r 时默认使用内置通用规则。"""
+        rc = main(["scan", str(scan_root)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        # 内置规则包含 AWS 密钥检测，doc.conf 含 AKIA1234 应命中
+        assert "doc.conf" in out
+
+    def test_scan_no_builtin_without_rules_errors(self, scan_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """--no-builtin 但无 -r 应报错。"""
+        rc = main(["scan", str(scan_root), "--no-builtin"])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "--no-builtin" in err
+
+    def test_scan_no_builtin_with_rules(
+        self, scan_root: Path, rules_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--no-builtin + -r 仅使用用户规则。"""
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "--no-builtin"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        # 用户规则应生效
+        assert "password.txt" in out
+
+    def test_scan_merge_builtin_and_user(
+        self, scan_root: Path, rules_file: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """默认合并内置规则与用户规则。"""
+        rc = main(["scan", str(scan_root), "-r", str(rules_file)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        # 内置规则与用户规则同时生效
+        assert "password.txt" in out  # 用户规则命中
+        assert "doc.conf" in out  # 内置规则命中
+
+    def test_scan_no_builtin_nonexistent_rules_errors(
+        self, scan_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--no-builtin + 不存在的规则文件应报错。"""
+        rc = main(["scan", str(scan_root), "--no-builtin", "-r", str(tmp_path / "missing.yaml")])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "不存在" in err
+
+    def test_tray_no_builtin_without_rules_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """tray --no-builtin 但无 -r 应报错。"""
+        rc = main(["tray", "--no-builtin"])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "--no-builtin" in err
+
+    def test_rules_command_displays_ignore_paths(self, rules_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """rules 子命令应显示 ignore_paths 信息。"""
+        rc = main(["rules", "-r", str(rules_file)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "忽略路径" in out
 
 
 class TestGuiCommand:
