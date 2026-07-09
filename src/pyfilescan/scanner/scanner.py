@@ -7,22 +7,36 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from pyfilescan.extractors import extract_content
 from pyfilescan.rules.model import Rule, RuleSet
 from pyfilescan.scanner.context import ContentProvider, FileEntry, MatchContext
 from pyfilescan.scanner.matchers import Matcher, build_matcher
 from pyfilescan.scanner.result import RuleHit, ScanReport, ScanResult, ScanStats
 from pyfilescan.scanner.walker import FileWalker
 
-__all__ = ["Scanner"]
+__all__ = ["Scanner", "default_extract_content"]
 
 logger = logging.getLogger(__name__)
+
+
+def default_extract_content(entry: FileEntry) -> str:
+    """默认内容提供器：通过提取器注册表按扩展名提取文本。
+
+    无注册提取器时回退到纯文本读取；提取失败返回空字符串。
+    """
+    try:
+        return extract_content(entry.path)
+    except Exception:
+        logger.debug("提取器提取失败，回退到纯文本: %s", entry.path, exc_info=True)
+        return entry.path.read_text(encoding="utf-8", errors="ignore")
 
 
 class Scanner:
     """扫描器：对目录或单文件应用规则集，产出扫描报告。
 
     - 构造时一次性编译规则集为 Matcher 列表，避免重复编译
-    - 支持自定义内容提供器（用于 GUI 阶段进度回调、P1 阶段格式解析）
+    - 默认使用提取器注册表（extractors）提取文件内容，支持多格式
+    - 支持自定义内容提供器覆盖默认提取逻辑
     - 单线程实现，并发版可在 P5 阶段扩展
     """
 
@@ -34,7 +48,7 @@ class Scanner:
         follow_symlinks: bool = False,
     ) -> None:
         self.ruleset = ruleset
-        self._content_provider = content_provider
+        self._content_provider: ContentProvider = content_provider or default_extract_content
         self._compiled: List[Tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
         self._walker = FileWalker(
             ignore_dirs=ruleset.ignore_dirs,

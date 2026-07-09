@@ -34,7 +34,7 @@ from pyfilescan.scanner.result import (
     ScanResult,
     ScanStats,
 )
-from pyfilescan.scanner.scanner import Scanner
+from pyfilescan.scanner.scanner import Scanner, default_extract_content
 from pyfilescan.scanner.walker import FileWalker
 
 __all__ = [
@@ -57,4 +57,5 @@ __all__ = [
     "Scanner",
     "build_matcher",
     "default_content_provider",
+    "default_extract_content",
 ]
