@@ -41,7 +41,7 @@ def text_file(tmp_path: Path) -> Path:
 @pytest.fixture()
 def gbk_file(tmp_path: Path) -> Path:
     path = tmp_path / "gbk.txt"
-    path.write_bytes("密码内容测试PASSWORD".encode("gbk"))
+    path.write_bytes("这是一个包含密码字段的配置文件，密码为 password123，请妥善保管。PASSWORD".encode("gbk"))
     return path
 
 
@@ -132,6 +132,32 @@ class TestTextExtractor:
         with pytest.raises(ExtractorError, match="无法读取文件大小"):
             extractor.extract(tmp_path / "missing.txt")
 
+    def test_charset_normalizer_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """charset-normalizer 未安装时回退到 UTF-8/GBK 解码。"""
+        path = tmp_path / "fallback.txt"
+        path.write_text("回退解码 password", encoding="utf-8")
+
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "charset_normalizer":
+                raise ImportError("No module named 'charset_normalizer'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        content = TextExtractor().extract(path)
+        assert "回退解码 password" in content
+
+    def test_gbk_decoding(self, gbk_file: Path) -> None:
+        """GBK 编码文件应能正确解码。"""
+        extractor = TextExtractor()
+        content = extractor.extract(gbk_file)
+        assert "密码" in content
+        assert "password123" in content
+
 
 # ---------------------------------------------------------------------------
 # DocxExtractor
@@ -209,6 +235,30 @@ class TestXlsxExtractor:
         # 只读了 1 行，应该有表头但无数据行
         assert "姓名" in content
 
+    def test_max_cols_limit(self, xlsx_file: Path) -> None:
+        """列数超过上限时截断。"""
+        extractor = XlsxExtractor(max_cols=1)
+        content = extractor.extract(xlsx_file)
+        # 只有第 1 列，应包含姓名但不包含密码列
+        assert "姓名" in content
+
+    def test_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """openpyxl 未安装时应抛出 ExtractorError。"""
+        path = tmp_path / "test.xlsx"
+        path.write_bytes(b"fake")
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "openpyxl":
+                raise ImportError("No module named 'openpyxl'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="openpyxl 未安装"):
+            XlsxExtractor().extract(path)
+
 
 # ---------------------------------------------------------------------------
 # WpsExtractor
@@ -253,6 +303,64 @@ class TestWpsExtractor:
         content = WpsExtractor().extract(path)
         assert "et_password" in content
 
+    def test_ooxml_dps_slides(self, tmp_path: Path) -> None:
+        """OOXML 兼容的 .dps 文件应能提取演示内容。"""
+        from pptx import Presentation
+
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = "dps 标题 password"
+        slide.placeholders[1].text = "幻灯片内容"
+        path = tmp_path / "test.dps"
+        prs.save(str(path))
+
+        content = WpsExtractor().extract(path)
+        assert "dps 标题 password" in content
+        assert "幻灯片内容" in content
+
+    def test_wps_docx_with_table(self, tmp_path: Path) -> None:
+        """WPS 文字文档含表格时应提取表格内容。"""
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("正文 password")
+        table = doc.add_table(rows=1, cols=2)
+        table.cell(0, 0).text = "键"
+        table.cell(0, 1).text = "值 secret"
+        path = tmp_path / "table.wps"
+        doc.save(str(path))
+
+        content = WpsExtractor().extract(path)
+        assert "正文 password" in content
+        assert "键" in content
+        assert "值 secret" in content
+
+    def test_wps_invalid_docx_raises(self, tmp_path: Path) -> None:
+        """损坏的 OOXML WPS 文件应抛出 ExtractorError。"""
+        path = tmp_path / "bad.wps"
+        path.write_bytes(b"PK\x03\x04 corrupted content")
+        with pytest.raises(ExtractorError, match="WPS 文字文档解析失败"):
+            WpsExtractor().extract(path)
+
+    def test_wps_invalid_et_raises(self, tmp_path: Path) -> None:
+        """损坏的 OOXML ET 文件应抛出 ExtractorError。"""
+        path = tmp_path / "bad.et"
+        path.write_bytes(b"PK\x03\x04 corrupted content")
+        with pytest.raises(ExtractorError, match="WPS 表格解析失败"):
+            WpsExtractor().extract(path)
+
+    def test_wps_invalid_dps_raises(self, tmp_path: Path) -> None:
+        """损坏的 OOXML DPS 文件应抛出 ExtractorError。"""
+        path = tmp_path / "bad.dps"
+        path.write_bytes(b"PK\x03\x04 corrupted content")
+        with pytest.raises(ExtractorError, match="WPS 演示解析失败"):
+            WpsExtractor().extract(path)
+
+    def test_wps_is_ooxml_nonexistent(self, tmp_path: Path) -> None:
+        """文件不存在时 _is_ooxml 返回 False。"""
+        path = tmp_path / "nonexistent.wps"
+        assert WpsExtractor()._is_ooxml(path) is False
+
 
 # ---------------------------------------------------------------------------
 # PdfExtractor（依赖 pypdf，使用 mock 避免真实 PDF）
@@ -267,6 +375,99 @@ class TestPdfExtractor:
         path = tmp_path / "bad.pdf"
         path.write_text("not a pdf", encoding="utf-8")
         with pytest.raises(ExtractorError):
+            PdfExtractor().extract(path)
+
+    def test_extract_with_mock_reader(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """使用 mock PdfReader 测试页面提取。"""
+        path = tmp_path / "fake.pdf"
+        path.write_bytes(b"fake pdf content")
+
+        class FakePage:
+            def extract_text(self) -> str:
+                return "页面文本含 password"
+
+        class FakeReader:
+            def __init__(self) -> None:
+                self.is_encrypted = False
+                self.pages = [FakePage(), FakePage()]
+
+        class FakePdfModule:
+            PdfReader = staticmethod(lambda _: FakeReader())
+
+            class errors:
+                class PdfReadError(Exception):
+                    pass
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pypdf", FakePdfModule)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", type("errors", (), {"PdfReadError": Exception}))
+
+        content = PdfExtractor().extract(path)
+        assert "页面文本含 password" in content
+
+    def test_encrypted_pdf_returns_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """加密 PDF 应返回空字符串。"""
+        path = tmp_path / "encrypted.pdf"
+        path.write_bytes(b"encrypted")
+
+        class FakeReader:
+            def __init__(self) -> None:
+                self.is_encrypted = True
+                self.pages = []
+
+        import sys
+
+        fake_module = type("pypdf", (), {"PdfReader": staticmethod(lambda _: FakeReader())})
+        fake_errors = type("errors", (), {"PdfReadError": Exception})
+        monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", fake_errors)
+
+        assert PdfExtractor().extract(path) == ""
+
+    def test_page_extraction_error_continues(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """单页提取失败应跳过该页继续处理。"""
+        path = tmp_path / "mixed.pdf"
+        path.write_bytes(b"mixed")
+
+        class GoodPage:
+            def extract_text(self) -> str:
+                return "正常页面"
+
+        class BadPage:
+            def extract_text(self) -> str:
+                raise RuntimeError("解析失败")
+
+        class FakeReader:
+            def __init__(self) -> None:
+                self.is_encrypted = False
+                self.pages = [BadPage(), GoodPage()]
+
+        fake_module = type("pypdf", (), {"PdfReader": staticmethod(lambda _: FakeReader())})
+        fake_errors = type("errors", (), {"PdfReadError": Exception})
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", fake_errors)
+
+        content = PdfExtractor().extract(path)
+        assert "正常页面" in content
+
+    def test_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """pypdf 未安装时应抛出 ExtractorError。"""
+        path = tmp_path / "test.pdf"
+        path.write_bytes(b"fake")
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "pypdf":
+                raise ImportError("No module named 'pypdf'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="pypdf 未安装"):
             PdfExtractor().extract(path)
 
 
@@ -286,6 +487,66 @@ class TestOdfExtractors:
         path = tmp_path / "bad.odt"
         path.write_text("not odt", encoding="utf-8")
         with pytest.raises(ExtractorError, match="ODT 解析失败"):
+            OdtExtractor().extract(path)
+
+    def test_odt_extract_real_file(self, tmp_path: Path) -> None:
+        """使用 odfpy 创建真实 ODT 文件并提取。"""
+        from odf.opendocument import OpenDocumentText
+        from odf.text import H, P
+
+        doc = OpenDocumentText()
+        p = P(text="段落含 password 内容")
+        doc.text.addElement(p)
+        h = H(outlinelevel="1", text="标题 secret")
+        doc.text.addElement(h)
+        path = tmp_path / "real.odt"
+        doc.save(str(path))
+
+        content = OdtExtractor().extract(path)
+        assert "password" in content
+        assert "secret" in content
+
+    def test_ods_extract_real_file(self, tmp_path: Path) -> None:
+        """使用 odfpy 创建真实 ODS 文件并提取。"""
+        from odf.opendocument import OpenDocumentSpreadsheet
+        from odf.table import Table, TableCell, TableRow
+        from odf.text import P
+
+        doc = OpenDocumentSpreadsheet()
+        table = Table(name="数据")
+        row = TableRow()
+        cell = TableCell()
+        cell.addElement(P(text="cell_password"))
+        row.addElement(cell)
+        table.addElement(row)
+        doc.spreadsheet.addElement(table)
+        path = tmp_path / "real.ods"
+        doc.save(str(path))
+
+        content = OdsExtractor().extract(path)
+        assert "cell_password" in content
+
+    def test_ods_invalid_file_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.ods"
+        path.write_text("not ods", encoding="utf-8")
+        with pytest.raises(ExtractorError, match="ODS 解析失败"):
+            OdsExtractor().extract(path)
+
+    def test_odt_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """odfpy 未安装时应抛出 ExtractorError。"""
+        path = tmp_path / "test.odt"
+        path.write_bytes(b"fake")
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "odf.opendocument":
+                raise ImportError("No module named 'odf'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="odfpy 未安装"):
             OdtExtractor().extract(path)
 
 

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from pyfilescan import __version__
 from pyfilescan.cli import build_parser, main
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture()
@@ -262,6 +265,78 @@ class TestGuiCommand:
         assert rc == 3
         err = capsys.readouterr().err
         assert "GUI 启动失败" in err
+
+
+class TestTrayCommand:
+    def test_tray_missing_rules_file_returns_error(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        """规则文件不存在时返回错误码 1。"""
+        rc = main(["tray", "-r", str(tmp_path / "nonexistent.yaml")])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "规则文件不存在" in err
+
+    def test_tray_pyside2_missing_returns_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        rules_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """PySide2 不可用时返回错误码 3。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "PySide2.QtWidgets":
+                raise ImportError("No module named 'PySide2'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        rc = main(["tray", "-r", str(rules_file)])
+        assert rc == 3
+        err = capsys.readouterr().err
+        assert "托盘启动失败" in err
+
+    def test_tray_invokes_trayapp(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        rules_file: Path,
+        tmp_path: Path,
+    ) -> None:
+        """正常调用时创建 TrayApp 并启动。"""
+        called: dict = {}
+
+        class FakeTrayApp:
+            def __init__(self, **kwargs: object) -> None:
+                called["kwargs"] = kwargs
+
+            def start(self, show_window: bool = True) -> int:
+                called["show_window"] = show_window
+                return 0
+
+        import pyfilescan.watcher.tray as tray_mod
+
+        monkeypatch.setattr(tray_mod, "TrayApp", FakeTrayApp)
+
+        watch_dir = tmp_path / "watch"
+        watch_dir.mkdir()
+        state_file = tmp_path / "state.json"
+
+        rc = main([
+            "tray",
+            "-r",
+            str(rules_file),
+            "-w",
+            str(watch_dir),
+            "--state",
+            str(state_file),
+        ])
+        assert rc == 0
+        assert called["show_window"] is False
+        kwargs = called["kwargs"]
+        assert kwargs["watch_paths"] == [watch_dir]
+        assert kwargs["state_file"] == state_file
 
 
 class TestMainErrorHandling:
