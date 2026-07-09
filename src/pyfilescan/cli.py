@@ -5,7 +5,7 @@
 - ``scan``：扫描指定路径，输出命中报告
 - ``rules``：校验规则文件格式
 - ``version``：显示版本信息
-- ``gui``：启动图形界面（P3 阶段实现，当前占位）
+- ``gui``：启动图形界面
 
 用法示例：
 
@@ -66,8 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     rules_parser = subparsers.add_parser("rules", help="校验规则文件")
     rules_parser.add_argument("-r", "--rules", type=Path, required=True, help="规则文件路径（YAML）")
 
-    # gui 子命令（P3 占位）
-    subparsers.add_parser("gui", help="启动图形界面（P3 阶段实现）")
+    # gui 子命令
+    subparsers.add_parser("gui", help="启动图形界面")
 
     # version 子命令
     subparsers.add_parser("version", help="显示版本信息")
@@ -161,9 +161,13 @@ def _cmd_rules(args: argparse.Namespace) -> int:
 
 
 def _cmd_gui(args: argparse.Namespace) -> int:
-    """执行 gui 子命令（P3 阶段实现）。"""
-    print("GUI 界面将在 P3 阶段实现", file=sys.stderr)
-    return 0
+    """执行 gui 子命令：启动图形界面。"""
+    try:
+        from pyfilescan.gui import launch
+    except ImportError as exc:
+        print(f"GUI 启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
+        return 3
+    return launch()
 
 
 def _merge_ignore_dirs(ruleset: RuleSet, extra_dirs: List[str]) -> RuleSet:

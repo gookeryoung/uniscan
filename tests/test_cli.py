@@ -225,11 +225,47 @@ class TestScanCommand:
 
 
 class TestGuiCommand:
-    def test_gui_returns_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_gui_launches_when_pyside2_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PySide2 可用时调用 launch 启动 GUI。"""
+        called = {"launch": False}
+
+        def fake_launch() -> int:
+            called["launch"] = True
+            return 0
+
+        # 注入 fake launch 到 pyfilescan.gui 命名空间
+        import sys
+        import types
+
+        fake_gui = types.ModuleType("pyfilescan.gui")
+        fake_gui.launch = fake_launch  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "pyfilescan.gui", fake_gui)
+
         rc = main(["gui"])
         assert rc == 0
+        assert called["launch"] is True
+
+    def test_gui_returns_error_when_pyside2_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """PySide2 不可用时返回错误码 3。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "pyfilescan.gui":
+                raise ImportError("No module named 'PySide2'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        rc = main(["gui"])
+        assert rc == 3
         err = capsys.readouterr().err
-        assert "P3" in err
+        assert "GUI 启动失败" in err
 
 
 class TestMainErrorHandling:
