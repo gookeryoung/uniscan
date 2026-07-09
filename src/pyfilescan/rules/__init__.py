@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from pyfilescan.rules.errors import RuleError, RuleLoadError, RuleParseError
-from pyfilescan.rules.merge import merge_rulesets
+from pyfilescan.rules.merge import merge_multiple_rulesets, merge_rulesets
 from pyfilescan.rules.model import (
     AndMatch,
     LeafMatch,
@@ -43,6 +43,7 @@ __all__ = [
     "RuleSet",
     "Severity",
     "load_ruleset",
+    "merge_multiple_rulesets",
     "merge_rulesets",
     "parse_match",
     "parse_rule",

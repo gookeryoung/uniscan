@@ -23,7 +23,7 @@ import json
 import logging
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import (
@@ -32,6 +32,8 @@ from PySide2.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -47,7 +49,7 @@ from PySide2.QtWidgets import (
 from pyfilescan.builtin import load_with_builtin
 from pyfilescan.gui.detail_dialog import HitDetailDialog
 from pyfilescan.gui.worker import ScanWorker
-from pyfilescan.rules import RuleError, load_ruleset
+from pyfilescan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from pyfilescan.rules.model import RuleSet
 from pyfilescan.scanner import ScanReport
 
@@ -65,7 +67,7 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
 
         self._ruleset: Optional[RuleSet] = None
-        self._rules_path: Optional[Path] = None
+        self._rules_paths: List[Path] = []
         self._scan_root: Optional[Path] = None
         self._last_report: Optional[ScanReport] = None
         self._worker: Optional[ScanWorker] = None
@@ -80,14 +82,15 @@ class MainWindow(QMainWindow):
     # ----------------------------- UI 初始化 -----------------------------
 
     def _init_ui(self) -> None:
-        """初始化中央 widget：左侧规则面板 + 右侧结果树。"""
+        """初始化中央 widget：顶部控制区 + 左侧规则面板 + 右侧结果树。"""
         central = QWidget()
         self.setCentralWidget(central)
-
         layout = QVBoxLayout(central)
+        layout.addLayout(self._build_top_controls())
+        layout.addWidget(self._build_main_splitter(), stretch=1)
 
-        # 顶部控制区
-        top_layout = QHBoxLayout()
+    def _build_top_controls(self) -> QHBoxLayout:
+        """构造顶部控制区：规则加载、路径选择、通用规则开关、扫描按钮。"""
         self._rules_label = QLabel("规则文件: 未加载")
         self._rules_label.setStyleSheet("padding: 4px; border: 1px solid #ccc;")
         self._load_rules_btn = QPushButton("加载规则...")
@@ -107,21 +110,19 @@ class MainWindow(QMainWindow):
         self._scan_btn.clicked.connect(self._on_scan)
         self._scan_btn.setEnabled(False)
 
+        top_layout = QHBoxLayout()
         top_layout.addWidget(self._load_rules_btn)
         top_layout.addWidget(self._rules_label, stretch=1)
         top_layout.addWidget(self._use_builtin_checkbox)
         top_layout.addWidget(self._select_path_btn)
         top_layout.addWidget(self._path_label, stretch=1)
         top_layout.addWidget(self._scan_btn)
-        layout.addLayout(top_layout)
+        return top_layout
 
-        # 主体：规则列表 + 结果树
+    def _build_main_splitter(self) -> QSplitter:
+        """构造主体分割器：左侧规则面板 + 右侧结果树。"""
         splitter = QSplitter(Qt.Horizontal)
-
-        self._rules_tree = QTreeWidget()
-        self._rules_tree.setHeaderLabels(["规则名", "严重等级", "扩展名"])
-        self._rules_tree.setRootIsDecorated(False)
-        splitter.addWidget(self._rules_tree)
+        splitter.addWidget(self._build_left_panel())
 
         self._result_tree = QTreeWidget()
         self._result_tree.setHeaderLabels(["路径", "规则", "严重等级", "详情"])
@@ -132,7 +133,40 @@ class MainWindow(QMainWindow):
 
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
-        layout.addWidget(splitter, stretch=1)
+        return splitter
+
+    def _build_left_panel(self) -> QWidget:
+        """构造左侧面板：规则文件列表 + 排序按钮 + 规则树。"""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        layout.addWidget(QLabel("规则文件（顺序从上到下，后者覆盖前者）"))
+
+        self._rules_file_list = QListWidget()
+        self._rules_file_list.setToolTip("已加载的规则文件，列表顺序代表优先级（从低到高）")
+        layout.addWidget(self._rules_file_list)
+
+        btn_layout = QHBoxLayout()
+        self._move_up_btn = QPushButton("上移")
+        self._move_up_btn.setToolTip("将选中的规则文件上移（优先级降低）")
+        self._move_up_btn.clicked.connect(self._on_move_rule_up)
+        self._move_down_btn = QPushButton("下移")
+        self._move_down_btn.setToolTip("将选中的规则文件下移（优先级升高）")
+        self._move_down_btn.clicked.connect(self._on_move_rule_down)
+        self._remove_rule_btn = QPushButton("移除")
+        self._remove_rule_btn.setToolTip("移除选中的规则文件")
+        self._remove_rule_btn.clicked.connect(self._on_remove_rule)
+        btn_layout.addWidget(self._move_up_btn)
+        btn_layout.addWidget(self._move_down_btn)
+        btn_layout.addWidget(self._remove_rule_btn)
+        layout.addLayout(btn_layout)
+
+        self._rules_tree = QTreeWidget()
+        self._rules_tree.setHeaderLabels(["规则名", "严重等级", "扩展名"])
+        self._rules_tree.setRootIsDecorated(False)
+        layout.addWidget(self._rules_tree, stretch=1)
+        return panel
 
     def _init_menu(self) -> None:
         """初始化菜单栏。"""
@@ -195,6 +229,7 @@ class MainWindow(QMainWindow):
         try:
             self._reload_ruleset()
             self._refresh_rules_tree()
+            self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
                 self._rules_label.setText("规则: 内置通用规则")
@@ -204,11 +239,12 @@ class MainWindow(QMainWindow):
             self._rules_label.setText("规则文件: 内置规则加载失败")
 
     def _reload_ruleset(self) -> None:
-        """根据当前通用规则开关与用户规则路径重新加载规则集。"""
+        """根据当前通用规则开关与用户规则路径列表重新加载规则集。"""
         if self._use_builtin:
-            self._ruleset = load_with_builtin(self._rules_path)
-        elif self._rules_path is not None:
-            self._ruleset = load_ruleset(self._rules_path)
+            self._ruleset = load_with_builtin(self._rules_paths)
+        elif self._rules_paths:
+            rulesets = [load_ruleset(p) for p in self._rules_paths]
+            self._ruleset = merge_multiple_rulesets(*rulesets)
         else:
             self._ruleset = None
 
@@ -218,13 +254,10 @@ class MainWindow(QMainWindow):
         try:
             self._reload_ruleset()
             self._refresh_rules_tree()
+            self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
-                if self._use_builtin:
-                    label = "通用规则" if self._rules_path is None else f"通用规则 + {self._rules_path.name}"
-                else:
-                    label = self._rules_path.name if self._rules_path is not None else "未加载"
-                self._rules_label.setText(f"规则: {label}")
+                self._rules_label.setText(f"规则: {self._build_rules_label()}")
                 self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
             else:
                 self._rules_label.setText("规则: 未加载")
@@ -235,28 +268,35 @@ class MainWindow(QMainWindow):
     # ----------------------------- 槽函数 -----------------------------
 
     def _on_load_rules(self) -> None:
-        """加载规则文件。"""
+        """加载规则文件，追加到已加载列表末尾。"""
+        last_dir = str(self._rules_paths[-1].parent) if self._rules_paths else str(Path.home())
         path_str, _ = QFileDialog.getOpenFileName(
             self,
             "选择规则文件",
-            str(self._rules_path or Path.home()),
+            last_dir,
             "YAML 文件 (*.yaml *.yml);;所有文件 (*.*)",
         )
         if not path_str:
             return
         path = Path(path_str)
-        old_path = self._rules_path
-        self._rules_path = path
+        if path in self._rules_paths:
+            QMessageBox.information(self, "提示", f"该规则文件已在列表中:\n{path.name}")
+            return
+        self._rules_paths.append(path)
         try:
             self._reload_ruleset()
-            label = f"规则: {path.name}" if not self._use_builtin else f"规则: 通用规则 + {path.name}"
-            self._rules_label.setText(label)
+            self._rules_label.setText(f"规则: {self._build_rules_label()}")
             self._refresh_rules_tree()
+            self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
                 self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
         except RuleError as exc:
-            self._rules_path = old_path
+            self._rules_paths.remove(path)
+            self._reload_ruleset()
+            self._refresh_rules_tree()
+            self._refresh_rules_file_list()
+            self._update_scan_button()
             QMessageBox.warning(self, "规则错误", f"加载规则失败:\n{exc}")
 
     def _on_select_path(self) -> None:
@@ -371,6 +411,71 @@ class MainWindow(QMainWindow):
                 ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
             ])
             self._rules_tree.addTopLevelItem(item)
+
+    def _refresh_rules_file_list(self) -> None:
+        """刷新规则文件列表展示。"""
+        self._rules_file_list.clear()
+        for path in self._rules_paths:
+            item = QListWidgetItem(str(path))
+            item.setToolTip(str(path))
+            self._rules_file_list.addItem(item)
+
+    def _build_rules_label(self) -> str:
+        """构造规则标签文本。"""
+        names = [p.name for p in self._rules_paths]
+        user_part = ", ".join(names)
+        if self._use_builtin:
+            return f"通用规则 + {user_part}" if user_part else "通用规则"
+        return user_part if user_part else "未加载"
+
+    def _on_move_rule_up(self) -> None:
+        """将选中的规则文件上移一位。"""
+        row = self._rules_file_list.currentRow()
+        if row <= 0:
+            return
+        self._rules_paths[row - 1], self._rules_paths[row] = (
+            self._rules_paths[row],
+            self._rules_paths[row - 1],
+        )
+        self._refresh_rules_file_list()
+        self._rules_file_list.setCurrentRow(row - 1)
+        self._reload_and_refresh()
+
+    def _on_move_rule_down(self) -> None:
+        """将选中的规则文件下移一位。"""
+        row = self._rules_file_list.currentRow()
+        if row < 0 or row >= len(self._rules_paths) - 1:
+            return
+        self._rules_paths[row + 1], self._rules_paths[row] = (
+            self._rules_paths[row],
+            self._rules_paths[row + 1],
+        )
+        self._refresh_rules_file_list()
+        self._rules_file_list.setCurrentRow(row + 1)
+        self._reload_and_refresh()
+
+    def _on_remove_rule(self) -> None:
+        """移除选中的规则文件。"""
+        row = self._rules_file_list.currentRow()
+        if row < 0:
+            return
+        del self._rules_paths[row]
+        self._refresh_rules_file_list()
+        self._reload_and_refresh()
+
+    def _reload_and_refresh(self) -> None:
+        """重新加载规则集并刷新相关 UI 组件。"""
+        try:
+            self._reload_ruleset()
+            self._refresh_rules_tree()
+            self._rules_label.setText(f"规则: {self._build_rules_label()}")
+            self._update_scan_button()
+            if self._ruleset is not None:
+                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+            else:
+                self._stats_label.setText("未加载规则")
+        except RuleError as exc:
+            QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
     def _populate_results(self, report: ScanReport) -> None:
         """填充结果树。"""

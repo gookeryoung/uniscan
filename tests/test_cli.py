@@ -65,8 +65,14 @@ class TestBuildParser:
         args = parser.parse_args(["scan", "scan_path", "-r", "rules.yaml"])
         assert args.command == "scan"
         assert str(args.path) == "scan_path"
-        assert str(args.rules) == "rules.yaml"
+        assert args.rules == [Path("rules.yaml")]
         assert args.output_format == "text"
+
+    def test_parse_scan_multiple_rules(self) -> None:
+        """-r 可重复指定多个规则文件。"""
+        parser = build_parser()
+        args = parser.parse_args(["scan", "p", "-r", "r1.yaml", "-r", "r2.yaml"])
+        assert args.rules == [Path("r1.yaml"), Path("r2.yaml")]
 
     def test_parse_scan_with_options(self) -> None:
         parser = build_parser()
@@ -261,6 +267,46 @@ class TestBuiltinRules:
         # 内置规则与用户规则同时生效
         assert "password.txt" in out  # 用户规则命中
         assert "doc.conf" in out  # 内置规则命中
+
+    def test_scan_multiple_user_rules_merged(
+        self, scan_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """多个 -r 文件按顺序合并，后者覆盖前者同名规则。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: info\n    match:\n      type: filename\n      mode: contains\n      pattern: password\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: nonexistent\n',
+            encoding="utf-8",
+        )
+        # r2 覆盖 r1：pattern 变为 nonexistent，password.txt 不应命中
+        rc = main(["scan", str(scan_root), "--no-builtin", "-r", str(r1), "-r", str(r2)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "password.txt" not in out
+
+    def test_scan_multiple_user_rules_order_matters(
+        self, scan_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """交换 -r 顺序后覆盖关系反转。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: info\n    match:\n      type: filename\n      mode: contains\n      pattern: nonexistent\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: password\n',
+            encoding="utf-8",
+        )
+        # r2 在后，覆盖 r1：pattern 为 password，password.txt 应命中
+        rc = main(["scan", str(scan_root), "--no-builtin", "-r", str(r1), "-r", str(r2)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "password.txt" in out
 
     def test_scan_no_builtin_nonexistent_rules_errors(
         self, scan_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -1,10 +1,10 @@
-"""规则集合合并：将基础规则集与用户规则集按名称合并。
+"""规则集合合并：将多个规则集按顺序合并。
 
 合并语义：
 
-- ``rules``：用户规则中同名规则覆盖基础规则，基础规则中未被覆盖的保留
+- ``rules``：后一个规则集中同名规则覆盖前一个，未被覆盖的保留
 - ``ignore_dirs`` / ``ignore_extensions`` / ``ignore_paths``：取并集（去重保序）
-- ``version``：采用用户规则集的版本号
+- ``version``：采用最后一个规则集的版本号
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 from pyfilescan.rules.model import Rule, RuleSet
 
-__all__ = ["merge_rulesets"]
+__all__ = ["merge_multiple_rulesets", "merge_rulesets"]
 
 
 def merge_rulesets(base: RuleSet, override: RuleSet) -> RuleSet:
@@ -36,6 +36,23 @@ def merge_rulesets(base: RuleSet, override: RuleSet) -> RuleSet:
         ignore_extensions=_union(base.ignore_extensions, override.ignore_extensions),
         ignore_paths=_union(base.ignore_paths, override.ignore_paths),
     )
+
+
+def merge_multiple_rulesets(*rulesets: RuleSet) -> RuleSet:
+    """按顺序合并多个规则集，后面的覆盖前面的同名规则。
+
+    传入的第一个规则集作为基础，后续每个规则集依次合并覆盖。
+    若无参数，返回空规则集。
+
+    :param rulesets: 按优先级从低到高排列的规则集
+    :return: 合并后的 RuleSet
+    """
+    if not rulesets:
+        return RuleSet(version="1.0")
+    merged = rulesets[0]
+    for rs in rulesets[1:]:
+        merged = merge_rulesets(merged, rs)
+    return merged
 
 
 def _union(*tuples: Tuple[str, ...]) -> Tuple[str, ...]:

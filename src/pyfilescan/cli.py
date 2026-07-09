@@ -30,7 +30,7 @@ from typing import List, Optional, Sequence
 
 from pyfilescan import __version__
 from pyfilescan.builtin import load_with_builtin
-from pyfilescan.rules import RuleError, RuleSet, load_ruleset
+from pyfilescan.rules import RuleError, RuleSet, load_ruleset, merge_multiple_rulesets
 from pyfilescan.scanner import Scanner, ScanReport
 
 __all__ = ["build_parser", "main"]
@@ -54,7 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser = subparsers.add_parser("scan", help="扫描指定路径")
     scan_parser.add_argument("path", type=Path, help="要扫描的目录或文件路径")
     scan_parser.add_argument(
-        "-r", "--rules", type=Path, default=None, help="规则文件路径（YAML，未指定则仅用内置通用规则）"
+        "-r",
+        "--rules",
+        type=Path,
+        action="append",
+        default=None,
+        metavar="FILE",
+        help="规则文件路径（YAML，可重复指定多个，后面的覆盖前面的同名规则）",
     )
     scan_parser.add_argument(
         "-o", "--output-format", choices=["text", "json", "csv"], default="text", help="输出格式，默认 text"
@@ -77,7 +83,13 @@ def build_parser() -> argparse.ArgumentParser:
     # tray 子命令
     tray_parser = subparsers.add_parser("tray", help="启动托盘驻守（监控新增文件并增量扫描）")
     tray_parser.add_argument(
-        "-r", "--rules", type=Path, default=None, help="规则文件路径（YAML，未指定则仅用内置通用规则）"
+        "-r",
+        "--rules",
+        type=Path,
+        action="append",
+        default=None,
+        metavar="FILE",
+        help="规则文件路径（YAML，可重复指定多个，后面的覆盖前面的同名规则）",
     )
     tray_parser.add_argument("-w", "--watch", action="append", default=[], metavar="DIR", help="监控目录（可重复）")
     tray_parser.add_argument("--state", type=Path, default=None, help="扫描状态文件路径（用于增量扫描持久化）")
@@ -127,35 +139,49 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0
 
 
+def _load_ruleset_from_args(args: argparse.Namespace) -> Optional[RuleSet]:
+    """根据 CLI 参数加载规则集，返回 None 表示出错（错误信息已打印）。
+
+    - ``--no-builtin``：仅加载用户规则（需至少一个 -r），多个文件按顺序合并
+    - 默认：内置规则 + 用户规则（按顺序合并，后者覆盖前者）
+    """
+    rules_paths: Optional[List[Path]] = args.rules
+
+    if args.no_builtin:
+        if not rules_paths:
+            print("错误: --no-builtin 需要配合 -r/--rules 使用", file=sys.stderr)
+            return None
+        for p in rules_paths:
+            if not p.exists():
+                print(f"错误: 规则文件不存在: {p}", file=sys.stderr)
+                return None
+        rulesets = [load_ruleset(p) for p in rules_paths]
+        return merge_multiple_rulesets(*rulesets)
+
+    for p in rules_paths or []:
+        if not p.exists():
+            print(f"错误: 规则文件不存在: {p}", file=sys.stderr)
+            return None
+    return load_with_builtin(rules_paths)
+
+
 def _cmd_scan(args: argparse.Namespace) -> int:
     """执行 scan 子命令。"""
     scan_path: Path = args.path
-    rules_path: Optional[Path] = args.rules
 
     if not scan_path.exists():
         print(f"错误: 扫描路径不存在: {scan_path}", file=sys.stderr)
         return 1
 
-    # 规则加载：--no-builtin 需配合 -r，否则按需合并内置规则
-    if args.no_builtin:
-        if rules_path is None:
-            print("错误: --no-builtin 需要配合 -r/--rules 使用", file=sys.stderr)
-            return 1
-        if not rules_path.exists():
-            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-            return 1
-        ruleset = load_ruleset(rules_path)
-    else:
-        if rules_path is not None and not rules_path.exists():
-            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-            return 1
-        ruleset = load_with_builtin(rules_path)
+    ruleset = _load_ruleset_from_args(args)
+    if ruleset is None:
+        return 1
 
     if args.ignore_dir:
         ruleset = _merge_ignore_dirs(ruleset, args.ignore_dir)
 
     scanner = Scanner(ruleset, max_depth=args.max_depth)
-    rules_desc = f"规则: {rules_path}" if rules_path else "内置通用规则"
+    rules_desc = f"规则: {args.rules}" if args.rules else "内置通用规则"
     logger.info("开始扫描 %s（%s，规则数: %d）", scan_path, rules_desc, len(ruleset.rules))
     report = scanner.scan(scan_path)
 
@@ -209,22 +235,9 @@ def _cmd_tray(args: argparse.Namespace) -> int:
         print(f"托盘启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
         return 3
 
-    rules_path: Optional[Path] = args.rules
-
-    # 规则加载：--no-builtin 需配合 -r，否则按需合并内置规则
-    if args.no_builtin:
-        if rules_path is None:
-            print("错误: --no-builtin 需要配合 -r/--rules 使用", file=sys.stderr)
-            return 1
-        if not rules_path.exists():
-            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-            return 1
-        ruleset = load_ruleset(rules_path)
-    else:
-        if rules_path is not None and not rules_path.exists():
-            print(f"错误: 规则文件不存在: {rules_path}", file=sys.stderr)
-            return 1
-        ruleset = load_with_builtin(rules_path)
+    ruleset = _load_ruleset_from_args(args)
+    if ruleset is None:
+        return 1
 
     watch_paths = [Path(w) for w in args.watch]
     state_file: Optional[Path] = args.state

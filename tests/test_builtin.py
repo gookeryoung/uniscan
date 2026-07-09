@@ -60,7 +60,7 @@ class TestLoadWithBuiltin:
             encoding="utf-8",
         )
 
-        rs = load_with_builtin(user_yaml)
+        rs = load_with_builtin([user_yaml])
         builtin = load_builtin_ruleset()
         # 合并后规则数 = 内置规则数 + 用户新增规则数
         assert len(rs.rules) == len(builtin.rules) + 1
@@ -76,7 +76,7 @@ class TestLoadWithBuiltin:
 
         user_yaml = tmp_path / "user.yaml"
         user_yaml.write_text(
-            f'''version: "1.0"
+            f"""version: "1.0"
 rules:
   - name: {builtin_rule_name}
     severity: critical
@@ -84,11 +84,11 @@ rules:
       type: filename
       mode: contains
       pattern: overridden
-''',
+""",
             encoding="utf-8",
         )
 
-        rs = load_with_builtin(user_yaml)
+        rs = load_with_builtin([user_yaml])
         # 同名规则应被覆盖，总数不变
         assert len(rs.rules) == len(builtin.rules)
         overridden_rule = next(r for r in rs.rules if r.name == builtin_rule_name)
@@ -98,14 +98,11 @@ rules:
         """用户与内置的 ignore_dirs 取并集。"""
         user_yaml = tmp_path / "user.yaml"
         user_yaml.write_text(
-            'version: "1.0"\n'
-            "ignore_dirs:\n"
-            "  - my_custom_dir\n"
-            "rules: []\n",
+            'version: "1.0"\nignore_dirs:\n  - my_custom_dir\nrules: []\n',
             encoding="utf-8",
         )
 
-        rs = load_with_builtin(user_yaml)
+        rs = load_with_builtin([user_yaml])
         builtin = load_builtin_ruleset()
         assert "my_custom_dir" in rs.ignore_dirs
         # 内置的 .git 也应保留
@@ -117,14 +114,11 @@ rules:
         """用户与内置的 ignore_paths 取并集。"""
         user_yaml = tmp_path / "user.yaml"
         user_yaml.write_text(
-            'version: "1.0"\n'
-            "ignore_paths:\n"
-            "  - '*/my_exclude/*'\n"
-            "rules: []\n",
+            "version: \"1.0\"\nignore_paths:\n  - '*/my_exclude/*'\nrules: []\n",
             encoding="utf-8",
         )
 
-        rs = load_with_builtin(user_yaml)
+        rs = load_with_builtin([user_yaml])
         assert "*/my_exclude/*" in rs.ignore_paths
         # 内置的 ignore_paths 也应保留
         builtin = load_builtin_ruleset()
@@ -140,9 +134,9 @@ rules:
         )
 
         with pytest.raises(RuleError):
-            load_with_builtin(bad_yaml)
+            load_with_builtin([bad_yaml])
 
     def test_load_with_builtin_nonexistent_user_file_raises(self, tmp_path: Path) -> None:
         """不存在的用户规则文件应抛出 RuleError。"""
         with pytest.raises(RuleError):
-            load_with_builtin(tmp_path / "missing.yaml")
+            load_with_builtin([tmp_path / "missing.yaml"])

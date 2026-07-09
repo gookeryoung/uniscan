@@ -92,7 +92,7 @@ rules:
         window = MainWindow()
         rs = load_ruleset(rules_yaml)
         window._ruleset = rs
-        window._rules_path = rules_yaml
+        window._rules_paths = [rules_yaml]
         window._refresh_rules_tree()
         assert window._rules_tree.topLevelItemCount() == 1
         item = window._rules_tree.topLevelItem(0)
@@ -178,7 +178,7 @@ rules:
 
         window._on_load_rules()
         assert window._ruleset is not None
-        assert window._rules_path == rules_yaml
+        assert window._rules_paths == [rules_yaml]
         assert "rules.yaml" in window._rules_label.text()
         assert window._rules_tree.topLevelItemCount() == 1
         window.close()
@@ -347,6 +347,287 @@ class TestBuiltinRulesToggle:
         window._scan_root = tmp_path
         window._update_scan_button()
         assert window._scan_btn.isEnabled()
+        window.close()
+
+
+class TestMultiRulesList:
+    """多规则文件列表与排序测试。"""
+
+    def test_rules_file_list_initially_empty(self, qapp: QApplication) -> None:
+        """启动时（仅内置规则）规则文件列表应为空。"""
+        window = MainWindow()
+        assert window._rules_paths == []
+        assert window._rules_file_list.count() == 0
+        window.close()
+
+    def test_load_multiple_rules_via_dialog(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """连续加载多个规则文件应全部追加到列表。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则2\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: b\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+
+        # 先返回 r1，再返回 r2
+        paths_iter = iter([str(r1), str(r2)])
+        monkeypatch.setattr(
+            "pyfilescan.gui.main_window.QFileDialog.getOpenFileName",
+            lambda *args, **kwargs: (next(paths_iter), ""),
+        )
+        window._on_load_rules()
+        window._on_load_rules()
+
+        assert len(window._rules_paths) == 2
+        assert window._rules_paths[0] == r1
+        assert window._rules_paths[1] == r2
+        assert window._rules_file_list.count() == 2
+        # 合并后规则树应有 2 条规则
+        assert window._rules_tree.topLevelItemCount() == 2
+        window.close()
+
+    def test_load_duplicate_rule_ignored(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """重复加载同一文件不应追加。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+
+        monkeypatch.setattr(
+            "pyfilescan.gui.main_window.QFileDialog.getOpenFileName",
+            lambda *args, **kwargs: (str(r1), ""),
+        )
+        # 抑制提示框
+        monkeypatch.setattr(
+            "pyfilescan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_load_rules()
+        window._on_load_rules()  # 重复加载
+
+        assert len(window._rules_paths) == 1
+        window.close()
+
+    def test_move_rule_up(self, qapp: QApplication, tmp_path: Path) -> None:
+        """上移规则文件应改变列表顺序并重新合并。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: first\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: second\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1, r2]
+        window._reload_ruleset()
+        window._refresh_rules_file_list()
+        # 初始 r2 覆盖 r1，pattern 应为 second
+        rule = window._ruleset.rules[0]
+        assert rule.match.pattern == "second"
+
+        # 选中第二行并上移
+        window._rules_file_list.setCurrentRow(1)
+        window._on_move_rule_up()
+
+        # 顺序变为 [r2, r1]，r1 覆盖 r2，pattern 应为 first
+        assert window._rules_paths == [r2, r1]
+        rule = window._ruleset.rules[0]
+        assert rule.match.pattern == "first"
+        window.close()
+
+    def test_move_rule_down(self, qapp: QApplication, tmp_path: Path) -> None:
+        """下移规则文件应改变列表顺序并重新合并。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: first\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: second\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1, r2]
+        window._reload_ruleset()
+        window._refresh_rules_file_list()
+
+        # 选中第一行并下移
+        window._rules_file_list.setCurrentRow(0)
+        window._on_move_rule_down()
+
+        # 顺序变为 [r2, r1]，r1 覆盖 r2
+        assert window._rules_paths == [r2, r1]
+        rule = window._ruleset.rules[0]
+        assert rule.match.pattern == "first"
+        window.close()
+
+    def test_move_rule_up_at_top_noop(self, qapp: QApplication, tmp_path: Path) -> None:
+        """首行上移不应改变顺序。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules: []\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules: []\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1, r2]
+        window._refresh_rules_file_list()
+
+        window._rules_file_list.setCurrentRow(0)
+        window._on_move_rule_up()
+
+        assert window._rules_paths == [r1, r2]
+        window.close()
+
+    def test_move_rule_down_at_bottom_noop(self, qapp: QApplication, tmp_path: Path) -> None:
+        """末行下移不应改变顺序。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules: []\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules: []\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1, r2]
+        window._refresh_rules_file_list()
+
+        window._rules_file_list.setCurrentRow(1)
+        window._on_move_rule_down()
+
+        assert window._rules_paths == [r1, r2]
+        window.close()
+
+    def test_remove_rule(self, qapp: QApplication, tmp_path: Path) -> None:
+        """移除规则文件应从列表删除并重新合并。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则2\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: b\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1, r2]
+        window._reload_ruleset()
+        window._refresh_rules_file_list()
+        window._refresh_rules_tree()
+        assert window._rules_tree.topLevelItemCount() == 2
+
+        # 选中第一行并移除
+        window._rules_file_list.setCurrentRow(0)
+        window._on_remove_rule()
+
+        assert len(window._rules_paths) == 1
+        assert window._rules_paths[0] == r2
+        assert window._rules_file_list.count() == 1
+        assert window._rules_tree.topLevelItemCount() == 1
+        window.close()
+
+    def test_remove_all_rules_then_none(self, qapp: QApplication, tmp_path: Path) -> None:
+        """移除所有用户规则后（无内置）ruleset 应为 None。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1]
+        window._reload_ruleset()
+        window._refresh_rules_file_list()
+        assert window._ruleset is not None
+
+        window._rules_file_list.setCurrentRow(0)
+        window._on_remove_rule()
+
+        assert len(window._rules_paths) == 0
+        assert window._ruleset is None
+        assert window._rules_tree.topLevelItemCount() == 0
+        window.close()
+
+    def test_order_affects_override(self, qapp: QApplication, tmp_path: Path) -> None:
+        """规则文件顺序决定覆盖关系：后者覆盖前者同名规则。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: from_r1\n',
+            encoding="utf-8",
+        )
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 共同名\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: from_r2\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+
+        # [r1, r2] → r2 覆盖 r1
+        window._rules_paths = [r1, r2]
+        window._reload_ruleset()
+        assert window._ruleset.rules[0].match.pattern == "from_r2"
+
+        # [r2, r1] → r1 覆盖 r2
+        window._rules_paths = [r2, r1]
+        window._reload_ruleset()
+        assert window._ruleset.rules[0].match.pattern == "from_r1"
+        window.close()
+
+    def test_label_shows_all_filenames(self, qapp: QApplication, tmp_path: Path) -> None:
+        """规则标签应展示所有已加载文件名。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text('version: "1.0"\nrules: []\n', encoding="utf-8")
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text('version: "1.0"\nrules: []\n', encoding="utf-8")
+
+        window = MainWindow()
+        window._rules_paths = [r1, r2]
+        window._reload_ruleset()
+        window._rules_label.setText(f"规则: {window._build_rules_label()}")
+
+        text = window._rules_label.text()
+        assert "r1.yaml" in text
+        assert "r2.yaml" in text
         window.close()
 
 

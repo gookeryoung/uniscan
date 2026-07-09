@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyfilescan.rules.merge import merge_rulesets
+from pyfilescan.rules.merge import merge_multiple_rulesets, merge_rulesets
 from pyfilescan.rules.model import (
     LeafMatch,
     MatchMode,
@@ -165,3 +165,87 @@ class TestMergeRulesets:
         assert set(merged.ignore_dirs) == {".git", "node_modules"}
         # ignore_paths 并集
         assert set(merged.ignore_paths) == {"*/vendor/*", "*/.cache/*"}
+
+
+class TestMergeMultipleRulesets:
+    """多规则集顺序合并测试。"""
+
+    def test_no_args_returns_empty(self) -> None:
+        """无参数时返回空规则集。"""
+        merged = merge_multiple_rulesets()
+        assert merged.rules == ()
+        assert merged.ignore_dirs == ()
+
+    def test_single_arg_returns_equal(self) -> None:
+        """单个参数时返回的规则集内容应与输入一致。"""
+        rs = _make_ruleset(
+            rules=(_make_rule("r1"),),
+            ignore_dirs=(".git",),
+        )
+        merged = merge_multiple_rulesets(rs)
+        assert len(merged.rules) == 1
+        assert merged.rules[0].name == "r1"
+        assert merged.ignore_dirs == (".git",)
+
+    def test_two_args_last_overrides(self) -> None:
+        """两个参数时后者覆盖前者同名规则。"""
+        rs1 = _make_ruleset(rules=(_make_rule("shared", pattern="v1"),))
+        rs2 = _make_ruleset(rules=(_make_rule("shared", pattern="v2"),))
+
+        merged = merge_multiple_rulesets(rs1, rs2)
+        assert len(merged.rules) == 1
+        assert merged.rules[0].match.pattern == "v2"
+
+    def test_three_args_chained_override(self) -> None:
+        """三个参数时按顺序链式覆盖：最后一个胜出。"""
+        rs1 = _make_ruleset(rules=(_make_rule("shared", pattern="v1"),))
+        rs2 = _make_ruleset(rules=(_make_rule("shared", pattern="v2"),))
+        rs3 = _make_ruleset(rules=(_make_rule("shared", pattern="v3"),))
+
+        merged = merge_multiple_rulesets(rs1, rs2, rs3)
+        assert merged.rules[0].match.pattern == "v3"
+
+    def test_disjoint_rules_all_preserved(self) -> None:
+        """不同名规则全部保留。"""
+        rs1 = _make_ruleset(rules=(_make_rule("r1"),))
+        rs2 = _make_ruleset(rules=(_make_rule("r2"),))
+        rs3 = _make_ruleset(rules=(_make_rule("r3"),))
+
+        merged = merge_multiple_rulesets(rs1, rs2, rs3)
+        names = {r.name for r in merged.rules}
+        assert names == {"r1", "r2", "r3"}
+
+    def test_ignore_lists_union_across_all(self) -> None:
+        """ignore_dirs / ignore_paths 跨所有规则集取并集。"""
+        rs1 = _make_ruleset(ignore_dirs=(".git",), ignore_paths=("*/a/*",))
+        rs2 = _make_ruleset(ignore_dirs=("node_modules",), ignore_paths=("*/b/*",))
+        rs3 = _make_ruleset(ignore_dirs=(".cache",), ignore_paths=("*/a/*",))
+
+        merged = merge_multiple_rulesets(rs1, rs2, rs3)
+        assert set(merged.ignore_dirs) == {".git", "node_modules", ".cache"}
+        assert set(merged.ignore_paths) == {"*/a/*", "*/b/*"}
+
+    def test_version_uses_last(self) -> None:
+        """版本号采用最后一个规则集的版本。"""
+        rs1 = _make_ruleset(version="1.0")
+        rs2 = _make_ruleset(version="2.0")
+        rs3 = _make_ruleset(version="3.0")
+
+        merged = merge_multiple_rulesets(rs1, rs2, rs3)
+        assert merged.version == "3.0"
+
+    def test_mixed_override_and_new(self) -> None:
+        """综合：部分覆盖 + 部分新增。"""
+        rs1 = _make_ruleset(rules=(_make_rule("a", pattern="a1"), _make_rule("b", pattern="b1")))
+        rs2 = _make_ruleset(rules=(_make_rule("b", pattern="b2"), _make_rule("c", pattern="c2")))
+        rs3 = _make_ruleset(rules=(_make_rule("a", pattern="a3"),))
+
+        merged = merge_multiple_rulesets(rs1, rs2, rs3)
+        names = {r.name for r in merged.rules}
+        assert names == {"a", "b", "c"}
+        rule_a = next(r for r in merged.rules if r.name == "a")
+        rule_b = next(r for r in merged.rules if r.name == "b")
+        rule_c = next(r for r in merged.rules if r.name == "c")
+        assert rule_a.match.pattern == "a3"
+        assert rule_b.match.pattern == "b2"
+        assert rule_c.match.pattern == "c2"
