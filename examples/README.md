@@ -70,12 +70,15 @@ report = scanner.scan(Path("/path/to/scan"))
 ```python
 from pyfilescan.extractors import Extractor, default_registry
 
+
 class MyExtractor(Extractor):
     @property
     def supported_extensions(self):
         return ("myext",)
+
     def extract(self, path):
         return path.read_text(encoding="utf-8")
+
 
 default_registry.register(MyExtractor())
 ```
@@ -89,7 +92,7 @@ from pyfilescan.watcher import IncrementalScanner
 
 scanner = IncrementalScanner(ruleset)
 scanner.load_state(Path("state.json"))  # 加载历史状态
-report = scanner.scan(root)             # 增量扫描
+report = scanner.scan(root)  # 增量扫描
 scanner.save_state(Path("state.json"))  # 持久化状态
 ```
 
