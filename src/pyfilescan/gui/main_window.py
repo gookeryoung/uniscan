@@ -29,6 +29,7 @@ from PySide2.QtCore import Qt
 from PySide2.QtWidgets import (
     QAction,
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -47,6 +48,7 @@ from PySide2.QtWidgets import (
 )
 
 from pyfilescan.builtin import load_with_builtin
+from pyfilescan.config import MAX_HISTORY, Config, load_config, save_config
 from pyfilescan.gui.detail_dialog import HitDetailDialog
 from pyfilescan.gui.worker import ScanWorker
 from pyfilescan.rules import RuleError, load_ruleset, merge_multiple_rulesets
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("pyfilescan 通用文件扫描器")
         self.resize(1000, 700)
 
+        self._config: Config = load_config()
         self._ruleset: Optional[RuleSet] = None
         self._rules_paths: List[Path] = []
         self._scan_root: Optional[Path] = None
@@ -77,6 +80,7 @@ class MainWindow(QMainWindow):
         self._init_menu()
         self._init_toolbar()
         self._init_statusbar()
+        self._apply_config()
         self._init_rules()
 
     # ----------------------------- UI 初始化 -----------------------------
@@ -96,8 +100,9 @@ class MainWindow(QMainWindow):
         self._load_rules_btn = QPushButton("加载规则...")
         self._load_rules_btn.clicked.connect(self._on_load_rules)
 
-        self._path_label = QLabel("扫描路径: 未选择")
-        self._path_label.setStyleSheet("padding: 4px; border: 1px solid #ccc;")
+        self._path_combo = QComboBox()
+        self._path_combo.setToolTip("扫描路径（可从历史记录中选择）")
+        self._path_combo.currentIndexChanged.connect(self._on_path_selected)
         self._select_path_btn = QPushButton("选择路径...")
         self._select_path_btn.clicked.connect(self._on_select_path)
 
@@ -115,25 +120,25 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self._rules_label, stretch=1)
         top_layout.addWidget(self._use_builtin_checkbox)
         top_layout.addWidget(self._select_path_btn)
-        top_layout.addWidget(self._path_label, stretch=1)
+        top_layout.addWidget(self._path_combo, stretch=1)
         top_layout.addWidget(self._scan_btn)
         return top_layout
 
     def _build_main_splitter(self) -> QSplitter:
         """构造主体分割器：左侧规则面板 + 右侧结果树。"""
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self._build_left_panel())
+        self._splitter = QSplitter(Qt.Horizontal)
+        self._splitter.addWidget(self._build_left_panel())
 
         self._result_tree = QTreeWidget()
         self._result_tree.setHeaderLabels(["路径", "规则", "严重等级", "详情"])
         self._result_tree.setColumnWidth(0, 400)
         self._result_tree.setColumnWidth(1, 200)
         self._result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
-        splitter.addWidget(self._result_tree)
+        self._splitter.addWidget(self._result_tree)
 
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
-        return splitter
+        self._splitter.setStretchFactor(0, 1)
+        self._splitter.setStretchFactor(1, 3)
+        return self._splitter
 
     def _build_left_panel(self) -> QWidget:
         """构造左侧面板：规则文件列表 + 排序按钮 + 规则树。"""
@@ -222,6 +227,54 @@ class MainWindow(QMainWindow):
         self._stats_label = QLabel("就绪")
         self._status_bar.addWidget(self._stats_label)
 
+    # ----------------------------- 配置持久化 -----------------------------
+
+    def _apply_config(self) -> None:
+        """应用配置：恢复窗口几何、分割器、规则路径、扫描历史。"""
+        if self._config.window_geometry and len(self._config.window_geometry) == 4:
+            x, y, w, h = self._config.window_geometry
+            self.setGeometry(x, y, w, h)
+        if self._config.window_state == "maximized":
+            self.showMaximized()
+
+        if self._config.splitter_sizes:
+            self._splitter.setSizes(self._config.splitter_sizes)
+
+        self._use_builtin = self._config.use_builtin
+        self._use_builtin_checkbox.blockSignals(True)
+        self._use_builtin_checkbox.setChecked(self._config.use_builtin)
+        self._use_builtin_checkbox.blockSignals(False)
+
+        self._rules_paths = [Path(p) for p in self._config.rules_paths if Path(p).exists()]
+
+        self._path_combo.blockSignals(True)
+        for p in self._config.scan_paths:
+            self._path_combo.addItem(p)
+        self._path_combo.blockSignals(False)
+
+    def _save_config(self) -> None:
+        """保存当前状态到配置文件。"""
+        geo = self.geometry()
+        self._config.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
+        self._config.window_state = "maximized" if self.isMaximized() else "normal"
+        self._config.splitter_sizes = list(self._splitter.sizes())
+        self._config.rules_paths = [str(p) for p in self._rules_paths]
+        self._config.use_builtin = self._use_builtin
+        self._config.scan_paths = [self._path_combo.itemText(i) for i in range(self._path_combo.count())]
+        save_config(self._config)
+
+    def _add_scan_path_history(self, path_str: str) -> None:
+        """将路径添加到扫描历史下拉（去重、最近优先、限制数量）。"""
+        self._path_combo.blockSignals(True)
+        idx = self._path_combo.findText(path_str)
+        if idx >= 0:
+            self._path_combo.removeItem(idx)
+        self._path_combo.insertItem(0, path_str)
+        while self._path_combo.count() > MAX_HISTORY:
+            self._path_combo.removeItem(self._path_combo.count() - 1)
+        self._path_combo.setCurrentIndex(0)
+        self._path_combo.blockSignals(False)
+
     # ----------------------------- 规则加载 -----------------------------
 
     def _init_rules(self) -> None:
@@ -308,8 +361,23 @@ class MainWindow(QMainWindow):
         )
         if not path_str:
             return
-        self._scan_root = Path(path_str)
-        self._path_label.setText(f"扫描路径: {self._scan_root.name}")
+        path = Path(path_str)
+        self._scan_root = path
+        self._add_scan_path_history(str(path))
+        self._update_scan_button()
+
+    def _on_path_selected(self, index: int) -> None:
+        """从历史下拉选择扫描路径。"""
+        if index < 0:
+            self._scan_root = None
+            self._update_scan_button()
+            return
+        path_str = self._path_combo.itemText(index)
+        if not path_str:
+            self._scan_root = None
+        else:
+            path = Path(path_str)
+            self._scan_root = path if path.exists() else None
         self._update_scan_button()
 
     def _on_scan(self) -> None:
@@ -544,8 +612,9 @@ class MainWindow(QMainWindow):
         return buf.getvalue()
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
-        """关闭时终止后台线程。"""
+        """关闭时保存配置并终止后台线程。"""
         if self._worker is not None and self._worker.isRunning():
             self._worker.quit()
             self._worker.wait(3000)
+        self._save_config()
         super().closeEvent(event)

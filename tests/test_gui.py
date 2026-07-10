@@ -46,6 +46,23 @@ def qapp() -> QApplication:  # type: ignore[misc]
     yield app
 
 
+@pytest.fixture(autouse=True)
+def _isolate_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """隔离配置文件，避免测试读写用户主目录 ~/.pyfilescan/config.yaml。"""
+    from pyfilescan.config import load_config as _load_impl
+    from pyfilescan.config import save_config as _save_impl
+
+    config_path = tmp_path / "config.yaml"
+    monkeypatch.setattr(
+        "pyfilescan.gui.main_window.load_config",
+        lambda path=None: _load_impl(config_path),
+    )
+    monkeypatch.setattr(
+        "pyfilescan.gui.main_window.save_config",
+        lambda config, path=None: _save_impl(config, config_path),
+    )
+
+
 def _build_ruleset() -> RuleSet:
     return RuleSet(
         version="1.0",
@@ -628,6 +645,177 @@ class TestMultiRulesList:
         text = window._rules_label.text()
         assert "r1.yaml" in text
         assert "r2.yaml" in text
+        window.close()
+
+
+class TestConfigPersistence:
+    """配置持久化集成测试。"""
+
+    def test_rules_paths_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """启动时从配置恢复规则文件列表。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: r1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+        config = Config(rules_paths=[str(r1)], use_builtin=False)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert len(window._rules_paths) == 1
+        assert window._rules_paths[0] == r1
+        assert window._use_builtin is False
+        assert window._ruleset is not None
+        assert len(window._ruleset.rules) == 1
+        window.close()
+
+    def test_nonexistent_rules_paths_skipped(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置中不存在的规则文件路径应被跳过。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(rules_paths=[str(tmp_path / "nonexistent.yaml")], use_builtin=False)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert len(window._rules_paths) == 0
+        window.close()
+
+    def test_use_builtin_restored(self, qapp: QApplication, tmp_path: Path) -> None:
+        """通用规则开关状态从配置恢复。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(use_builtin=False)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._use_builtin is False
+        assert window._use_builtin_checkbox.isChecked() is False
+        window.close()
+
+    def test_scan_paths_history_restored(self, qapp: QApplication, tmp_path: Path) -> None:
+        """扫描路径历史从配置恢复到下拉框。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        (tmp_path / "dir_a").mkdir()
+        (tmp_path / "dir_b").mkdir()
+        config = Config(scan_paths=[str(tmp_path / "dir_a"), str(tmp_path / "dir_b")])
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._path_combo.count() == 2
+        assert window._path_combo.itemText(0) == str(tmp_path / "dir_a")
+        assert window._path_combo.itemText(1) == str(tmp_path / "dir_b")
+        window.close()
+
+    def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
+        """关闭窗口时配置应被保存。"""
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window.close()
+
+        from pyfilescan.config import load_config as _load_impl
+
+        config = _load_impl(tmp_path / "config.yaml")
+        assert config.use_builtin is False
+
+    def test_close_saves_rules_paths(self, qapp: QApplication, tmp_path: Path) -> None:
+        """关闭时规则文件列表应被保存。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules: []\n',
+            encoding="utf-8",
+        )
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1]
+        window.close()
+
+        from pyfilescan.config import load_config as _load_impl
+
+        config = _load_impl(tmp_path / "config.yaml")
+        assert str(r1) in config.rules_paths
+
+    def test_close_saves_scan_paths_history(self, qapp: QApplication, tmp_path: Path) -> None:
+        """关闭时扫描路径历史应被保存。"""
+        (tmp_path / "scan_dir").mkdir()
+        window = MainWindow()
+        window._add_scan_path_history(str(tmp_path / "scan_dir"))
+        window.close()
+
+        from pyfilescan.config import load_config as _load_impl
+
+        config = _load_impl(tmp_path / "config.yaml")
+        assert str(tmp_path / "scan_dir") in config.scan_paths
+
+    def test_path_combo_select_sets_scan_root(self, qapp: QApplication, tmp_path: Path) -> None:
+        """从下拉选择路径应设置 scan_root。"""
+        (tmp_path / "target").mkdir()
+        window = MainWindow()
+        window._path_combo.addItem(str(tmp_path / "target"))
+        window._path_combo.setCurrentIndex(0)
+        assert window._scan_root == tmp_path / "target"
+        window.close()
+
+    def test_path_history_dedup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """重复路径在历史中只出现一次。"""
+        path_str = str(tmp_path)
+        window = MainWindow()
+        window._add_scan_path_history(path_str)
+        window._add_scan_path_history(path_str)
+        assert window._path_combo.count() == 1
+        window.close()
+
+    def test_path_history_limit(self, qapp: QApplication, tmp_path: Path) -> None:
+        """历史路径超过上限时自动截断。"""
+        from pyfilescan.config import MAX_HISTORY
+
+        window = MainWindow()
+        for i in range(MAX_HISTORY + 5):
+            window._add_scan_path_history(f"/path/{i}")
+        assert window._path_combo.count() == MAX_HISTORY
+        # 最近添加的应在最前
+        assert window._path_combo.itemText(0) == f"/path/{MAX_HISTORY + 4}"
+        window.close()
+
+    def test_window_geometry_restored(self, qapp: QApplication, tmp_path: Path) -> None:
+        """窗口几何从配置恢复。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(window_geometry=[50, 60, 800, 500])
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        geo = window.geometry()
+        assert geo.x() == 50
+        assert geo.y() == 60
+        assert geo.width() == 800
+        assert geo.height() == 500
+        window.close()
+
+    def test_splitter_sizes_restored(self, qapp: QApplication, tmp_path: Path) -> None:
+        """分割器大小从配置恢复（按比例）。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(window_geometry=[0, 0, 1000, 700], splitter_sizes=[400, 600])
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        window.show()
+        qapp.processEvents()
+        sizes = window._splitter.sizes()
+        assert len(sizes) == 2
+        assert all(s > 0 for s in sizes)
+        # 比例约为 400:600 = 2:3
+        ratio = sizes[0] / sizes[1]
+        assert 0.5 < ratio < 0.8
         window.close()
 
 
