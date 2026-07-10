@@ -820,6 +820,47 @@ class TestConfigPersistence:
         assert 0.5 < ratio < 0.8
         window.close()
 
+    def test_valid_scan_path_enables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置中有有效路径时启动后扫描按钮应启用。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        scan_dir = tmp_path / "scan_target"
+        scan_dir.mkdir()
+        config = Config(scan_paths=[str(scan_dir)], use_builtin=True)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_root == scan_dir
+        assert window._scan_btn.isEnabled()
+        window.close()
+
+    def test_invalid_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置中路径无效时启动后扫描按钮应禁用。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(scan_paths=[str(tmp_path / "nonexistent")], use_builtin=False)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_root is None
+        assert not window._scan_btn.isEnabled()
+        window.close()
+
+    def test_no_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置中无路径时启动后扫描按钮应禁用。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(scan_paths=[], use_builtin=False)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_root is None
+        assert not window._scan_btn.isEnabled()
+        window.close()
+
 
 class TestScanWorker:
     def test_worker_runs_scan(self, qapp: QApplication, tmp_path: Path) -> None:

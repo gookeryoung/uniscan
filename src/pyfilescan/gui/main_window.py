@@ -437,6 +437,12 @@ class MainWindow(QMainWindow):
             self._path_combo.addItem(p)
         self._path_combo.blockSignals(False)
 
+        # 恢复首个有效路径作为扫描目标，启用扫描按钮
+        if self._scan_mode == "folder" and self._path_combo.count() > 0:
+            first_path = Path(self._path_combo.itemText(0))
+            self._scan_root = first_path if first_path.exists() else None
+        self._update_scan_button()
+
     def _save_config(self) -> None:
         """保存当前状态到配置文件。"""
         geo = self.geometry()
