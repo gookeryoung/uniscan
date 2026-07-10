@@ -24,7 +24,7 @@ def list_drives() -> List[Path]:
     """
     if sys.platform == "win32":
         return [Path(f"{letter}:\\") for letter in string.ascii_uppercase if Path(f"{letter}:\\").exists()]
-    return [Path("/")]
+    return [Path("/")]  # pragma: no cover - Unix 平台分支，Windows 测试环境无法覆盖
 
 
 class FileWalker:

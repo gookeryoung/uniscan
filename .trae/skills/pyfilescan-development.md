@@ -1,6 +1,6 @@
 # pyfilescan 开发技能文档
 
-归档自 iter-01 至 iter-05 的可复用模式、踩坑总结与设计决策。
+归档自 iter-01 至 iter-10 的可复用模式、踩坑总结与设计决策。
 
 ## 项目架构
 
@@ -30,9 +30,13 @@ src/pyfilescan/
 │   ├── zip_reader.py   # ZIP（zipfile）
 │   ├── rar_reader.py   # RAR（rarfile，惰性导入）
 │   └── scanner.py  # ArchiveScanner（临时文件提取）
+├── builtin/        # 内置通用规则
+│   ├── __init__.py # load_with_builtin / load_builtin_ruleset
+│   └── rules.yaml  # 8 条通用安全规则 + ignore 配置
 ├── gui/            # PySide2 GUI
-│   ├── main_window.py  # MainWindow（菜单/工具栏/结果树）
-│   ├── worker.py       # ScanWorker(QThread)
+│   ├── main_window.py  # MainWindow（杀毒软件风格 UI）
+│   ├── worker.py       # ScanWorker(QThread，多根路径)
+│   ├── detail_dialog.py # HitDetailDialog（详情对话框）
 │   └── app.py          # launch() 入口
 ├── watcher/        # 托盘驻守与文件监控
 │   ├── monitor.py      # FileMonitor（watchdog）
@@ -177,3 +181,80 @@ Observer 异步监控不阻塞主线程，适合托盘驻守场景。
 
 IncrementalScanner 的状态文件应保存在扫描目录外，避免被当作新文件扫描。
 测试中用 `tmp_path.parent / f"state_{tmp_path.name}.json"`。
+
+### 6. 多线程扫描用 ThreadPoolExecutor
+
+文件扫描为 I/O 密集型任务，`ThreadPoolExecutor` 可有效并发读取文件。
+`_scan_entry` 每个文件创建独立 `MatchContext`，无共享可变状态，线程安全。
+压缩包内条目扫描始终单线程（`ArchiveScanner` 可能持有内部状态）。
+GUI 默认 `max_workers=8`，CLI 保持单线程（兼容性优先）。
+
+### 7. 关键词高亮用单次正则替换
+
+`_build_preview_html` 先 `html.escape` 转义内容，再用单次 `re.sub` 插入高亮 span。
+多次 `str.replace` 会破坏已插入的 HTML 标签；按关键词长度降序排列避免短词匹配到长词内部。
+使用 `re.IGNORECASE` 高亮所有大小写变体。
+
+### 8. ignore_paths glob 路径过滤
+
+`ignore_paths` 使用 `fnmatch.fnmatch` 进行 glob 模式匹配，大小写不敏感。
+匹配逻辑：检查目录相对路径是否匹配模式，同时检查 `路径 + "/x"` 是否匹配
+（处理 `*/vendor/*` 等描述目录内文件的模式）。
+
+### 9. 内置规则随包分发
+
+内置规则文件放在 `src/pyfilescan/builtin/rules.yaml`，通过 `pyproject.toml`
+的 `package-data` 打包，确保安装后即可使用。`load_with_builtin()` 合并内置与
+用户规则（按名称覆盖，ignore 列表取并集）。
+
+### 10. 规则合并链式覆盖
+
+`merge_multiple_rulesets(*rulesets)` 按顺序链式合并，后者覆盖前者同名规则。
+`ignore_dirs`/`ignore_extensions`/`ignore_paths` 取并集，去重保序（base 优先）。
+
+## 踩坑总结（iter-06～10 补充）
+
+### 8. YAML 标量值含冒号需引号包裹
+
+`description: 检测 privileged: true` 因冒号+空格被 YAML 解析器误认为嵌套映射而失败。
+解法：标量值含冒号时用引号包裹，如 `description: "检测 privileged: true"`。
+
+### 9. pypdf 不支持创建带文本的 PDF
+
+pypdf 只能写 PDF 不能提取文本。测试 PDF 提取器时用 mock PdfReader
+模拟 pages 列表和 extract_text()，覆盖正常/异常/加密路径。
+
+### 10. PDF 日志噪音抑制
+
+pypdf 的 `MediaBox` 等重复定义会输出 WARNING 日志。
+解法：在模块级别将 pypdf logger 设为 ERROR 级别：
+`logging.getLogger("pypdf").setLevel(logging.ERROR)`。
+
+## 设计决策（iter-06～10 补充）
+
+### 6. 多线程扫描用 ThreadPoolExecutor 而非 ProcessPoolExecutor
+
+文件扫描为 I/O 密集型，线程池即可提升吞吐量且无进程间通信开销。
+`_scan_entry` 无共享可变状态，天然线程安全。
+
+### 7. 规则合并策略：按名称合并，ignore 取并集
+
+用户规则中同名规则覆盖内置规则；`ignore_dirs`/`ignore_extensions`/`ignore_paths`
+取并集。降低使用门槛的同时保留用户覆盖能力。
+
+### 8. GUI 默认加载内置规则
+
+GUI 启动时默认加载内置规则，用户可通过复选框关闭。
+降低使用门槛，用户无需准备规则文件即可开始扫描。
+
+### 9. 详情对话框用模态 QDialog
+
+双击结果项弹出模态 `QDialog`，而非内嵌面板。
+模态对话框不干扰主窗口布局，用户可自由调整大小查看长内容。
+内容预览优先用提取器（支持 PDF/DOCX 等），限制 100KB 避免阻塞 UI。
+
+### 10. 示例按场景分类组织
+
+规则示例按"安全审计/合规治理/运维基础设施"三类组织，而非平铺。
+降低用户选型成本，每个场景独立成文件便于按需取用。
+示例脚本不纳入 ruff/mypy 检查（`pyproject.toml` 的 ruff src 仅含 `["src", "tests"]`）。

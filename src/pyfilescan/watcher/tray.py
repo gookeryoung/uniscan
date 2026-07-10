@@ -157,6 +157,9 @@ class TrayApp(QObject):
             self._main_window._refresh_rules_tree()
         if show:
             self._main_window.show()
+        else:
+            # MainWindow._apply_config 可能调用 showMaximized，需显式隐藏
+            self._main_window.hide()
 
     def start_monitoring(self) -> None:
         """启动文件监控。"""
