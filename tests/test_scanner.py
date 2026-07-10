@@ -16,6 +16,7 @@ from pyfilescan.rules.model import (
     Severity,
 )
 from pyfilescan.scanner import Scanner, ScanReport, ScanResult
+from pyfilescan.scanner.result import ProgressInfo
 
 
 def _build_ruleset(*rules: Rule) -> RuleSet:
@@ -347,3 +348,97 @@ class TestScannerConcurrency:
         report = scanner.scan(tmp_path)
         assert report.stats.total_files == 0
         assert report.stats.matched_files == 0
+
+
+class TestScannerProgress:
+    """扫描进度回调测试。"""
+
+    def test_progress_callback_called(self, tmp_path: Path) -> None:
+        """on_progress 回调应在扫描过程中被调用。"""
+        for i in range(10):
+            (tmp_path / f"file_{i}.txt").write_text("password", encoding="utf-8")
+
+        rs = _build_ruleset(_content_rule("r", "password"))
+        received: list[ProgressInfo] = []
+        scanner = Scanner(rs, on_progress=received.append)
+        scanner.scan(tmp_path)
+
+        assert len(received) >= 1
+        # 最终进度应反映全部文件
+        last = received[-1]
+        assert last.total >= 10
+        assert last.scanned >= 10
+        assert last.elapsed > 0
+
+    def test_progress_callback_concurrent(self, tmp_path: Path) -> None:
+        """多线程模式下 on_progress 也应正常工作。"""
+        for i in range(20):
+            (tmp_path / f"file_{i}.txt").write_text("password", encoding="utf-8")
+
+        rs = _build_ruleset(_content_rule("r", "password"))
+        received: list[ProgressInfo] = []
+        scanner = Scanner(rs, max_workers=4, on_progress=received.append)
+        scanner.scan(tmp_path)
+
+        assert len(received) >= 1
+        last = received[-1]
+        assert last.scanned >= 20
+        assert last.matched >= 20
+
+    def test_progress_callback_throttle(self, tmp_path: Path) -> None:
+        """progress_interval 应限制回调频率。"""
+        for i in range(100):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+
+        rs = _build_ruleset(_filename_rule("r", "f"))
+        received: list[ProgressInfo] = []
+        # 设置较长间隔（1秒），扫描应很快完成，只有 force=True 的最终进度
+        scanner = Scanner(rs, on_progress=received.append, progress_interval=1.0)
+        scanner.scan(tmp_path)
+
+        # 由于 1 秒间隔，中间进度被节流，最终 force=True 的进度一定到达
+        assert len(received) >= 1
+        assert received[-1].scanned >= 100
+
+    def test_progress_callback_none_is_safe(self, tmp_path: Path) -> None:
+        """on_progress=None 时扫描应正常完成。"""
+        (tmp_path / "a.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("r", "password"))
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 1
+
+    def test_progress_callback_final_force(self, tmp_path: Path) -> None:
+        """最终进度应被强制发送（跳过节流）。"""
+        for i in range(5):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+
+        rs = _build_ruleset(_filename_rule("r", "f"))
+        received: list[ProgressInfo] = []
+        # 10 秒间隔，中间不会触发，但最终 force=True 必须触发
+        scanner = Scanner(rs, on_progress=received.append, progress_interval=10.0)
+        scanner.scan(tmp_path)
+
+        assert len(received) >= 1
+        last = received[-1]
+        assert last.scanned >= 5
+        assert last.total >= 5
+
+    def test_progress_info_fields(self, tmp_path: Path) -> None:
+        """ProgressInfo 字段应正确填充。"""
+        (tmp_path / "secret.txt").write_text("password", encoding="utf-8")
+        (tmp_path / "normal.md").write_text("hello", encoding="utf-8")
+
+        rs = _build_ruleset(_content_rule("r", "password"))
+        received: list[ProgressInfo] = []
+        scanner = Scanner(rs, on_progress=received.append, progress_interval=0.0)
+        scanner.scan(tmp_path)
+
+        assert len(received) >= 1
+        last = received[-1]
+        assert last.total >= 2
+        assert last.scanned >= 2
+        assert last.matched >= 1  # secret.txt 命中
+        assert last.errors == 0
+        assert last.elapsed >= 0
+        assert isinstance(last.current_file, str)

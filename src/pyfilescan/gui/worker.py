@@ -16,7 +16,7 @@ from PySide2.QtCore import QThread, Signal
 
 from pyfilescan.rules.model import RuleSet
 from pyfilescan.scanner import ScanReport
-from pyfilescan.scanner.result import ScanResult, ScanStats
+from pyfilescan.scanner.result import ProgressInfo, ScanResult, ScanStats
 from pyfilescan.scanner.scanner import Scanner
 
 __all__ = ["ScanWorker"]
@@ -29,12 +29,12 @@ class ScanWorker(QThread):
 
     信号：
 
-    - ``progress``：当前已扫描文件数（每个根路径扫描完成后 emit）
+    - ``progress_info``：实时进度信息（ProgressInfo，含当前文件、已扫描/跳过/命中数等）
     - ``finished_report``：扫描完成，携带合并后的 ScanReport
     - ``failed``：扫描异常，携带错误信息
     """
 
-    progress = Signal(int)
+    progress_info = Signal(object)
     finished_report = Signal(object)
     failed = Signal(str)
 
@@ -54,15 +54,39 @@ class ScanWorker(QThread):
         self._scan_archives = scan_archives
         self._max_workers = max_workers
         self._scanner: Optional[Scanner] = None
+        # 多根路径累计统计
+        self._cum_scanned = 0
+        self._cum_total = 0
+        self._cum_skipped = 0
+        self._cum_matched = 0
+        self._cum_errors = 0
+        self._start_time: float = 0.0
+
+    def _on_progress(self, info: ProgressInfo) -> None:
+        """Scanner 进度回调：累加前序根路径的统计后 emit。"""
+        elapsed = time.monotonic() - self._start_time
+        self.progress_info.emit(
+            ProgressInfo(
+                current_file=info.current_file,
+                scanned=info.scanned + self._cum_scanned,
+                total=info.total + self._cum_total,
+                skipped=info.skipped + self._cum_skipped,
+                matched=info.matched + self._cum_matched,
+                errors=info.errors + self._cum_errors,
+                elapsed=elapsed,
+            )
+        )
 
     def run(self) -> None:
         """线程入口：依次扫描所有根路径并合并结果。"""
         try:
+            self._start_time = time.monotonic()
             self._scanner = Scanner(
                 ruleset=self._ruleset,
                 max_depth=self._max_depth,
                 scan_archives=self._scan_archives,
                 max_workers=self._max_workers,
+                on_progress=self._on_progress,
             )
             all_results: List[ScanResult] = []
             total_scanned = 0
@@ -70,7 +94,6 @@ class ScanWorker(QThread):
             total_matched = 0
             total_skipped = 0
             total_errors = 0
-            start_time = time.monotonic()
 
             for root in self._roots:
                 report: ScanReport = self._scanner.scan(root)
@@ -80,9 +103,14 @@ class ScanWorker(QThread):
                 total_matched += report.stats.matched_files
                 total_skipped += report.stats.skipped_files
                 total_errors += report.stats.errors
-                self.progress.emit(total_scanned)
+                # 更新累计值，供下一个根路径的进度回调使用
+                self._cum_scanned = total_scanned
+                self._cum_total = total_files
+                self._cum_skipped = total_skipped
+                self._cum_matched = total_matched
+                self._cum_errors = total_errors
 
-            elapsed = time.monotonic() - start_time
+            elapsed = time.monotonic() - self._start_time
             merged = ScanReport(
                 root=self._roots[0] if len(self._roots) == 1 else Path("（多路径）"),
                 results=tuple(all_results),

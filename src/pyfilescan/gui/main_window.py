@@ -150,15 +150,47 @@ class MainWindow(QMainWindow):
         return container
 
     def _build_scan_control_area(self) -> QWidget:
-        """构造扫描控制区：路径选择 + 醒目扫描按钮 + 大进度条 + 统计。"""
+        """构造扫描控制区：规则行 + 路径行 + 醒目扫描按钮 + 进度条 + 统计。"""
         container = QFrame()
         container.setObjectName("controlArea")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(4, 2, 4, 4)
         layout.setSpacing(6)
 
-        # 规则加载行
-        rules_row = QHBoxLayout()
+        layout.addLayout(self._build_rules_row())
+        layout.addWidget(self._build_target_row())
+
+        # 醒目扫描按钮
+        self._scan_btn = QPushButton("开始扫描")
+        self._scan_btn.setObjectName("scanBtn")
+        self._scan_btn.setCursor(Qt.PointingHandCursor)
+        self._scan_btn.setMinimumHeight(48)
+        self._scan_btn.clicked.connect(self._on_scan)
+        self._scan_btn.setEnabled(False)
+        layout.addWidget(self._scan_btn)
+
+        # 大进度条
+        self._progress = QProgressBar()
+        self._progress.setVisible(False)
+        self._progress.setTextVisible(True)
+        self._progress.setMinimumHeight(22)
+        layout.addWidget(self._progress)
+
+        # 当前文件标签
+        self._current_file_label = QLabel("")
+        self._current_file_label.setObjectName("currentFileLabel")
+        self._current_file_label.setVisible(False)
+        layout.addWidget(self._current_file_label)
+
+        # 统计标签
+        self._stats_label = QLabel("就绪")
+        self._stats_label.setObjectName("statsLabel")
+        layout.addWidget(self._stats_label)
+
+        return container
+
+    def _build_rules_row(self) -> QHBoxLayout:
+        """构造规则加载行。"""
         self._load_rules_btn = QPushButton("加载规则...")
         self._load_rules_btn.clicked.connect(self._on_load_rules)
         self._rules_label = QLabel("规则: 未加载")
@@ -167,12 +199,15 @@ class MainWindow(QMainWindow):
         self._use_builtin_checkbox.setChecked(True)
         self._use_builtin_checkbox.setToolTip("勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则")
         self._use_builtin_checkbox.stateChanged.connect(self._on_toggle_builtin)
+
+        rules_row = QHBoxLayout()
         rules_row.addWidget(self._load_rules_btn)
         rules_row.addWidget(self._rules_label, stretch=1)
         rules_row.addWidget(self._use_builtin_checkbox)
-        layout.addLayout(rules_row)
+        return rules_row
 
-        # 目标路径行（仅 folder 模式可见）
+    def _build_target_row(self) -> QWidget:
+        """构造目标路径行（仅 folder 模式可见）。"""
         self._target_row = QWidget()
         target_layout = QHBoxLayout(self._target_row)
         target_layout.setContentsMargins(0, 0, 0, 0)
@@ -186,30 +221,7 @@ class MainWindow(QMainWindow):
         target_layout.addWidget(self._path_label)
         target_layout.addWidget(self._path_combo, stretch=1)
         target_layout.addWidget(self._select_path_btn)
-        layout.addWidget(self._target_row)
-
-        # 醒目扫描按钮
-        self._scan_btn = QPushButton("开始扫描")
-        self._scan_btn.setObjectName("scanBtn")
-        self._scan_btn.setCursor(Qt.PointingHandCursor)
-        self._scan_btn.setMinimumHeight(44)
-        self._scan_btn.clicked.connect(self._on_scan)
-        self._scan_btn.setEnabled(False)
-        layout.addWidget(self._scan_btn)
-
-        # 大进度条
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        self._progress.setTextVisible(True)
-        self._progress.setMinimumHeight(22)
-        layout.addWidget(self._progress)
-
-        # 统计标签
-        self._stats_label = QLabel("就绪")
-        self._stats_label.setObjectName("statsLabel")
-        layout.addWidget(self._stats_label)
-
-        return container
+        return self._target_row
 
     def _build_main_splitter(self) -> QSplitter:
         """构造主体分割器：左侧规则面板 + 右侧结果树。"""
@@ -306,7 +318,10 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self._scan_action)
 
     def _apply_qss(self) -> None:
-        """应用杀毒软件风格样式表。"""
+        """应用杀毒软件风格样式表。
+
+        字体层级：扫描按钮（主操作）18px > 模式卡片 14px > 统计标签 13px > 当前文件 12px。
+        """
         self.setStyleSheet(
             """
             QPushButton#modeCard {
@@ -315,7 +330,7 @@ class MainWindow(QMainWindow):
                 border: 2px solid #d0d0d0;
                 border-radius: 8px;
                 background: #fafafa;
-                font-size: 13px;
+                font-size: 14px;
                 min-width: 120px;
             }
             QPushButton#modeCard:hover {
@@ -333,9 +348,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: none;
                 border-radius: 6px;
-                font-size: 16px;
+                font-size: 18px;
                 font-weight: bold;
-                padding: 10px 24px;
+                padding: 14px 32px;
+                min-height: 24px;
             }
             QPushButton#scanBtn:hover {
                 background: #388E3C;
@@ -356,6 +372,11 @@ class MainWindow(QMainWindow):
             QProgressBar::chunk {
                 background: #43A047;
                 border-radius: 3px;
+            }
+            QLabel#currentFileLabel {
+                font-size: 12px;
+                color: #757575;
+                padding: 1px 4px;
             }
             QLabel#statsLabel {
                 font-size: 13px;
@@ -602,7 +623,9 @@ class MainWindow(QMainWindow):
         self._scan_btn.setEnabled(False)
         self._scan_btn.setText("扫描中...")
         self._progress.setVisible(True)
-        self._progress.setRange(0, 0)  # 不确定进度
+        self._progress.setRange(0, 0)  # 初始不确定进度，收到首个进度后切换为确定模式
+        self._current_file_label.setVisible(True)
+        self._current_file_label.setText("准备扫描...")
         self._stats_label.setText("扫描中...")
 
         self._worker = ScanWorker(
@@ -611,19 +634,37 @@ class MainWindow(QMainWindow):
             scan_archives=True,
             max_workers=8,
         )
-        self._worker.progress.connect(self._on_scan_progress)
+        self._worker.progress_info.connect(self._on_scan_progress)
         self._worker.finished_report.connect(self._on_scan_finished)
         self._worker.failed.connect(self._on_scan_failed)
         self._worker.start()
 
-    def _on_scan_progress(self, scanned: int) -> None:
-        """扫描进度回调。"""
-        self._stats_label.setText(f"扫描中... 已扫描 {scanned} 个文件")
+    def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
+        """扫描实时进度回调。"""
+        # 切换为确定进度模式
+        if info.total > 0 and self._progress.maximum() != info.total:
+            self._progress.setRange(0, info.total)
+        self._progress.setValue(info.scanned)
+
+        # 当前文件（截断显示）
+        if info.current_file:
+            path_text = info.current_file
+            if len(path_text) > 100:
+                path_text = "..." + path_text[-97:]
+            self._current_file_label.setText(f"正在解析: {path_text}")
+
+        # 详细统计
+        self._stats_label.setText(
+            f"已扫描 {info.scanned} | 跳过 {info.skipped} | "
+            f"命中 {info.matched} | 错误 {info.errors} | "
+            f"已用 {info.elapsed:.1f}s"
+        )
 
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调。"""
         self._last_report = report
         self._progress.setVisible(False)
+        self._current_file_label.setVisible(False)
         self._scan_btn.setEnabled(True)
         self._scan_btn.setText("开始扫描")
 
@@ -632,13 +673,14 @@ class MainWindow(QMainWindow):
         stats = report.stats
         self._stats_label.setText(
             f"完成: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
-            f"命中 {stats.matched_files} | 错误 {stats.errors} | "
-            f"耗时 {stats.duration_seconds:.2f}s"
+            f"跳过 {stats.skipped_files} | 命中 {stats.matched_files} | "
+            f"错误 {stats.errors} | 耗时 {stats.duration_seconds:.2f}s"
         )
 
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调。"""
         self._progress.setVisible(False)
+        self._current_file_label.setVisible(False)
         self._scan_btn.setEnabled(True)
         self._scan_btn.setText("开始扫描")
         self._stats_label.setText("扫描失败")

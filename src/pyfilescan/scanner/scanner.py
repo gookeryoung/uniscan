@@ -11,13 +11,13 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 from pyfilescan.extractors import extract_content
 from pyfilescan.rules.model import Rule, RuleSet
 from pyfilescan.scanner.context import ContentProvider, FileEntry, MatchContext
 from pyfilescan.scanner.matchers import Matcher, build_matcher
-from pyfilescan.scanner.result import RuleHit, ScanReport, ScanResult, ScanStats
+from pyfilescan.scanner.result import ProgressInfo, RuleHit, ScanReport, ScanResult, ScanStats
 from pyfilescan.scanner.walker import FileWalker
 
 if TYPE_CHECKING:
@@ -47,6 +47,7 @@ class Scanner:
     - 默认使用提取器注册表（extractors）提取文件内容，支持多格式
     - 支持自定义内容提供器覆盖默认提取逻辑
     - ``max_workers > 1`` 时用线程池并发扫描，提升 I/O 密集型场景吞吐量
+    - ``on_progress`` 回调在扫描过程中按时间节流（默认 150ms）反馈进度
     """
 
     def __init__(
@@ -58,6 +59,8 @@ class Scanner:
         scan_archives: bool = False,
         archive_password: Optional[str] = None,
         max_workers: Optional[int] = None,
+        on_progress: Optional[Callable[[ProgressInfo], None]] = None,
+        progress_interval: float = 0.15,
     ) -> None:
         self.ruleset = ruleset
         self._content_provider: ContentProvider = content_provider or default_extract_content
@@ -80,11 +83,15 @@ class Scanner:
                 ruleset=ruleset,
                 password=archive_password,
             )
+        self._on_progress = on_progress
+        self._progress_interval = progress_interval
+        self._last_progress_time: float = 0.0
 
     def scan(self, root: Path) -> ScanReport:
         """扫描根目录，返回完整报告。
 
         ``max_workers > 1`` 时用线程池并发扫描文件，压缩包内条目始终顺序扫描。
+        ``on_progress`` 回调在遍历和扫描阶段按时间节流反馈进度。
         """
         start = time.perf_counter()
 
@@ -98,6 +105,8 @@ class Scanner:
                 skipped += 1
                 continue
             entries.append(entry)
+            if total % 200 == 0:
+                self._emit_progress(start, str(entry.path), 0, total, skipped, 0, 0)
 
         # 阶段 2：扫描文件（单线程或并发）
         results: List[ScanResult] = []
@@ -106,9 +115,9 @@ class Scanner:
         errors = 0
 
         if self._max_workers and self._max_workers > 1:
-            scanned, matched, errors = self._scan_concurrent(entries, results)
+            scanned, matched, errors = self._scan_concurrent(entries, results, start, total, skipped)
         else:
-            scanned, matched, errors = self._scan_sequential(entries, results)
+            scanned, matched, errors = self._scan_sequential(entries, results, start, total, skipped)
 
         # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
         if self._scan_archives and self._archive_scanner is not None:
@@ -128,6 +137,10 @@ class Scanner:
                             matched += 1
                         errors += ar.errors
                         results.append(ar)
+                    self._emit_progress(start, str(entry.path), scanned, total, skipped, matched, errors)
+
+        # 强制发送最终进度
+        self._emit_progress(start, "", scanned, total, skipped, matched, errors, force=True)
 
         duration = time.perf_counter() - start
         stats = ScanStats(
@@ -140,7 +153,47 @@ class Scanner:
         )
         return ScanReport(root=root, results=tuple(results), stats=stats)
 
-    def _scan_sequential(self, entries: List[FileEntry], results: List[ScanResult]) -> Tuple[int, int, int]:
+    def _emit_progress(
+        self,
+        start: float,
+        current_file: str,
+        scanned: int,
+        total: int,
+        skipped: int,
+        matched: int,
+        errors: int,
+        force: bool = False,
+    ) -> None:
+        """时间节流后调用 on_progress 回调。
+
+        :param force: 为 True 时跳过节流，强制发送（如最终进度）。
+        """
+        if self._on_progress is None:
+            return
+        now = time.perf_counter()
+        if not force and now - self._last_progress_time < self._progress_interval:
+            return
+        self._last_progress_time = now
+        self._on_progress(
+            ProgressInfo(
+                current_file=current_file,
+                scanned=scanned,
+                total=total,
+                skipped=skipped,
+                matched=matched,
+                errors=errors,
+                elapsed=now - start,
+            )
+        )
+
+    def _scan_sequential(
+        self,
+        entries: List[FileEntry],
+        results: List[ScanResult],
+        start: float,
+        total: int,
+        skipped: int,
+    ) -> Tuple[int, int, int]:
         """单线程顺序扫描，返回 (scanned, matched, errors)。"""
         scanned = 0
         matched = 0
@@ -157,9 +210,17 @@ class Scanner:
                 errors += 1
                 scanned += 1
                 logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
+            self._emit_progress(start, str(entry.path), scanned, total, skipped, matched, errors)
         return scanned, matched, errors
 
-    def _scan_concurrent(self, entries: List[FileEntry], results: List[ScanResult]) -> Tuple[int, int, int]:
+    def _scan_concurrent(
+        self,
+        entries: List[FileEntry],
+        results: List[ScanResult],
+        start: float,
+        total: int,
+        skipped: int,
+    ) -> Tuple[int, int, int]:
         """多线程并发扫描，返回 (scanned, matched, errors)。
 
         每个文件的提取+匹配作为独立任务提交到线程池，
@@ -182,6 +243,7 @@ class Scanner:
                 except Exception:
                     errors += 1
                     logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
+                self._emit_progress(start, str(entry.path), scanned, total, skipped, matched, errors)
         return scanned, matched, errors
 
     def scan_file(self, path: Path) -> ScanResult:

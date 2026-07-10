@@ -8,7 +8,7 @@ from typing import Tuple
 
 from pyfilescan.rules.model import Severity
 
-__all__ = ["MatchResult", "RuleHit", "ScanReport", "ScanResult", "ScanStats"]
+__all__ = ["MatchResult", "ProgressInfo", "RuleHit", "ScanReport", "ScanResult", "ScanStats"]
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,19 @@ class MatchResult:
 
     matched: bool
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class ProgressInfo:
+    """扫描进度信息（实时反馈给 UI）。"""
+
+    current_file: str = ""
+    scanned: int = 0
+    total: int = 0
+    skipped: int = 0
+    matched: int = 0
+    errors: int = 0
+    elapsed: float = 0.0
 
 
 @dataclass(frozen=True)

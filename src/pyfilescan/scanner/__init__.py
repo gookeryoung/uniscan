@@ -29,6 +29,7 @@ from pyfilescan.scanner.matchers import (
 )
 from pyfilescan.scanner.result import (
     MatchResult,
+    ProgressInfo,
     RuleHit,
     ScanReport,
     ScanResult,
@@ -50,6 +51,7 @@ __all__ = [
     "NotMatcherImpl",
     "OrMatcher",
     "PathMatcher",
+    "ProgressInfo",
     "RuleHit",
     "ScanReport",
     "ScanResult",
