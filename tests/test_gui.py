@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -1204,6 +1205,141 @@ class TestScanWorkerProgress:
         assert isinstance(info.matched, int)
         assert isinstance(info.errors, int)
         assert isinstance(info.elapsed, float)
+
+
+class TestScanWorkerDirect:
+    """直接调用 run()/_on_progress() 的测试。
+
+    coverage 无法跟踪 QThread（C++ 线程）内执行的代码，
+    通过直接调用方法在主线程执行来覆盖 run() 与 _on_progress() 逻辑。
+    """
+
+    def test_run_emits_finished_report(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 run() 应 emit finished_report 信号。"""
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path])
+
+        reports: list = []
+        worker.finished_report.connect(reports.append)
+        worker.run()  # 直接调用，不通过 start()
+
+        assert len(reports) == 1
+        report = reports[0]
+        assert report.stats.matched_files >= 1
+        assert report.stats.total_files >= 1
+        assert report.root == tmp_path
+
+    def test_run_multi_root_merges_results(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 run() 多根路径应合并结果且 root 标记为多路径。"""
+        dir_a = tmp_path / "dir_a"
+        dir_a.mkdir()
+        (dir_a / "secret.txt").write_text("x", encoding="utf-8")
+        dir_b = tmp_path / "dir_b"
+        dir_b.mkdir()
+        (dir_b / "secret.txt").write_text("y", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[dir_a, dir_b])
+
+        reports: list = []
+        worker.finished_report.connect(reports.append)
+        worker.run()
+
+        assert len(reports) == 1
+        report = reports[0]
+        assert report.stats.matched_files >= 2
+        assert report.stats.total_files >= 2
+        assert "多路径" in str(report.root)
+
+    def test_run_empty_dir_returns_empty_report(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 run() 空目录应返回空报告。"""
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path])
+
+        reports: list = []
+        worker.finished_report.connect(reports.append)
+        worker.run()
+
+        assert len(reports) == 1
+        report = reports[0]
+        assert report.stats.total_files == 0
+        assert report.stats.matched_files == 0
+
+    def test_on_progress_emits_cumulative(self, qapp: QApplication) -> None:
+        """_on_progress 应累加 _cum_* 字段后 emit。"""
+        from pyfilescan.scanner.result import ProgressInfo
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[Path("/tmp")])
+        # 模拟前序根路径已扫描的累计值
+        worker._cum_scanned = 10
+        worker._cum_total = 15
+        worker._cum_skipped = 3
+        worker._cum_matched = 5
+        worker._cum_errors = 1
+        worker._start_time = time.monotonic() - 2.0  # 2 秒前开始
+
+        emitted: list = []
+        worker.progress_info.connect(emitted.append)
+
+        info = ProgressInfo(current_file="test.txt", scanned=5, total=8, skipped=1, matched=2, errors=0, elapsed=1.0)
+        worker._on_progress(info)
+
+        assert len(emitted) == 1
+        result = emitted[0]
+        assert result.scanned == 15  # 5 + 10
+        assert result.total == 23  # 8 + 15
+        assert result.skipped == 4  # 1 + 3
+        assert result.matched == 7  # 2 + 5
+        assert result.errors == 1  # 0 + 1
+        assert result.current_file == "test.txt"
+        assert result.elapsed >= 2.0  # 至少 2 秒
+
+    def test_run_emits_failed_on_exception(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Scanner.scan 抛异常时 run() 应 emit failed 信号。"""
+        from pyfilescan.scanner.scanner import Scanner
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path])
+
+        def boom(self: Scanner, root: Path) -> None:
+            raise RuntimeError("扫描爆炸")
+
+        monkeypatch.setattr(Scanner, "scan", boom)
+
+        failures: list = []
+        worker.failed.connect(failures.append)
+        reports: list = []
+        worker.finished_report.connect(reports.append)
+        worker.run()
+
+        assert len(failures) == 1
+        assert "扫描爆炸" in failures[0]
+        assert len(reports) == 0  # 不应 emit finished_report
+
+    def test_on_progress_zero_cumulative(self, qapp: QApplication) -> None:
+        """_cum_* 全为 0 时 _on_progress 应原样传递 info 值。"""
+        from pyfilescan.scanner.result import ProgressInfo
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[Path("/tmp")])
+        worker._start_time = time.monotonic()
+
+        emitted: list = []
+        worker.progress_info.connect(emitted.append)
+
+        info = ProgressInfo(current_file="", scanned=3, total=3, skipped=0, matched=1, errors=0, elapsed=0.5)
+        worker._on_progress(info)
+
+        assert len(emitted) == 1
+        result = emitted[0]
+        assert result.scanned == 3
+        assert result.total == 3
+        assert result.matched == 1
 
 
 class TestScanMode:

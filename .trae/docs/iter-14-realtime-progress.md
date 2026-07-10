@@ -29,11 +29,12 @@
 ## 验证结果
 
 - ruff：全部通过
-- pytest：446 passed, 1 skipped
-- 覆盖率：87.88%（≥ 80% 门槛）
-  - `scanner.py` 91%、`worker.py` 50%（run/_on_progress 通过异步测试覆盖）、`main_window.py` 84%
+- pytest：452 passed, 1 skipped
+- 覆盖率：88.79%（≥ 80% 门槛）
+  - `scanner.py` 91%、`worker.py` 100%、`main_window.py` 84%
 
 ## 遗留事项
 
-- `worker.py` 覆盖率偏低（50%）：`run()` 与 `_on_progress` 依赖异步线程测试，已通过 `TestScanWorkerProgress` 覆盖核心路径，剩余为异常分支。
+- ~~`worker.py` 覆盖率偏低（50%）~~：已解决。根因是 coverage 无法跟踪 QThread（C++ 线程）内执行的代码，
+  通过新增 `TestScanWorkerDirect` 直接调用 `run()`/`_on_progress()` 在主线程执行，覆盖率提升至 100%。
 - 若后续需要更精细的进度（如压缩包内条目计数），可扩展 `ProgressInfo` 字段。
