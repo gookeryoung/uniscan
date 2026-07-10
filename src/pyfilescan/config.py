@@ -35,11 +35,11 @@ class Config:
     """应用配置。"""
 
     # 窗口几何：[x, y, width, height]
-    window_geometry: Optional[List[int]] = None
+    window_geometry: Optional[List[int]] = field(default_factory=lambda: [300, 300, 1200, 900])
     # 窗口状态："maximized" 或 "normal"
-    window_state: Optional[str] = None
+    window_state: Optional[str] = field(default_factory=lambda: "maximized")
     # 主分割器大小：[left_width, right_width]
-    splitter_sizes: Optional[List[int]] = None
+    splitter_sizes: Optional[List[int]] = field(default_factory=list)
     # 历史扫描路径（最近优先）
     scan_paths: List[str] = field(default_factory=list)
     # 规则文件路径列表（按优先级从低到高）
