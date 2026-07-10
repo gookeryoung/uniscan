@@ -35,7 +35,7 @@ from pyfilescan.scanner.result import (
     ScanStats,
 )
 from pyfilescan.scanner.scanner import Scanner, default_extract_content
-from pyfilescan.scanner.walker import FileWalker
+from pyfilescan.scanner.walker import FileWalker, list_drives
 
 __all__ = [
     "AndMatcher",
@@ -58,4 +58,5 @@ __all__ = [
     "build_matcher",
     "default_content_provider",
     "default_extract_content",
+    "list_drives",
 ]

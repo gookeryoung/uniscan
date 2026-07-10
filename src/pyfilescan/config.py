@@ -40,8 +40,12 @@ class Config:
     window_state: Optional[str] = field(default_factory=lambda: "maximized")
     # 主分割器大小：[left_width, right_width]
     splitter_sizes: Optional[List[int]] = field(default_factory=list)
+    # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
+    scan_mode: str = "folder"
     # 历史扫描路径（最近优先）
     scan_paths: List[str] = field(default_factory=list)
+    # 上次选择的盘符（如 "C:\\"）
+    last_drive: Optional[str] = None
     # 规则文件路径列表（按优先级从低到高）
     rules_paths: List[str] = field(default_factory=list)
     # 是否使用通用规则

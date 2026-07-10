@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import string
+import sys
 from pathlib import Path
 from typing import Iterator, List, Optional, Set, Tuple
 
 from pyfilescan.scanner.context import FileEntry
 
-__all__ = ["FileWalker"]
+__all__ = ["FileWalker", "list_drives"]
+
+
+def list_drives() -> List[Path]:
+    """枚举系统可用盘符/根路径。
+
+    Windows 下返回所有存在的盘符路径（如 ``C:\\``、``D:\\``）；
+    Unix-like 系统返回 ``["/"]``。
+
+    :return: 盘符路径列表
+    """
+    if sys.platform == "win32":
+        return [Path(f"{letter}:\\") for letter in string.ascii_uppercase if Path(f"{letter}:\\").exists()]
+    return [Path("/")]
 
 
 class FileWalker:

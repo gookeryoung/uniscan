@@ -69,6 +69,7 @@ watcher/__init__.py 用 `__getattr__` 延迟导入 TrayApp，使无 PySide2 环�
 def __getattr__(name):
     if name == "TrayApp":
         from pyfilescan.watcher.tray import TrayApp
+
         return TrayApp
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 ```

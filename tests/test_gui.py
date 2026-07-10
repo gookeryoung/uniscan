@@ -827,7 +827,7 @@ class TestScanWorker:
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
         rs = _build_ruleset()
-        worker = ScanWorker(ruleset=rs, root=tmp_path)
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         results: list = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
@@ -850,7 +850,7 @@ class TestScanWorker:
         from PySide2.QtCore import QEventLoop, QTimer
 
         rs = _build_ruleset()
-        worker = ScanWorker(ruleset=rs, root=tmp_path / "nonexistent")
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path / "nonexistent"])
 
         results: list = []
         errors: list = []
@@ -1045,6 +1045,232 @@ class TestHitDetailDialogHelpers:
         result = _build_preview_html("PASSWORD password Password", ["password"])
         # 所有大小的 password 都应被高亮（3 次匹配 = 6 个 span 标签：开+关）
         assert result.count("<span") == 3
+
+
+class TestScanWorkerMultiRoot:
+    """ScanWorker 多根路径扫描测试。"""
+
+    def test_worker_scans_multiple_roots(self, qapp: QApplication, tmp_path: Path) -> None:
+        """ScanWorker 应依次扫描多个根路径并合并结果。"""
+        from PySide2.QtCore import QEventLoop, QTimer
+
+        (tmp_path / "dir_a").mkdir()
+        (tmp_path / "dir_a" / "secret.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "dir_b").mkdir()
+        (tmp_path / "dir_b" / "secret.txt").write_text("y", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path / "dir_a", tmp_path / "dir_b"])
+
+        results: list = []
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.start()
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)
+        loop.exec_()
+
+        worker.wait(2000)
+        assert not worker.isRunning()
+        assert len(results) == 1
+        report = results[0]
+        # 两个目录各命中一个文件
+        assert report.stats.matched_files >= 2
+        assert report.stats.total_files >= 2
+
+    def test_worker_merges_empty_and_nonempty(self, qapp: QApplication, tmp_path: Path) -> None:
+        """有效路径与无效路径混合时应正常合并。"""
+        from PySide2.QtCore import QEventLoop, QTimer
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = ScanWorker(
+            ruleset=rs,
+            roots=[tmp_path / "nonexistent", tmp_path],
+        )
+
+        results: list = []
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.start()
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)
+        loop.exec_()
+
+        worker.wait(2000)
+        assert len(results) == 1
+        report = results[0]
+        assert report.stats.matched_files >= 1
+
+
+class TestScanMode:
+    """扫描模式 UI 测试。"""
+
+    def test_default_mode_is_folder(self, qapp: QApplication) -> None:
+        """启动时默认扫描模式为 folder。"""
+        window = MainWindow()
+        assert window._scan_mode == "folder"
+        assert window._folder_btn.isChecked()
+        assert not window._full_btn.isChecked()
+        assert not window._drive_btn.isChecked()
+        window.close()
+
+    def test_folder_mode_shows_path_row(self, qapp: QApplication) -> None:
+        """folder 模式下路径行可见，盘符下拉隐藏。"""
+        window = MainWindow()
+        assert window._target_row.isVisible()
+        assert not window._drive_combo.isVisible()
+        assert not window._drive_label.isVisible()
+        window.close()
+
+    def test_full_mode_hides_target_selectors(self, qapp: QApplication) -> None:
+        """full 模式下隐藏路径行与盘符下拉。"""
+        window = MainWindow()
+        window._full_btn.setChecked(True)
+        window._on_scan_mode_changed(window._full_btn)
+        assert window._scan_mode == "full"
+        assert not window._target_row.isVisible()
+        assert not window._drive_combo.isVisible()
+        window.close()
+
+    def test_drive_mode_shows_drive_combo(self, qapp: QApplication) -> None:
+        """drive 模式下盘符下拉可见，路径行隐藏。"""
+        window = MainWindow()
+        window._drive_btn.setChecked(True)
+        window._on_scan_mode_changed(window._drive_btn)
+        assert window._scan_mode == "drive"
+        assert window._drive_combo.isVisible()
+        assert window._drive_label.isVisible()
+        assert not window._target_row.isVisible()
+        window.close()
+
+    def test_full_mode_enables_scan_without_path(self, qapp: QApplication) -> None:
+        """full 模式下有规则即可扫描，无需选择路径。"""
+        window = MainWindow()
+        assert window._ruleset is not None
+        # folder 模式下未选路径，按钮禁用
+        assert not window._scan_btn.isEnabled()
+        # 切换到 full 模式
+        window._full_btn.setChecked(True)
+        window._on_scan_mode_changed(window._full_btn)
+        assert window._scan_btn.isEnabled()
+        window.close()
+
+    def test_drive_mode_enables_scan_with_drive(self, qapp: QApplication) -> None:
+        """drive 模式下有盘符即可扫描。"""
+        window = MainWindow()
+        window._drive_btn.setChecked(True)
+        window._on_scan_mode_changed(window._drive_btn)
+        # 盘符下拉在测试环境（Windows）通常有盘符
+        if window._drive_combo.count() > 0:
+            assert window._scan_btn.isEnabled()
+        window.close()
+
+    def test_build_scan_roots_full_mode(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """full 模式应返回所有盘符。"""
+        from pyfilescan.gui import main_window as mw_mod
+
+        fake_drives = [Path("C:\\"), Path("D:\\")]
+        monkeypatch.setattr(mw_mod, "list_drives", lambda: fake_drives)
+
+        window = MainWindow()
+        window._full_btn.setChecked(True)
+        window._on_scan_mode_changed(window._full_btn)
+        roots = window._build_scan_roots()
+        assert roots == fake_drives
+        window.close()
+
+    def test_build_scan_roots_drive_mode(self, qapp: QApplication) -> None:
+        """drive 模式应返回选中的单个盘符。"""
+        window = MainWindow()
+        window._drive_btn.setChecked(True)
+        window._on_scan_mode_changed(window._drive_btn)
+        if window._drive_combo.count() > 0:
+            roots = window._build_scan_roots()
+            assert len(roots) == 1
+        window.close()
+
+    def test_build_scan_roots_folder_mode(self, qapp: QApplication, tmp_path: Path) -> None:
+        """folder 模式应返回选中的路径。"""
+        window = MainWindow()
+        window._scan_root = tmp_path
+        roots = window._build_scan_roots()
+        assert roots == [tmp_path]
+        window.close()
+
+    def test_build_scan_roots_folder_mode_empty(self, qapp: QApplication) -> None:
+        """folder 模式未选路径时返回空列表。"""
+        window = MainWindow()
+        window._scan_root = None
+        roots = window._build_scan_roots()
+        assert roots == []
+        window.close()
+
+
+class TestScanModePersistence:
+    """扫描模式与盘符持久化测试。"""
+
+    def test_scan_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """启动时从配置恢复扫描模式。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(scan_mode="full")
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_mode == "full"
+        assert window._full_btn.isChecked()
+        window.close()
+
+    def test_drive_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """启动时从配置恢复 drive 模式。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        config = Config(scan_mode="drive")
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_mode == "drive"
+        assert window._drive_btn.isChecked()
+        window.close()
+
+    def test_close_saves_scan_mode(self, qapp: QApplication, tmp_path: Path) -> None:
+        """关闭时扫描模式应被保存。"""
+        window = MainWindow()
+        window._full_btn.setChecked(True)
+        window._on_scan_mode_changed(window._full_btn)
+        window.close()
+
+        from pyfilescan.config import load_config as _load_impl
+
+        config = _load_impl(tmp_path / "config.yaml")
+        assert config.scan_mode == "full"
+
+    def test_last_drive_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """启动时从配置恢复上次选择的盘符。"""
+        from pyfilescan.config import Config
+        from pyfilescan.config import save_config as _save_impl
+
+        # 使用存在的盘符
+        window = MainWindow()
+        if window._drive_combo.count() == 0:
+            window.close()
+            pytest.skip("无可用盘符")
+        first_drive = window._drive_combo.itemData(0)
+        window.close()
+
+        config = Config(scan_mode="drive", last_drive=first_drive)
+        _save_impl(config, tmp_path / "config.yaml")
+
+        window = MainWindow()
+        assert window._scan_mode == "drive"
+        assert window._drive_combo.currentData() == first_drive
+        window.close()
 
 
 class TestHitDetailDialog:

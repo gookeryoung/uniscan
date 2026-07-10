@@ -2,17 +2,17 @@
 
 提供：
 
+- 三种扫描模式：全盘扫描 / 选择盘符 / 选择文件夹
 - 规则文件加载与展示
-- 扫描路径选择
 - 后台扫描触发与进度显示
 - 结果树形展示（按文件分组）
 - 结果导出（CSV/JSON）
 
 设计要点：
 
+- 杀毒软件风格：模式卡片 + 醒目扫描按钮 + 大进度条
 - 扫描在 ScanWorker（QThread）中执行，避免阻塞 UI
 - 结果以 QTreeWidget 展示，顶层节点为文件，子节点为规则命中
-- 状态栏显示扫描统计
 """
 
 from __future__ import annotations
@@ -28,9 +28,11 @@ from typing import List, Optional
 from PySide2.QtCore import Qt
 from PySide2.QtWidgets import (
     QAction,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -39,8 +41,8 @@ from PySide2.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSplitter,
-    QStatusBar,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -53,7 +55,7 @@ from pyfilescan.gui.detail_dialog import HitDetailDialog
 from pyfilescan.gui.worker import ScanWorker
 from pyfilescan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from pyfilescan.rules.model import RuleSet
-from pyfilescan.scanner import ScanReport
+from pyfilescan.scanner import ScanReport, list_drives
 
 __all__ = ["MainWindow"]
 
@@ -66,7 +68,7 @@ class MainWindow(QMainWindow):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("pyfilescan 通用文件扫描器")
-        self.resize(1000, 700)
+        self.resize(1200, 800)
 
         self._config: Config = load_config()
         self._ruleset: Optional[RuleSet] = None
@@ -75,54 +77,139 @@ class MainWindow(QMainWindow):
         self._last_report: Optional[ScanReport] = None
         self._worker: Optional[ScanWorker] = None
         self._use_builtin: bool = True
+        # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
+        self._scan_mode: str = "folder"
 
         self._init_ui()
         self._init_menu()
         self._init_toolbar()
-        self._init_statusbar()
+        self._apply_qss()
         self._apply_config()
         self._init_rules()
 
     # ----------------------------- UI 初始化 -----------------------------
 
     def _init_ui(self) -> None:
-        """初始化中央 widget：顶部控制区 + 左侧规则面板 + 右侧结果树。"""
+        """初始化中央 widget：模式区 + 控制区 + 主体分割器。"""
         central = QWidget()
+        central.setObjectName("central")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.addLayout(self._build_top_controls())
+        layout.setSpacing(6)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.addWidget(self._build_scan_mode_area())
+        layout.addWidget(self._build_scan_control_area())
         layout.addWidget(self._build_main_splitter(), stretch=1)
 
-    def _build_top_controls(self) -> QHBoxLayout:
-        """构造顶部控制区：规则加载、路径选择、通用规则开关、扫描按钮。"""
-        self._rules_label = QLabel("规则文件: 未加载")
-        self._rules_label.setStyleSheet("padding: 4px; border: 1px solid #ccc;")
+    def _build_scan_mode_area(self) -> QWidget:
+        """构造扫描模式选择区：三张卡片按钮 + 盘符下拉。"""
+        container = QFrame()
+        container.setObjectName("modeArea")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        self._mode_btn_group = QButtonGroup(self)
+        self._mode_btn_group.setExclusive(True)
+
+        self._full_btn = QPushButton("全盘扫描\n扫描所有盘符")
+        self._full_btn.setCheckable(True)
+        self._full_btn.setObjectName("modeCard")
+        self._full_btn.setCursor(Qt.PointingHandCursor)
+
+        self._drive_btn = QPushButton("选择盘符\n扫描指定盘符")
+        self._drive_btn.setCheckable(True)
+        self._drive_btn.setObjectName("modeCard")
+        self._drive_btn.setCursor(Qt.PointingHandCursor)
+
+        self._folder_btn = QPushButton("选择文件夹\n扫描指定目录")
+        self._folder_btn.setCheckable(True)
+        self._folder_btn.setObjectName("modeCard")
+        self._folder_btn.setCursor(Qt.PointingHandCursor)
+        self._folder_btn.setChecked(True)
+
+        self._mode_btn_group.addButton(self._full_btn, 0)
+        self._mode_btn_group.addButton(self._drive_btn, 1)
+        self._mode_btn_group.addButton(self._folder_btn, 2)
+        self._mode_btn_group.buttonClicked.connect(self._on_scan_mode_changed)
+
+        layout.addWidget(self._full_btn)
+        layout.addWidget(self._drive_btn)
+        layout.addWidget(self._folder_btn)
+        layout.addStretch()
+
+        self._drive_label = QLabel("盘符:")
+        self._drive_combo = QComboBox()
+        self._drive_combo.setToolTip("选择要扫描的盘符")
+        self._drive_combo.setMinimumWidth(80)
+        self._drive_combo.currentIndexChanged.connect(self._on_drive_selected)
+        self._refresh_drive_combo()
+        layout.addWidget(self._drive_label)
+        layout.addWidget(self._drive_combo)
+
+        return container
+
+    def _build_scan_control_area(self) -> QWidget:
+        """构造扫描控制区：路径选择 + 醒目扫描按钮 + 大进度条 + 统计。"""
+        container = QFrame()
+        container.setObjectName("controlArea")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(4, 2, 4, 4)
+        layout.setSpacing(6)
+
+        # 规则加载行
+        rules_row = QHBoxLayout()
         self._load_rules_btn = QPushButton("加载规则...")
         self._load_rules_btn.clicked.connect(self._on_load_rules)
-
-        self._path_combo = QComboBox()
-        self._path_combo.setToolTip("扫描路径（可从历史记录中选择）")
-        self._path_combo.currentIndexChanged.connect(self._on_path_selected)
-        self._select_path_btn = QPushButton("选择路径...")
-        self._select_path_btn.clicked.connect(self._on_select_path)
-
+        self._rules_label = QLabel("规则: 未加载")
+        self._rules_label.setStyleSheet("padding: 4px;")
         self._use_builtin_checkbox = QCheckBox("使用通用规则")
         self._use_builtin_checkbox.setChecked(True)
         self._use_builtin_checkbox.setToolTip("勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则")
         self._use_builtin_checkbox.stateChanged.connect(self._on_toggle_builtin)
+        rules_row.addWidget(self._load_rules_btn)
+        rules_row.addWidget(self._rules_label, stretch=1)
+        rules_row.addWidget(self._use_builtin_checkbox)
+        layout.addLayout(rules_row)
 
+        # 目标路径行（仅 folder 模式可见）
+        self._target_row = QWidget()
+        target_layout = QHBoxLayout(self._target_row)
+        target_layout.setContentsMargins(0, 0, 0, 0)
+        self._path_label = QLabel("扫描路径:")
+        self._path_combo = QComboBox()
+        self._path_combo.setToolTip("扫描路径（可从历史记录中选择）")
+        self._path_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._path_combo.currentIndexChanged.connect(self._on_path_selected)
+        self._select_path_btn = QPushButton("选择路径...")
+        self._select_path_btn.clicked.connect(self._on_select_path)
+        target_layout.addWidget(self._path_label)
+        target_layout.addWidget(self._path_combo, stretch=1)
+        target_layout.addWidget(self._select_path_btn)
+        layout.addWidget(self._target_row)
+
+        # 醒目扫描按钮
         self._scan_btn = QPushButton("开始扫描")
+        self._scan_btn.setObjectName("scanBtn")
+        self._scan_btn.setCursor(Qt.PointingHandCursor)
+        self._scan_btn.setMinimumHeight(44)
         self._scan_btn.clicked.connect(self._on_scan)
         self._scan_btn.setEnabled(False)
+        layout.addWidget(self._scan_btn)
 
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(self._load_rules_btn)
-        top_layout.addWidget(self._rules_label, stretch=1)
-        top_layout.addWidget(self._use_builtin_checkbox)
-        top_layout.addWidget(self._select_path_btn)
-        top_layout.addWidget(self._path_combo, stretch=1)
-        top_layout.addWidget(self._scan_btn)
-        return top_layout
+        # 大进度条
+        self._progress = QProgressBar()
+        self._progress.setVisible(False)
+        self._progress.setTextVisible(True)
+        self._progress.setMinimumHeight(22)
+        layout.addWidget(self._progress)
+
+        # 统计标签
+        self._stats_label = QLabel("就绪")
+        self._stats_label.setObjectName("statsLabel")
+        layout.addWidget(self._stats_label)
+
+        return container
 
     def _build_main_splitter(self) -> QSplitter:
         """构造主体分割器：左侧规则面板 + 右侧结果树。"""
@@ -130,14 +217,17 @@ class MainWindow(QMainWindow):
         self._splitter.addWidget(self._build_left_panel())
 
         self._result_tree = QTreeWidget()
+        self._result_tree.setObjectName("resultTree")
         self._result_tree.setHeaderLabels(["路径", "规则", "严重等级", "详情"])
-        self._result_tree.setColumnWidth(0, 400)
-        self._result_tree.setColumnWidth(1, 200)
+        self._result_tree.setColumnWidth(0, 450)
+        self._result_tree.setColumnWidth(1, 180)
+        self._result_tree.setAlternatingRowColors(True)
+        self._result_tree.setRootIsDecorated(True)
         self._result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
         self._splitter.addWidget(self._result_tree)
 
         self._splitter.setStretchFactor(0, 1)
-        self._splitter.setStretchFactor(1, 3)
+        self._splitter.setStretchFactor(1, 4)
         return self._splitter
 
     def _build_left_panel(self) -> QWidget:
@@ -215,22 +305,82 @@ class MainWindow(QMainWindow):
         toolbar = self.addToolBar("主工具栏")
         toolbar.addAction(self._scan_action)
 
-    def _init_statusbar(self) -> None:
-        """状态栏：进度条 + 统计文本。"""
-        self._status_bar = QStatusBar()
-        self.setStatusBar(self._status_bar)
-
-        self._progress = QProgressBar()
-        self._progress.setVisible(False)
-        self._status_bar.addPermanentWidget(self._progress)
-
-        self._stats_label = QLabel("就绪")
-        self._status_bar.addWidget(self._stats_label)
+    def _apply_qss(self) -> None:
+        """应用杀毒软件风格样式表。"""
+        self.setStyleSheet(
+            """
+            QPushButton#modeCard {
+                text-align: left;
+                padding: 14px 18px;
+                border: 2px solid #d0d0d0;
+                border-radius: 8px;
+                background: #fafafa;
+                font-size: 13px;
+                min-width: 120px;
+            }
+            QPushButton#modeCard:hover {
+                border-color: #90CAF9;
+                background: #F5FBFF;
+            }
+            QPushButton#modeCard:checked {
+                border-color: #1976D2;
+                background: #E3F2FD;
+                font-weight: bold;
+                color: #1565C0;
+            }
+            QPushButton#scanBtn {
+                background: #43A047;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 10px 24px;
+            }
+            QPushButton#scanBtn:hover {
+                background: #388E3C;
+            }
+            QPushButton#scanBtn:pressed {
+                background: #2E7D32;
+            }
+            QPushButton#scanBtn:disabled {
+                background: #BDBDBD;
+                color: #EEEEEE;
+            }
+            QProgressBar {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                text-align: center;
+                background: #f0f0f0;
+            }
+            QProgressBar::chunk {
+                background: #43A047;
+                border-radius: 3px;
+            }
+            QLabel#statsLabel {
+                font-size: 13px;
+                color: #424242;
+                padding: 2px 4px;
+            }
+            QTreeWidget#resultTree {
+                font-size: 13px;
+                alternate-background-color: #F7FBFF;
+            }
+            QTreeWidget#resultTree::item {
+                min-height: 22px;
+            }
+            QFrame#modeArea, QFrame#controlArea {
+                border: 1px solid #e0e0e0;
+                border-radius: 6px;
+                background: #ffffff;
+            }
+            """
+        )
 
     # ----------------------------- 配置持久化 -----------------------------
 
     def _apply_config(self) -> None:
-        """应用配置：恢复窗口几何、分割器、规则路径、扫描历史。"""
+        """应用配置：恢复窗口几何、分割器、扫描模式、规则路径、扫描历史。"""
         if self._config.window_geometry and len(self._config.window_geometry) == 4:
             x, y, w, h = self._config.window_geometry
             self.setGeometry(x, y, w, h)
@@ -239,6 +389,20 @@ class MainWindow(QMainWindow):
 
         if self._config.splitter_sizes:
             self._splitter.setSizes(self._config.splitter_sizes)
+
+        # 恢复扫描模式
+        self._scan_mode = self._config.scan_mode if self._config.scan_mode in ("full", "drive", "folder") else "folder"
+        mode_btn_map = {"full": self._full_btn, "drive": self._drive_btn, "folder": self._folder_btn}
+        mode_btn_map[self._scan_mode].setChecked(True)
+        self._update_target_visibility()
+
+        # 恢复上次选择的盘符
+        if self._config.last_drive:
+            idx = self._drive_combo.findData(self._config.last_drive)
+            if idx >= 0:
+                self._drive_combo.blockSignals(True)
+                self._drive_combo.setCurrentIndex(idx)
+                self._drive_combo.blockSignals(False)
 
         self._use_builtin = self._config.use_builtin
         self._use_builtin_checkbox.blockSignals(True)
@@ -258,6 +422,8 @@ class MainWindow(QMainWindow):
         self._config.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
         self._config.window_state = "maximized" if self.isMaximized() else "normal"
         self._config.splitter_sizes = list(self._splitter.sizes())
+        self._config.scan_mode = self._scan_mode
+        self._config.last_drive = self._drive_combo.currentData() if self._drive_combo.count() > 0 else None
         self._config.rules_paths = [str(p) for p in self._rules_paths]
         self._config.use_builtin = self._use_builtin
         self._config.scan_paths = [self._path_combo.itemText(i) for i in range(self._path_combo.count())]
@@ -317,6 +483,45 @@ class MainWindow(QMainWindow):
                 self._stats_label.setText("未加载规则")
         except RuleError as exc:
             QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
+
+    # ----------------------------- 扫描模式 -----------------------------
+
+    def _on_scan_mode_changed(self, button) -> None:  # type: ignore[no-untyped-def]
+        """扫描模式切换：更新目标选择器可见性与扫描按钮状态。"""
+        btn_id = self._mode_btn_group.id(button)
+        self._scan_mode = {0: "full", 1: "drive", 2: "folder"}.get(btn_id, "folder")
+        self._update_target_visibility()
+        self._update_scan_button()
+
+    def _update_target_visibility(self) -> None:
+        """根据扫描模式更新目标选择器可见性。"""
+        is_drive = self._scan_mode == "drive"
+        is_folder = self._scan_mode == "folder"
+        self._drive_label.setVisible(is_drive)
+        self._drive_combo.setVisible(is_drive)
+        self._target_row.setVisible(is_folder)
+
+    def _refresh_drive_combo(self) -> None:
+        """刷新盘符下拉列表。"""
+        self._drive_combo.blockSignals(True)
+        self._drive_combo.clear()
+        for drive in list_drives():
+            self._drive_combo.addItem(str(drive), str(drive))
+        self._drive_combo.blockSignals(False)
+
+    def _on_drive_selected(self, _index: int) -> None:
+        """盘符选择变更。"""
+        self._update_scan_button()
+
+    def _build_scan_roots(self) -> List[Path]:
+        """根据扫描模式构造根路径列表。"""
+        if self._scan_mode == "full":
+            return list_drives()
+        if self._scan_mode == "drive":
+            data = self._drive_combo.currentData()
+            return [Path(data)] if data else []
+        # folder 模式
+        return [self._scan_root] if self._scan_root else []
 
     # ----------------------------- 槽函数 -----------------------------
 
@@ -382,21 +587,27 @@ class MainWindow(QMainWindow):
 
     def _on_scan(self) -> None:
         """触发扫描。"""
-        if self._ruleset is None or self._scan_root is None:
+        if self._ruleset is None:
             return
         if self._worker is not None and self._worker.isRunning():
             QMessageBox.information(self, "提示", "扫描正在进行中")
             return
 
+        roots = self._build_scan_roots()
+        if not roots:
+            QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
+            return
+
         self._result_tree.clear()
         self._scan_btn.setEnabled(False)
+        self._scan_btn.setText("扫描中...")
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)  # 不确定进度
         self._stats_label.setText("扫描中...")
 
         self._worker = ScanWorker(
             ruleset=self._ruleset,
-            root=self._scan_root,
+            roots=roots,
             scan_archives=True,
             max_workers=8,
         )
@@ -407,13 +618,14 @@ class MainWindow(QMainWindow):
 
     def _on_scan_progress(self, scanned: int) -> None:
         """扫描进度回调。"""
-        self._stats_label.setText(f"已扫描 {scanned} 个文件")
+        self._stats_label.setText(f"扫描中... 已扫描 {scanned} 个文件")
 
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调。"""
         self._last_report = report
         self._progress.setVisible(False)
         self._scan_btn.setEnabled(True)
+        self._scan_btn.setText("开始扫描")
 
         self._populate_results(report)
 
@@ -428,6 +640,7 @@ class MainWindow(QMainWindow):
         """扫描失败回调。"""
         self._progress.setVisible(False)
         self._scan_btn.setEnabled(True)
+        self._scan_btn.setText("开始扫描")
         self._stats_label.setText("扫描失败")
         QMessageBox.critical(self, "扫描失败", error)
 
@@ -578,8 +791,15 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def _update_scan_button(self) -> None:
-        """根据规则与路径是否就绪更新扫描按钮。"""
-        ready = self._ruleset is not None and self._scan_root is not None
+        """根据规则、扫描模式与目标就绪状态更新扫描按钮。"""
+        if self._ruleset is None:
+            ready = False
+        elif self._scan_mode == "full":
+            ready = True
+        elif self._scan_mode == "drive":
+            ready = self._drive_combo.count() > 0 and self._drive_combo.currentData() is not None
+        else:  # folder
+            ready = self._scan_root is not None
         self._scan_btn.setEnabled(ready)
         self._scan_action.setEnabled(ready)
 

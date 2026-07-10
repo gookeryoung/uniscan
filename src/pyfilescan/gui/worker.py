@@ -1,20 +1,22 @@
 """扫描后台线程：避免阻塞 UI。
 
 ScanWorker 在独立 QThread 中运行 Scanner.scan，通过信号通知 UI
-进度、完成与错误。由于 Scanner 当前为同步实现，进度信号按文件数
-粗粒度emit。
+进度、完成与错误。支持多根路径扫描（如全盘扫描时扫描多个盘符），
+完成后合并为单一 ScanReport。
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from PySide2.QtCore import QThread, Signal
 
 from pyfilescan.rules.model import RuleSet
 from pyfilescan.scanner import ScanReport
+from pyfilescan.scanner.result import ScanResult, ScanStats
 from pyfilescan.scanner.scanner import Scanner
 
 __all__ = ["ScanWorker"]
@@ -27,8 +29,8 @@ class ScanWorker(QThread):
 
     信号：
 
-    - ``progress``：当前已扫描文件数（粗粒度，每文件 emit）
-    - ``finished_report``：扫描完成，携带 ScanReport
+    - ``progress``：当前已扫描文件数（每个根路径扫描完成后 emit）
+    - ``finished_report``：扫描完成，携带合并后的 ScanReport
     - ``failed``：扫描异常，携带错误信息
     """
 
@@ -39,7 +41,7 @@ class ScanWorker(QThread):
     def __init__(
         self,
         ruleset: RuleSet,
-        root: Path,
+        roots: List[Path],
         max_depth: Optional[int] = None,
         scan_archives: bool = False,
         max_workers: Optional[int] = None,
@@ -47,14 +49,14 @@ class ScanWorker(QThread):
     ) -> None:
         super().__init__(parent)
         self._ruleset = ruleset
-        self._root = root
+        self._roots = roots
         self._max_depth = max_depth
         self._scan_archives = scan_archives
         self._max_workers = max_workers
         self._scanner: Optional[Scanner] = None
 
     def run(self) -> None:
-        """线程入口：执行扫描。"""
+        """线程入口：依次扫描所有根路径并合并结果。"""
         try:
             self._scanner = Scanner(
                 ruleset=self._ruleset,
@@ -62,10 +64,38 @@ class ScanWorker(QThread):
                 scan_archives=self._scan_archives,
                 max_workers=self._max_workers,
             )
-            # 包装 emit 进度（当前 Scanner 无回调，完成后一次性 emit）
-            report: ScanReport = self._scanner.scan(self._root)
-            self.progress.emit(report.stats.scanned_files)
-            self.finished_report.emit(report)
+            all_results: List[ScanResult] = []
+            total_scanned = 0
+            total_files = 0
+            total_matched = 0
+            total_skipped = 0
+            total_errors = 0
+            start_time = time.monotonic()
+
+            for root in self._roots:
+                report: ScanReport = self._scanner.scan(root)
+                all_results.extend(report.results)
+                total_scanned += report.stats.scanned_files
+                total_files += report.stats.total_files
+                total_matched += report.stats.matched_files
+                total_skipped += report.stats.skipped_files
+                total_errors += report.stats.errors
+                self.progress.emit(total_scanned)
+
+            elapsed = time.monotonic() - start_time
+            merged = ScanReport(
+                root=self._roots[0] if len(self._roots) == 1 else Path("（多路径）"),
+                results=tuple(all_results),
+                stats=ScanStats(
+                    total_files=total_files,
+                    scanned_files=total_scanned,
+                    matched_files=total_matched,
+                    skipped_files=total_skipped,
+                    errors=total_errors,
+                    duration_seconds=elapsed,
+                ),
+            )
+            self.finished_report.emit(merged)
         except Exception as exc:
             logger.exception("后台扫描失败")
             self.failed.emit(str(exc))
