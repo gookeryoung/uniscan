@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>960</width>
-    <height>640</height>
+    <width>800</width>
+    <height>560</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>800</width>
-    <height>500</height>
+    <width>720</width>
+    <height>480</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -22,32 +22,44 @@
   <widget class="QWidget" name="central">
    <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <layout class="QHBoxLayout" name="horizontalLayout_3">
-      <property name="spacing">
-       <number>8</number>
+     <widget class="QFrame" name="control_card">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
       </property>
-      <property name="leftMargin">
-       <number>8</number>
-      </property>
-      <property name="topMargin">
-       <number>8</number>
-      </property>
-      <property name="rightMargin">
-       <number>8</number>
-      </property>
-      <property name="bottomMargin">
-       <number>8</number>
-      </property>
-      <item>
-       <widget class="QGroupBox" name="groupBox">
-        <property name="title">
-         <string>扫描模式</string>
-        </property>
-        <layout class="QHBoxLayout" name="horizontalLayout">
+      <layout class="QHBoxLayout" name="control_layout">
+       <property name="spacing">
+        <number>12</number>
+       </property>
+       <property name="leftMargin">
+        <number>12</number>
+       </property>
+       <property name="topMargin">
+        <number>10</number>
+       </property>
+       <property name="rightMargin">
+        <number>12</number>
+       </property>
+       <property name="bottomMargin">
+        <number>10</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="scan_mode_layout">
+         <property name="spacing">
+          <number>8</number>
+         </property>
          <item>
           <widget class="QComboBox" name="scan_mode_combo">
            <property name="toolTip">
             <string>选择扫描模式</string>
+           </property>
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
            </property>
            <item>
             <property name="text">
@@ -72,7 +84,7 @@
             <number>2</number>
            </property>
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>1</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
@@ -152,7 +164,7 @@
              <item>
               <widget class="QPushButton" name="select_path_btn">
                <property name="text">
-                <string>选择路径...</string>
+                <string>选择...</string>
                </property>
               </widget>
              </item>
@@ -161,32 +173,11 @@
           </widget>
          </item>
         </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="arrow_label_1">
-        <property name="maximumSize">
-         <size>
-          <width>24</width>
-          <height>24</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="groupBox_2">
-        <property name="title">
-         <string>规则</string>
-        </property>
-        <layout class="QHBoxLayout" name="horizontalLayout_4">
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="rules_layout">
          <property name="spacing">
-          <number>6</number>
+          <number>8</number>
          </property>
          <item>
           <widget class="QPushButton" name="load_rules_btn">
@@ -201,7 +192,7 @@
             <string>勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则</string>
            </property>
            <property name="text">
-            <string>使用通用规则</string>
+            <string>通用规则</string>
            </property>
            <property name="checked">
             <bool>true</bool>
@@ -216,38 +207,22 @@
           </widget>
          </item>
         </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="arrow_label_2">
-        <property name="maximumSize">
-         <size>
-          <width>24</width>
-          <height>24</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="scan_btn">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="cursor">
-         <cursorShape>PointingHandCursor</cursorShape>
-        </property>
-        <property name="text">
-         <string>开始扫描</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+       </item>
+       <item>
+        <widget class="QPushButton" name="scan_btn">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="cursor">
+          <cursorShape>PointingHandCursor</cursorShape>
+         </property>
+         <property name="text">
+          <string>开始扫描</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </item>
     <item>
      <widget class="QSplitter" name="splitter">
@@ -876,7 +851,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>960</width>
+     <width>800</width>
      <height>22</height>
     </rect>
    </property>
