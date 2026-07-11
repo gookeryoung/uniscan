@@ -17,7 +17,8 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1007, 828)
+        MainWindow.resize(960, 640)
+        MainWindow.setMinimumSize(QSize(800, 500))
         self.load_rules_action = QAction(MainWindow)
         self.load_rules_action.setObjectName(u"load_rules_action")
         self.edit_rules_action = QAction(MainWindow)

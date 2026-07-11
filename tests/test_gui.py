@@ -1046,6 +1046,8 @@ class TestScanControlIntegration:
         (tmp_path / "normal.txt").write_text("y", encoding="utf-8")
 
         window = MainWindow()
+        window.show()
+        qapp.processEvents()
         window._ruleset = _build_ruleset()
         window._scan_root = tmp_path
         window._scan_mode = "folder"
@@ -1203,6 +1205,7 @@ class TestLaunchApp:
         from uniscan.gui import app as app_module
 
         created: list = []
+        set_attrs: list = []
 
         class FakeApp:
             def __init__(self, args):  # type: ignore[no-untyped-def]
@@ -1221,6 +1224,10 @@ class TestLaunchApp:
             @staticmethod
             def instance() -> None:
                 return None
+
+            @staticmethod
+            def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
+                set_attrs.append(attr)
 
         shown: list = []
 
@@ -1241,6 +1248,8 @@ class TestLaunchApp:
         assert rc == 0
         assert len(created) == 1
         assert len(shown) == 1
+        # 验证高 DPI 属性已设置
+        assert len(set_attrs) == 2
 
     def test_launch_reuses_existing_app(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """已有 QApplication 实例时复用，不创建新实例。"""
@@ -1273,6 +1282,10 @@ class TestLaunchApp:
             @staticmethod
             def instance():
                 return existing_app
+
+            @staticmethod
+            def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
+                pass
 
         shown: list = []
 
@@ -1819,6 +1832,8 @@ class TestScanMode:
     def test_folder_mode_shows_path_row(self, qapp: QApplication) -> None:
         """folder 模式下路径行可见，盘符下拉隐藏。"""
         window = MainWindow()
+        window.show()
+        qapp.processEvents()
         assert window._path_combo.isVisible()
         assert not window._drive_combo.isVisible()
         assert not window._drive_label.isVisible()
@@ -1827,6 +1842,8 @@ class TestScanMode:
     def test_full_mode_hides_target_selectors(self, qapp: QApplication) -> None:
         """full 模式下隐藏路径行与盘符下拉。"""
         window = MainWindow()
+        window.show()
+        qapp.processEvents()
         window._full_btn.setChecked(True)
         window._on_scan_mode_changed(window._full_btn)
         assert window._scan_mode == "full"
@@ -1837,6 +1854,8 @@ class TestScanMode:
     def test_drive_mode_shows_drive_combo(self, qapp: QApplication) -> None:
         """drive 模式下盘符下拉可见，路径行隐藏。"""
         window = MainWindow()
+        window.show()
+        qapp.processEvents()
         window._drive_btn.setChecked(True)
         window._on_scan_mode_changed(window._drive_btn)
         assert window._scan_mode == "drive"

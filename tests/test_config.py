@@ -13,8 +13,8 @@ class TestConfig:
     def test_default_config(self) -> None:
         """默认配置字段值。"""
         config = Config()
-        assert config.window_geometry == [300, 300, 1200, 900]
-        assert config.window_state == "maximized"
+        assert config.window_geometry == [300, 300, 1200, 800]
+        assert config.window_state == "normal"
         assert config.splitter_sizes == []
         assert config.scan_paths == []
         assert config.rules_paths == []
@@ -27,7 +27,7 @@ class TestLoadConfig:
     def test_load_nonexistent_returns_default(self, tmp_path: Path) -> None:
         """文件不存在时返回默认配置。"""
         config = load_config(tmp_path / "missing.yaml")
-        assert config.window_geometry == [300, 300, 1200, 900]
+        assert config.window_geometry == [300, 300, 1200, 800]
         assert config.scan_paths == []
         assert config.use_builtin is True
 
@@ -88,7 +88,7 @@ class TestLoadConfig:
         )
         config = load_config(config_file)
         # None 值被过滤，使用默认值
-        assert config.window_geometry == [300, 300, 1200, 900]
+        assert config.window_geometry == [300, 300, 1200, 800]
         assert config.use_builtin is False
         assert config.scan_paths == []
 

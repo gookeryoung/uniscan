@@ -409,6 +409,10 @@ class MainWindow(QMainWindow):
         """应用配置：恢复窗口几何、分割器、扫描模式、规则路径、扫描历史。"""
         if self._config.window_geometry and len(self._config.window_geometry) == 4:
             x, y, w, h = self._config.window_geometry
+            # clamp 到最小窗口尺寸，防止低分辨率下窗口溢出
+            min_w, min_h = self.minimumSize().width(), self.minimumSize().height()
+            w = max(w, min_w)
+            h = max(h, min_h)
             self.setGeometry(x, y, w, h)
         if self._config.window_state == "maximized":
             self.showMaximized()
