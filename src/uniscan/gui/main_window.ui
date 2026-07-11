@@ -2,6 +2,14 @@
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1007</width>
+    <height>828</height>
+   </rect>
+  </property>
   <property name="windowTitle">
    <string>uniscan 通用文件扫描器</string>
   </property>
@@ -47,6 +55,9 @@
          </property>
          <item>
           <widget class="QPushButton" name="full_btn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
            <property name="text">
             <string>全盘扫描
 扫描所有盘符</string>
@@ -54,13 +65,13 @@
            <property name="checkable">
             <bool>true</bool>
            </property>
-           <property name="cursor">
-            <cursorShape>PointingHandCursor</cursorShape>
-           </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="drive_btn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
            <property name="text">
             <string>选择盘符
 扫描指定盘符</string>
@@ -68,13 +79,13 @@
            <property name="checkable">
             <bool>true</bool>
            </property>
-           <property name="cursor">
-            <cursorShape>PointingHandCursor</cursorShape>
-           </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="folder_btn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
            <property name="text">
             <string>选择文件夹
 扫描指定目录</string>
@@ -84,9 +95,6 @@
            </property>
            <property name="checked">
             <bool>true</bool>
-           </property>
-           <property name="cursor">
-            <cursorShape>PointingHandCursor</cursorShape>
            </property>
           </widget>
          </item>
@@ -115,57 +123,52 @@
            <property name="toolTip">
             <string>选择要扫描的盘符</string>
            </property>
-           <property name="minimumWidth">
-            <number>80</number>
-           </property>
           </widget>
          </item>
         </layout>
        </item>
        <item>
-        <widget class="QWidget" name="target_row">
-         <layout class="QHBoxLayout" name="target_layout">
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-          <item>
-           <widget class="QLabel" name="path_label">
-            <property name="text">
-             <string>扫描路径:</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="path_combo">
-            <property name="toolTip">
-             <string>扫描路径（可从历史记录中选择）</string>
-            </property>
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="select_path_btn">
-            <property name="text">
-             <string>选择路径...</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
+        <layout class="QHBoxLayout" name="target_layout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="path_label">
+           <property name="text">
+            <string>扫描路径:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="path_combo">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="toolTip">
+            <string>扫描路径（可从历史记录中选择）</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="select_path_btn">
+           <property name="text">
+            <string>选择路径...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
        <item>
         <layout class="QHBoxLayout" name="rules_row">
@@ -185,14 +188,14 @@
          </item>
          <item>
           <widget class="QCheckBox" name="use_builtin_checkbox">
+           <property name="toolTip">
+            <string>勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则</string>
+           </property>
            <property name="text">
             <string>使用通用规则</string>
            </property>
            <property name="checked">
             <bool>true</bool>
-           </property>
-           <property name="toolTip">
-            <string>勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则</string>
            </property>
           </widget>
          </item>
@@ -202,33 +205,27 @@
         <layout class="QHBoxLayout" name="scan_btn_row">
          <item>
           <widget class="QPushButton" name="scan_btn">
-           <property name="text">
-            <string>开始扫描</string>
+           <property name="enabled">
+            <bool>false</bool>
            </property>
            <property name="cursor">
             <cursorShape>PointingHandCursor</cursorShape>
            </property>
-           <property name="minimumHeight">
-            <number>40</number>
-           </property>
-           <property name="enabled">
-            <bool>false</bool>
+           <property name="text">
+            <string>开始扫描</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="QPushButton" name="stop_btn">
-           <property name="text">
-            <string>停止</string>
-           </property>
            <property name="cursor">
             <cursorShape>PointingHandCursor</cursorShape>
            </property>
-           <property name="minimumHeight">
-            <number>40</number>
-           </property>
            <property name="visible">
             <bool>false</bool>
+           </property>
+           <property name="text">
+            <string>停止</string>
            </property>
           </widget>
          </item>
@@ -239,9 +236,6 @@
          <property name="visible">
           <bool>false</bool>
          </property>
-         <property name="minimumHeight">
-          <number>20</number>
-         </property>
          <property name="textVisible">
           <bool>true</bool>
          </property>
@@ -249,11 +243,11 @@
        </item>
        <item>
         <widget class="QLabel" name="current_file_label">
-         <property name="text">
-          <string/>
-         </property>
          <property name="visible">
           <bool>false</bool>
+         </property>
+         <property name="text">
+          <string/>
          </property>
         </widget>
        </item>
@@ -323,6 +317,9 @@
             <item>
              <widget class="QFrame" name="filter_bar">
               <layout class="QHBoxLayout" name="filter_layout">
+               <property name="spacing">
+                <number>6</number>
+               </property>
                <property name="leftMargin">
                 <number>4</number>
                </property>
@@ -334,9 +331,6 @@
                </property>
                <property name="bottomMargin">
                 <number>2</number>
-               </property>
-               <property name="spacing">
-                <number>6</number>
                </property>
                <item>
                 <widget class="QLabel" name="filter_label">
@@ -456,41 +450,41 @@
              <layout class="QHBoxLayout" name="rules_btn_row">
               <item>
                <widget class="QPushButton" name="move_up_btn">
-                <property name="text">
-                 <string>上移</string>
-                </property>
                 <property name="toolTip">
                  <string>将选中的规则文件上移（优先级降低）</string>
+                </property>
+                <property name="text">
+                 <string>上移</string>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="move_down_btn">
-                <property name="text">
-                 <string>下移</string>
-                </property>
                 <property name="toolTip">
                  <string>将选中的规则文件下移（优先级升高）</string>
+                </property>
+                <property name="text">
+                 <string>下移</string>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="remove_rule_btn">
-                <property name="text">
-                 <string>移除</string>
-                </property>
                 <property name="toolTip">
                  <string>移除选中的规则文件</string>
+                </property>
+                <property name="text">
+                 <string>移除</string>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QPushButton" name="edit_rule_btn">
-                <property name="text">
-                 <string>编辑</string>
-                </property>
                 <property name="toolTip">
                  <string>编辑选中的规则文件</string>
+                </property>
+                <property name="text">
+                 <string>编辑</string>
                 </property>
                </widget>
               </item>
@@ -581,23 +575,20 @@
              <property name="placeholderText">
               <string>备注/批注/导出说明...</string>
              </property>
-             <property name="maximumHeight">
-              <number>80</number>
-             </property>
             </widget>
            </item>
            <item>
             <layout class="QHBoxLayout" name="action_btn_row">
              <item>
               <widget class="QPushButton" name="batch_btn">
-               <property name="text">
-                <string>批量处理</string>
+               <property name="enabled">
+                <bool>false</bool>
                </property>
                <property name="toolTip">
                 <string>对选中项批量处理（预留）</string>
                </property>
-               <property name="enabled">
-                <bool>false</bool>
+               <property name="text">
+                <string>批量处理</string>
                </property>
               </widget>
              </item>
@@ -616,14 +607,14 @@
              </item>
              <item>
               <widget class="QPushButton" name="export_btn">
-               <property name="text">
-                <string>导出结果</string>
+               <property name="enabled">
+                <bool>false</bool>
                </property>
                <property name="toolTip">
                 <string>导出扫描结果到文件</string>
                </property>
-               <property name="enabled">
-                <bool>false</bool>
+               <property name="text">
+                <string>导出结果</string>
                </property>
               </widget>
              </item>
@@ -708,31 +699,31 @@
             </item>
             <item>
              <widget class="QPushButton" name="detail_start_btn">
-              <property name="text">
-               <string>开始扫描</string>
-              </property>
               <property name="toolTip">
                <string>开始扫描（需先选择目标与规则）</string>
+              </property>
+              <property name="text">
+               <string>开始扫描</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_load_rules_btn">
-              <property name="text">
-               <string>加载规则</string>
-              </property>
               <property name="toolTip">
                <string>加载规则文件</string>
+              </property>
+              <property name="text">
+               <string>加载规则</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_view_history_btn">
-              <property name="text">
-               <string>查看历史</string>
-              </property>
               <property name="toolTip">
                <string>切换到扫描历史视图</string>
+              </property>
+              <property name="text">
+               <string>查看历史</string>
               </property>
              </widget>
             </item>
@@ -757,31 +748,31 @@
             </property>
             <item>
              <widget class="QPushButton" name="detail_locate_btn">
-              <property name="text">
-               <string>定位命中</string>
-              </property>
               <property name="toolTip">
                <string>滚动到当前命中位置</string>
+              </property>
+              <property name="text">
+               <string>定位命中</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_prev_btn">
-              <property name="text">
-               <string>上一条</string>
-              </property>
               <property name="toolTip">
                <string>跳转到上一个命中位置</string>
+              </property>
+              <property name="text">
+               <string>上一条</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_next_btn">
-              <property name="text">
-               <string>下一条</string>
-              </property>
               <property name="toolTip">
                <string>跳转到下一个命中位置</string>
+              </property>
+              <property name="text">
+               <string>下一条</string>
               </property>
              </widget>
             </item>
@@ -807,31 +798,31 @@
             </item>
             <item>
              <widget class="QPushButton" name="detail_open_location_btn">
-              <property name="text">
-               <string>打开文件位置</string>
-              </property>
               <property name="toolTip">
                <string>在文件管理器中打开所在目录</string>
+              </property>
+              <property name="text">
+               <string>打开文件位置</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_copy_path_btn">
-              <property name="text">
-               <string>复制路径</string>
-              </property>
               <property name="toolTip">
                <string>复制文件路径到剪贴板</string>
+              </property>
+              <property name="text">
+               <string>复制路径</string>
               </property>
              </widget>
             </item>
             <item>
              <widget class="QPushButton" name="detail_open_window_btn">
-              <property name="text">
-               <string>在新窗口打开</string>
-              </property>
               <property name="toolTip">
                <string>弹出独立对话框查看完整详情</string>
+              </property>
+              <property name="text">
+               <string>在新窗口打开</string>
               </property>
              </widget>
             </item>
@@ -937,6 +928,14 @@
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1007</width>
+     <height>22</height>
+    </rect>
+   </property>
    <widget class="QMenu" name="file_menu">
     <property name="title">
      <string>文件(&amp;F)</string>
