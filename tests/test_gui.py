@@ -20,7 +20,7 @@ pytestmark = pytest.mark.gui
 
 try:
     from PySide2.QtCore import Qt
-    from PySide2.QtWidgets import QApplication
+    from PySide2.QtWidgets import QApplication, QMenu
 
     from fuscan.gui.detail_dialog import HitDetailDialog
     from fuscan.gui.main_window import MainWindow, ScanState
@@ -190,7 +190,7 @@ rules:
 
         window = MainWindow()
         # 关闭通用规则，确保仅加载用户规则
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
 
         # mock QFileDialog.getOpenFileName 返回规则文件路径
         monkeypatch.setattr(
@@ -201,7 +201,6 @@ rules:
         window._on_load_rules()
         assert window._ruleset is not None
         assert window._rules_paths == [rules_yaml]
-        assert "rules.yaml" in window._rules_label.text()
         assert window._rules_tree.topLevelItemCount() == 1
         window.close()
 
@@ -230,7 +229,7 @@ rules:
 
         window = MainWindow()
         # 关闭通用规则，使初始 ruleset 为 None
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         assert window._ruleset is None
         monkeypatch.setattr(
             "fuscan.gui.main_window.QFileDialog.getOpenFileName",
@@ -299,7 +298,6 @@ class TestBuiltinRulesToggle:
         assert window._ruleset is not None
         assert len(window._ruleset.rules) > 0
         assert window._use_builtin is True
-        assert window._use_builtin_checkbox.isChecked()
         # 规则树应非空
         assert window._rules_tree.topLevelItemCount() > 0
         window.close()
@@ -307,7 +305,7 @@ class TestBuiltinRulesToggle:
     def test_uncheck_builtin_clears_ruleset(self, qapp: QApplication) -> None:
         """取消勾选通用规则且无用户规则时 ruleset 为 None。"""
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         assert window._use_builtin is False
         assert window._ruleset is None
         assert window._rules_tree.topLevelItemCount() == 0
@@ -318,21 +316,23 @@ class TestBuiltinRulesToggle:
     def test_recheck_builtin_reloads_ruleset(self, qapp: QApplication) -> None:
         """重新勾选通用规则应重新加载规则集。"""
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         assert window._ruleset is None
-        window._use_builtin_checkbox.setChecked(True)
+        window._set_use_builtin(True)
         assert window._ruleset is not None
         assert len(window._ruleset.rules) > 0
         window.close()
 
     def test_builtin_label_updated_on_toggle(self, qapp: QApplication) -> None:
-        """切换通用规则开关时标签应更新。"""
+        """切换通用规则开关时规则集应更新。"""
         window = MainWindow()
-        assert "通用规则" in window._rules_label.text()
-        window._use_builtin_checkbox.setChecked(False)
-        assert "未加载" in window._rules_label.text()
-        window._use_builtin_checkbox.setChecked(True)
-        assert "通用规则" in window._rules_label.text()
+        assert window._use_builtin is True
+        assert window._ruleset is not None
+        window._set_use_builtin(False)
+        assert window._use_builtin is False
+        window._set_use_builtin(True)
+        assert window._use_builtin is True
+        assert window._ruleset is not None
         window.close()
 
     def test_load_user_rules_with_builtin(
@@ -355,8 +355,7 @@ class TestBuiltinRulesToggle:
         window._on_load_rules()
         # 合并后规则数应大于内置规则数
         assert window._rules_tree.topLevelItemCount() > builtin_count
-        assert "通用规则" in window._rules_label.text()
-        assert "rules.yaml" in window._rules_label.text()
+        assert window._ruleset is not None
         window.close()
 
     def test_scan_enabled_with_builtin_only(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -398,7 +397,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
 
         # 先返回 r1，再返回 r2
         paths_iter = iter([str(r1), str(r2)])
@@ -428,7 +427,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
 
         monkeypatch.setattr(
             "fuscan.gui.main_window.QFileDialog.getOpenFileName",
@@ -459,7 +458,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1, r2]
         window._reload_ruleset()
         window._refresh_rules_file_list()
@@ -491,7 +490,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1, r2]
         window._reload_ruleset()
         window._refresh_rules_file_list()
@@ -520,7 +519,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
@@ -544,7 +543,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
@@ -568,7 +567,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1, r2]
         window._reload_ruleset()
         window._refresh_rules_file_list()
@@ -594,7 +593,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1]
         window._reload_ruleset()
         window._refresh_rules_file_list()
@@ -622,7 +621,7 @@ class TestMultiRulesList:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
 
         # [r1, r2] → r2 覆盖 r1
         window._rules_paths = [r1, r2]
@@ -633,23 +632,6 @@ class TestMultiRulesList:
         window._rules_paths = [r2, r1]
         window._reload_ruleset()
         assert window._ruleset.rules[0].match.pattern == "from_r1"
-        window.close()
-
-    def test_label_shows_all_filenames(self, qapp: QApplication, tmp_path: Path) -> None:
-        """规则标签应展示所有已加载文件名。"""
-        r1 = tmp_path / "r1.yaml"
-        r1.write_text('version: "1.0"\nrules: []\n', encoding="utf-8")
-        r2 = tmp_path / "r2.yaml"
-        r2.write_text('version: "1.0"\nrules: []\n', encoding="utf-8")
-
-        window = MainWindow()
-        window._rules_paths = [r1, r2]
-        window._reload_ruleset()
-        window._rules_label.setText(f"规则: {window._build_rules_label()}")
-
-        text = window._rules_label.text()
-        assert "r1.yaml" in text
-        assert "r2.yaml" in text
         window.close()
 
 
@@ -699,7 +681,6 @@ class TestConfigPersistence:
 
         window = MainWindow()
         assert window._use_builtin is False
-        assert window._use_builtin_checkbox.isChecked() is False
         window.close()
 
     def test_scan_paths_history_restored(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -721,7 +702,7 @@ class TestConfigPersistence:
     def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
         """关闭窗口时配置应被保存。"""
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window.close()
 
         from fuscan.config import load_config as _load_impl
@@ -737,7 +718,7 @@ class TestConfigPersistence:
             encoding="utf-8",
         )
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1]
         window.close()
 
@@ -2544,7 +2525,7 @@ class TestRuleEditor:
     def test_edit_no_rules_shows_message(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """无规则文件时点击编辑应提示。"""
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = []
         called = {"count": 0}
         monkeypatch.setattr(
@@ -2659,7 +2640,7 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [rules_path]
         window._reload_and_refresh()
         assert window._ruleset is not None
@@ -2973,7 +2954,6 @@ class TestDetailArea:
         assert "无命中" in window._detail_nav_label.text()
         assert not window._detail_prev_btn.isEnabled()
         assert not window._detail_next_btn.isEnabled()
-        assert not window._detail_locate_btn.isEnabled()
         window.close()
 
     def test_detail_nav_label_with_hits(self, qapp: QApplication) -> None:
@@ -2985,7 +2965,6 @@ class TestDetailArea:
         assert "1 / 2" in window._detail_nav_label.text()
         assert window._detail_prev_btn.isEnabled()
         assert window._detail_next_btn.isEnabled()
-        assert window._detail_locate_btn.isEnabled()
         window.close()
 
     def test_detail_prev_next_wrap_around(self, qapp: QApplication) -> None:
@@ -3042,14 +3021,6 @@ class TestDetailArea:
         window._on_open_in_window()
         window.close()
 
-    def test_detail_locate_hit_no_hits(self, qapp: QApplication) -> None:
-        """无命中时定位不应崩溃。"""
-        window = MainWindow()
-        window._detail_hit_positions = []
-        window._detail_current_hit_index = -1
-        window._on_locate_hit()
-        window.close()
-
     def test_detail_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
         """空文件预览应显示提示文本。"""
         from fuscan.scanner import Scanner
@@ -3066,6 +3037,235 @@ class TestDetailArea:
         # 空文件应显示提示
         text = window._detail_preview.toPlainText()
         assert "空" in text or "二进制" in text
+        window.close()
+
+    def test_result_tree_context_menu_actions(self, qapp: QApplication, tmp_path: Path) -> None:
+        """结果树右键菜单应包含复制路径/新窗口打开/打开文件位置三个动作。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        assert window._detail_current_result is not None
+
+        captured: list[Any] = []
+        from fuscan.gui import main_window as mw_module
+
+        original_qmenu = mw_module.QMenu
+
+        class FakeQMenu(QMenu):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                self.exec_ = lambda *a, **kw: None
+                captured.append(self)
+
+        mw_module.QMenu = FakeQMenu
+        try:
+            window._on_result_tree_context_menu(window._result_tree.viewport().rect().center())
+        finally:
+            mw_module.QMenu = original_qmenu
+
+        assert len(captured) == 1
+        actions = captured[0].actions()
+        assert len(actions) == 3
+        texts = [a.text() for a in actions]
+        assert "复制路径" in texts
+        assert "在新窗口打开" in texts
+        assert "打开文件位置" in texts
+        window.close()
+
+    def test_result_tree_context_menu_no_selection(self, qapp: QApplication) -> None:
+        """无选中结果时右键菜单不应弹出。"""
+        window = MainWindow()
+        assert window._detail_current_result is None
+
+        from fuscan.gui import main_window as mw_module
+
+        original_qmenu = mw_module.QMenu
+        call_count = {"n": 0}
+
+        class FakeQMenu(QMenu):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                call_count["n"] += 1
+                self.exec_ = lambda *a, **kw: None
+
+        mw_module.QMenu = FakeQMenu
+        try:
+            window._on_result_tree_context_menu(window._result_tree.viewport().rect().center())
+        finally:
+            mw_module.QMenu = original_qmenu
+
+        assert call_count["n"] == 0
+        window.close()
+
+    def test_rules_file_list_context_menu_actions(self, qapp: QApplication, tmp_path: Path) -> None:
+        """规则文件列表右键菜单应包含上移/下移/移除三个动作。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text('version: "1.0"\nrules: []\n', encoding="utf-8")
+
+        window = MainWindow()
+        window._rules_paths = [r1]
+        window._refresh_rules_file_list()
+        window._rules_file_list.setCurrentRow(0)
+
+        captured: list[Any] = []
+        from fuscan.gui import main_window as mw_module
+
+        original_qmenu = mw_module.QMenu
+
+        class FakeQMenu(QMenu):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                self.exec_ = lambda *a, **kw: None
+                captured.append(self)
+
+        mw_module.QMenu = FakeQMenu
+        try:
+            window._on_rules_file_list_context_menu(window._rules_file_list.viewport().rect().center())
+        finally:
+            mw_module.QMenu = original_qmenu
+
+        assert len(captured) == 1
+        actions = captured[0].actions()
+        # 3 个 action + 1 个 separator
+        action_texts = [a.text() for a in actions if a.text()]
+        assert "上移" in action_texts
+        assert "下移" in action_texts
+        assert "移除" in action_texts
+        window.close()
+
+    def test_shortcuts_created(self, qapp: QApplication) -> None:
+        """_setup_shortcuts 应创建 F3/Shift+F3/Delete 三个快捷键。"""
+        from PySide2.QtGui import QKeySequence
+
+        window = MainWindow()
+        assert window._shortcut_next.key().toString() == QKeySequence("F3").toString()
+        assert window._shortcut_prev.key().toString() == QKeySequence("Shift+F3").toString()
+        assert window._shortcut_remove_rule.key().toString() == QKeySequence(QKeySequence.Delete).toString()
+        window.close()
+
+    def test_shortcut_next_triggers_nav(self, qapp: QApplication) -> None:
+        """F3 快捷键的 activated 信号应触发下一条命中导航。"""
+        window = MainWindow()
+        window._detail_hit_positions = [(0, 1), (5, 6)]
+        window._detail_current_hit_index = 0
+        window._shortcut_next.activated.emit()
+        assert window._detail_current_hit_index == 1
+        window.close()
+
+    def test_shortcut_prev_triggers_nav(self, qapp: QApplication) -> None:
+        """Shift+F3 快捷键的 activated 信号应触发上一条命中导航。"""
+        window = MainWindow()
+        window._detail_hit_positions = [(0, 1), (5, 6)]
+        window._detail_current_hit_index = 1
+        window._shortcut_prev.activated.emit()
+        assert window._detail_current_hit_index == 0
+        window.close()
+
+    def test_rules_file_list_context_menu_no_selection(self, qapp: QApplication) -> None:
+        """规则文件列表无选中项时右键菜单不应弹出。"""
+        window = MainWindow()
+        assert window._rules_file_list.currentRow() < 0
+
+        from fuscan.gui import main_window as mw_module
+
+        original_qmenu = mw_module.QMenu
+        call_count = {"n": 0}
+
+        class FakeQMenu(QMenu):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                call_count["n"] += 1
+                self.exec_ = lambda *a, **kw: None
+
+        mw_module.QMenu = FakeQMenu
+        try:
+            window._on_rules_file_list_context_menu(window._rules_file_list.viewport().rect().center())
+        finally:
+            mw_module.QMenu = original_qmenu
+
+        assert call_count["n"] == 0
+        window.close()
+
+    def test_on_open_file_location_win32(self, qapp: QApplication, tmp_path: Path) -> None:
+        """_on_open_file_location 在 Windows 应调用 explorer 命令。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        assert window._detail_current_result is not None
+
+        popen_calls: list[Any] = []
+        import subprocess as subprocess_mod
+
+        original_popen = subprocess_mod.Popen
+        subprocess_mod.Popen = lambda *args, **kwargs: popen_calls.append(args)  # type: ignore[assignment]
+        try:
+            window._on_open_file_location()
+        finally:
+            subprocess_mod.Popen = original_popen
+
+        assert len(popen_calls) == 1
+        window.close()
+
+    def test_on_open_file_location_no_result(self, qapp: QApplication) -> None:
+        """无选中结果时打开文件位置不应崩溃。"""
+        window = MainWindow()
+        window._on_open_file_location()
+        window.close()
+
+    def test_on_copy_path_with_result(self, qapp: QApplication, tmp_path: Path) -> None:
+        """有选中结果时复制路径应更新剪贴板和状态栏。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        assert window._detail_current_result is not None
+
+        window._on_copy_path()
+        assert "已复制" in window._stats_label.text()
+        window.close()
+
+    def test_set_use_builtin_rule_error(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_set_use_builtin 规则加载失败时应弹出警告对话框。"""
+        window = MainWindow()
+
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        # 让 _reload_ruleset 抛出 RuleError
+        from fuscan.rules import RuleError
+
+        def raise_rule_error() -> None:
+            raise RuleError("测试错误")
+
+        monkeypatch.setattr(window, "_reload_ruleset", raise_rule_error)
+        window._set_use_builtin(False)
+        assert warned["called"]
+        assert window._use_builtin is False
         window.close()
 
 
@@ -3245,18 +3445,6 @@ class TestExportAndMenu:
         assert about_called["called"]
         window.close()
 
-    def test_batch_process_not_implemented(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
-        """批量处理应提示未实现。"""
-        window = MainWindow()
-        informed = {"called": False}
-        monkeypatch.setattr(
-            "fuscan.gui.main_window.QMessageBox.information",
-            lambda *args, **kwargs: informed.update(called=True),
-        )
-        window._on_batch_process()
-        assert informed["called"]
-        window.close()
-
     def test_switch_tab(self, qapp: QApplication) -> None:
         """_switch_tab 应切换 Tab 页。"""
         window = MainWindow()
@@ -3317,7 +3505,7 @@ class TestRulesManagement:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1]
         window._refresh_rules_file_list()
         assert window._rules_file_list.count() == 1
@@ -3330,7 +3518,7 @@ class TestRulesManagement:
     def test_on_edit_rules_no_rules(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """无规则文件时编辑应提示。"""
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         informed = {"called": False}
         monkeypatch.setattr(
             "fuscan.gui.main_window.QMessageBox.information",
@@ -3349,7 +3537,7 @@ class TestRulesManagement:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1]
         window._refresh_rules_file_list()
 
@@ -3373,7 +3561,7 @@ class TestRulesManagement:
         )
 
         window = MainWindow()
-        window._use_builtin_checkbox.setChecked(False)
+        window._set_use_builtin(False)
         window._rules_paths = [r1]
         window._reload_and_refresh()
         # 应成功加载规则集
@@ -3415,9 +3603,8 @@ class TestSettingsDialog:
         window._config.use_builtin = not original_config
         window._on_settings()
 
-        # 配置应被应用（checkbox 同步）
+        # 配置应被应用
         assert window._use_builtin == window._config.use_builtin
-        assert window._use_builtin_checkbox.isChecked() == window._config.use_builtin
         window.close()
 
     def test_on_settings_reject_no_change(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:

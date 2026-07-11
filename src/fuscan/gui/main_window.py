@@ -30,10 +30,11 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from PySide2.QtCore import QSize, Qt
-from PySide2.QtGui import QColor, QIcon, QTextCharFormat, QTextCursor
+from PySide2.QtCore import QPoint, QSize, Qt
+from PySide2.QtGui import QColor, QIcon, QKeySequence, QTextCharFormat, QTextCursor
 from PySide2.QtWidgets import (
     QAbstractButton,
+    QAction,
     QApplication,
     QButtonGroup,
     QDialog,
@@ -43,8 +44,10 @@ from PySide2.QtWidgets import (
     QLabel,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QShortcut,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -201,8 +204,6 @@ class MainWindow(QMainWindow):
         self._path_combo = ui.path_combo
         self._select_path_btn = ui.select_path_btn
         self._load_rules_btn = ui.load_rules_btn
-        self._rules_label = ui.rules_label
-        self._use_builtin_checkbox = ui.use_builtin_checkbox
         # 状态栏（替代原顶部 stats_label/current_file_label）
         self._stats_label = QLabel("就绪")
         self._stats_label.setObjectName("stats_label")
@@ -219,25 +220,18 @@ class MainWindow(QMainWindow):
         self._rule_filter_combo = ui.rule_filter_combo
         self._group_mode_combo = ui.group_mode_combo
         self._rules_file_list = ui.rules_file_list
-        self._move_up_btn = ui.move_up_btn
-        self._move_down_btn = ui.move_down_btn
-        self._remove_rule_btn = ui.remove_rule_btn
         self._edit_rule_btn = ui.edit_rule_btn
         self._rules_tree = ui.rules_tree
         self._history_list = ui.history_list
         self._note_edit = ui.note_edit
-        self._batch_btn = ui.batch_btn
         self._export_btn = ui.export_btn
         # 详情区
         self._detail_action_stack = ui.detail_action_stack
         self._detail_main_stack = ui.detail_main_stack
-        self._detail_locate_btn = ui.detail_locate_btn
         self._detail_prev_btn = ui.detail_prev_btn
         self._detail_next_btn = ui.detail_next_btn
         self._detail_nav_label = ui.detail_nav_label
         self._detail_open_location_btn = ui.detail_open_location_btn
-        self._detail_copy_path_btn = ui.detail_copy_path_btn
-        self._detail_open_window_btn = ui.detail_open_window_btn
         self._detail_info_label = ui.detail_info_label
         self._detail_hits_table = ui.detail_hits_table
         self._detail_preview = ui.detail_preview
@@ -286,12 +280,9 @@ class MainWindow(QMainWindow):
         ui.list_layout.setStretch(0, 1)
         ui.results_layout.setStretch(0, 0)
         ui.results_layout.setStretch(1, 1)
-        ui.filter_layout.setStretch(0, 0)
-        ui.filter_layout.setStretch(1, 2)
-        ui.filter_layout.setStretch(2, 0)
-        ui.filter_layout.setStretch(3, 1)
-        ui.filter_layout.setStretch(4, 0)
-        ui.filter_layout.setStretch(5, 1)
+        ui.filter_layout.setStretch(0, 2)  # path_filter_input
+        ui.filter_layout.setStretch(1, 1)  # rule_filter_combo
+        ui.filter_layout.setStretch(2, 1)  # group_mode_combo
         ui.rules_tab_layout.setStretch(0, 0)
         ui.rules_tab_layout.setStretch(1, 0)
         ui.rules_tab_layout.setStretch(2, 0)
@@ -354,25 +345,17 @@ class MainWindow(QMainWindow):
         self._path_combo.currentIndexChanged.connect(self._on_path_selected)
         self._select_path_btn.clicked.connect(self._on_select_path)
         self._load_rules_btn.clicked.connect(self._on_load_rules)
-        self._use_builtin_checkbox.stateChanged.connect(self._on_toggle_builtin)
         self._result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
         self._result_tree.itemSelectionChanged.connect(self._on_result_selection_changed)
         self._path_filter_input.textChanged.connect(self._refresh_result_tree)
         self._rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
         self._group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
-        self._move_up_btn.clicked.connect(self._on_move_rule_up)
-        self._move_down_btn.clicked.connect(self._on_move_rule_down)
-        self._remove_rule_btn.clicked.connect(self._on_remove_rule)
         self._edit_rule_btn.clicked.connect(self._on_edit_rules)
         self._history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
-        self._batch_btn.clicked.connect(self._on_batch_process)
         self._export_btn.clicked.connect(self._on_export_menu)
-        self._detail_locate_btn.clicked.connect(self._on_locate_hit)
         self._detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
         self._detail_next_btn.clicked.connect(self._on_next_detail_hit)
         self._detail_open_location_btn.clicked.connect(self._on_open_file_location)
-        self._detail_copy_path_btn.clicked.connect(self._on_copy_path)
-        self._detail_open_window_btn.clicked.connect(self._on_open_in_window)
 
         # actions 信号槽
         self._load_rules_action.triggered.connect(self._on_load_rules)
@@ -387,6 +370,77 @@ class MainWindow(QMainWindow):
         self._view_history_action.triggered.connect(lambda: self._switch_tab(2))
         self._ui.about_action.triggered.connect(self._on_about)
         self._settings_action.triggered.connect(self._on_settings)
+
+        # 右键菜单与快捷键
+        self._setup_context_menus()
+        self._setup_shortcuts()
+
+    def _setup_context_menus(self) -> None:
+        """为结果树和规则文件列表配置右键菜单策略。"""
+        self._result_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._result_tree.customContextMenuRequested.connect(self._on_result_tree_context_menu)
+        self._rules_file_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._rules_file_list.customContextMenuRequested.connect(self._on_rules_file_list_context_menu)
+
+    def _on_result_tree_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
+        """结果树右键菜单：复制路径 / 在新窗口打开 / 打开文件位置。"""
+        if self._detail_current_result is None:
+            return
+        menu = QMenu(self._result_tree)
+        action_copy = QAction("复制路径", menu)
+        action_open_window = QAction("在新窗口打开", menu)
+        action_open_location = QAction("打开文件位置", menu)
+        action_copy.triggered.connect(self._on_copy_path)
+        action_open_window.triggered.connect(self._on_open_in_window)
+        action_open_location.triggered.connect(self._on_open_file_location)
+        menu.addAction(action_copy)
+        menu.addAction(action_open_window)
+        menu.addAction(action_open_location)
+        menu.exec_(self._result_tree.viewport().mapToGlobal(pos))
+
+    def _on_rules_file_list_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
+        """规则文件列表右键菜单：上移 / 下移 / 移除。"""
+        if self._rules_file_list.currentRow() < 0:
+            return
+        menu = QMenu(self._rules_file_list)
+        action_up = QAction("上移", menu)
+        action_down = QAction("下移", menu)
+        action_remove = QAction("移除", menu)
+        action_up.triggered.connect(self._on_move_rule_up)
+        action_down.triggered.connect(self._on_move_rule_down)
+        action_remove.triggered.connect(self._on_remove_rule)
+        menu.addAction(action_up)
+        menu.addAction(action_down)
+        menu.addSeparator()
+        menu.addAction(action_remove)
+        menu.exec_(self._rules_file_list.viewport().mapToGlobal(pos))
+
+    def _setup_shortcuts(self) -> None:
+        """创建全局快捷键：F3 下一条命中、Shift+F3 上一条命中、Delete 移除规则文件。"""
+        self._shortcut_next = QShortcut(QKeySequence("F3"), self)
+        self._shortcut_next.activated.connect(self._on_next_detail_hit)
+        self._shortcut_prev = QShortcut(QKeySequence("Shift+F3"), self)
+        self._shortcut_prev.activated.connect(self._on_prev_detail_hit)
+        self._shortcut_remove_rule = QShortcut(QKeySequence.Delete, self._rules_file_list)
+        self._shortcut_remove_rule.activated.connect(self._on_remove_rule)
+
+    def _set_use_builtin(self, enabled: bool) -> None:
+        """统一设置通用规则开关并刷新规则集。
+
+        替代原 _on_toggle_builtin 的散落逻辑，供 _on_settings 和测试统一调用。
+        """
+        self._use_builtin = enabled
+        try:
+            self._reload_ruleset()
+            self._refresh_rules_tree()
+            self._refresh_rules_file_list()
+            self._update_scan_button()
+            if self._ruleset is not None:
+                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+            else:
+                self._stats_label.setText("未加载规则")
+        except RuleError as exc:
+            QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
     def _switch_tab(self, index: int) -> None:
         """切换列表区 Tab 视图。"""
@@ -447,9 +501,6 @@ class MainWindow(QMainWindow):
                     break
 
         self._use_builtin = self._config.use_builtin
-        self._use_builtin_checkbox.blockSignals(True)
-        self._use_builtin_checkbox.setChecked(self._config.use_builtin)
-        self._use_builtin_checkbox.blockSignals(False)
 
         self._rules_paths = [Path(p) for p in self._config.rules_paths if Path(p).exists()]
 
@@ -532,11 +583,10 @@ class MainWindow(QMainWindow):
             self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
-                self._rules_label.setText("规则: 内置通用规则")
                 self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条通用规则")
         except RuleError as exc:
             logger.warning("内置规则加载失败: %s", exc)
-            self._rules_label.setText("规则文件: 内置规则加载失败")
+            self._stats_label.setText("内置规则加载失败")
 
     def _reload_ruleset(self) -> None:
         """根据当前通用规则开关与用户规则路径列表重新加载规则集。"""
@@ -547,23 +597,6 @@ class MainWindow(QMainWindow):
             self._ruleset = merge_multiple_rulesets(*rulesets)
         else:
             self._ruleset = None
-
-    def _on_toggle_builtin(self, state: int) -> None:
-        """通用规则复选框状态变更。"""
-        self._use_builtin = bool(state)
-        try:
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
-            self._update_scan_button()
-            if self._ruleset is not None:
-                self._rules_label.setText(f"规则: {self._build_rules_label()}")
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
-            else:
-                self._rules_label.setText("规则: 未加载")
-                self._stats_label.setText("未加载规则")
-        except RuleError as exc:
-            QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
     # ----------------------------- 扫描模式 -----------------------------
 
@@ -634,7 +667,6 @@ class MainWindow(QMainWindow):
         self._rules_paths.append(path)
         try:
             self._reload_ruleset()
-            self._rules_label.setText(f"规则: {self._build_rules_label()}")
             self._refresh_rules_tree()
             self._refresh_rules_file_list()
             self._update_scan_button()
@@ -877,22 +909,8 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self._config, self)
         if dialog.exec_() == QDialog.Accepted:
             self._save_config()
-            self._use_builtin = self._config.use_builtin
-            self._use_builtin_checkbox.blockSignals(True)
-            self._use_builtin_checkbox.setChecked(self._config.use_builtin)
-            self._use_builtin_checkbox.blockSignals(False)
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
+            self._set_use_builtin(self._config.use_builtin)
             self._refresh_drive_buttons()
-            self._update_scan_button()
-            if self._ruleset is not None:
-                self._rules_label.setText(f"规则: {self._build_rules_label()}")
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
-
-    def _on_batch_process(self) -> None:
-        """批量处理按钮（预留）：提示功能未实现。"""
-        QMessageBox.information(self, "提示", "批量处理功能尚未实现，敬请期待。")
 
     # ----------------------------- 详情区更新 -----------------------------
 
@@ -1061,10 +1079,6 @@ class MainWindow(QMainWindow):
         self._scroll_to_current_detail_hit()
         self._update_detail_nav_label()
 
-    def _on_locate_hit(self) -> None:
-        """定位命中：滚动到当前命中位置。"""
-        self._scroll_to_current_detail_hit()
-
     def _update_detail_nav_label(self) -> None:
         """更新详情区导航标签与按钮状态。"""
         total = len(self._detail_hit_positions)
@@ -1072,12 +1086,10 @@ class MainWindow(QMainWindow):
             self._detail_nav_label.setText("无命中")
             self._detail_prev_btn.setEnabled(False)
             self._detail_next_btn.setEnabled(False)
-            self._detail_locate_btn.setEnabled(False)
         else:
             self._detail_nav_label.setText(f"{self._detail_current_hit_index + 1} / {total}")
             self._detail_prev_btn.setEnabled(True)
             self._detail_next_btn.setEnabled(True)
-            self._detail_locate_btn.setEnabled(True)
 
     def _on_open_in_window(self) -> None:
         """在新窗口打开完整详情对话框。"""
@@ -1139,14 +1151,6 @@ class MainWindow(QMainWindow):
             item.setToolTip(str(path))
             self._rules_file_list.addItem(item)
 
-    def _build_rules_label(self) -> str:
-        """构造规则标签文本。"""
-        names = [p.name for p in self._rules_paths]
-        user_part = ", ".join(names)
-        if self._use_builtin:
-            return f"通用规则 + {user_part}" if user_part else "通用规则"
-        return user_part if user_part else "未加载"
-
     def _on_move_rule_up(self) -> None:
         """将选中的规则文件上移一位。"""
         row = self._rules_file_list.currentRow()
@@ -1202,7 +1206,6 @@ class MainWindow(QMainWindow):
         try:
             self._reload_ruleset()
             self._refresh_rules_tree()
-            self._rules_label.setText(f"规则: {self._build_rules_label()}")
             self._update_scan_button()
             if self._ruleset is not None:
                 self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")

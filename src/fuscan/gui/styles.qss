@@ -224,9 +224,7 @@ QPushButton#export_btn:disabled {
 }
 
 QPushButton#detail_prev_btn, QPushButton#detail_next_btn,
-QPushButton#detail_locate_btn, QPushButton#detail_open_location_btn,
-QPushButton#detail_copy_path_btn, QPushButton#detail_open_window_btn,
-QPushButton#batch_btn {
+QPushButton#detail_open_location_btn {
     background: #ffffff;
     color: #24292e;
     border: 1px solid #e1e4e8;
@@ -237,9 +235,7 @@ QPushButton#batch_btn {
 }
 
 QPushButton#detail_prev_btn:hover, QPushButton#detail_next_btn:hover,
-QPushButton#detail_locate_btn:hover, QPushButton#detail_open_location_btn:hover,
-QPushButton#detail_copy_path_btn:hover, QPushButton#detail_open_window_btn:hover,
-QPushButton#batch_btn:hover {
+QPushButton#detail_open_location_btn:hover {
     background: #f6f8fa;
     border-color: #0366d6;
     color: #0366d6;

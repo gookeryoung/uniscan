@@ -210,26 +210,6 @@
            </property>
           </widget>
          </item>
-         <item>
-          <widget class="QCheckBox" name="use_builtin_checkbox">
-           <property name="toolTip">
-            <string>勾选后加载软件内置通用规则，用户规则中同名规则会覆盖通用规则</string>
-           </property>
-           <property name="text">
-            <string>通用规则</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="rules_label">
-           <property name="text">
-            <string>规则: 未加载</string>
-           </property>
-          </widget>
-         </item>
         </layout>
        </item>
        <item>
@@ -326,13 +306,6 @@
                 <number>2</number>
                </property>
                <item>
-                <widget class="QLabel" name="filter_label">
-                 <property name="text">
-                  <string>筛选:</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
                 <widget class="QLineEdit" name="path_filter_input">
                  <property name="placeholderText">
                   <string>按路径筛选...</string>
@@ -343,24 +316,18 @@
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="rule_filter_label">
-                 <property name="text">
-                  <string>规则:</string>
+                <widget class="QComboBox" name="rule_filter_combo">
+                 <property name="toolTip">
+                  <string>按规则筛选</string>
                  </property>
                 </widget>
                </item>
                <item>
-                <widget class="QComboBox" name="rule_filter_combo"/>
-               </item>
-               <item>
-                <widget class="QLabel" name="group_mode_label">
-                 <property name="text">
-                  <string>分组:</string>
+                <widget class="QComboBox" name="group_mode_combo">
+                 <property name="toolTip">
+                  <string>分组模式</string>
                  </property>
                 </widget>
-               </item>
-               <item>
-                <widget class="QComboBox" name="group_mode_combo"/>
                </item>
               </layout>
              </widget>
@@ -441,36 +408,6 @@
             </item>
             <item>
              <layout class="QHBoxLayout" name="rules_btn_row">
-              <item>
-               <widget class="QPushButton" name="move_up_btn">
-                <property name="toolTip">
-                 <string>将选中的规则文件上移（优先级降低）</string>
-                </property>
-                <property name="text">
-                 <string>上移</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="move_down_btn">
-                <property name="toolTip">
-                 <string>将选中的规则文件下移（优先级升高）</string>
-                </property>
-                <property name="text">
-                 <string>下移</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QPushButton" name="remove_rule_btn">
-                <property name="toolTip">
-                 <string>移除选中的规则文件</string>
-                </property>
-                <property name="text">
-                 <string>移除</string>
-                </property>
-               </widget>
-              </item>
               <item>
                <widget class="QPushButton" name="edit_rule_btn">
                 <property name="toolTip">
@@ -639,16 +576,6 @@
              <number>4</number>
             </property>
             <item>
-             <widget class="QPushButton" name="detail_locate_btn">
-              <property name="toolTip">
-               <string>滚动到当前命中位置</string>
-              </property>
-              <property name="text">
-               <string>定位命中</string>
-              </property>
-             </widget>
-            </item>
-            <item>
              <widget class="QPushButton" name="detail_prev_btn">
               <property name="toolTip">
                <string>跳转到上一个命中位置</string>
@@ -695,26 +622,6 @@
               </property>
               <property name="text">
                <string>打开文件位置</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="detail_copy_path_btn">
-              <property name="toolTip">
-               <string>复制文件路径到剪贴板</string>
-              </property>
-              <property name="text">
-               <string>复制路径</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="detail_open_window_btn">
-              <property name="toolTip">
-               <string>弹出独立对话框查看完整详情</string>
-              </property>
-              <property name="text">
-               <string>在新窗口打开</string>
               </property>
              </widget>
             </item>
@@ -818,19 +725,6 @@
             </item>
             <item>
              <layout class="QHBoxLayout" name="detail_export_row">
-              <item>
-               <widget class="QPushButton" name="batch_btn">
-                <property name="enabled">
-                 <bool>false</bool>
-                </property>
-                <property name="toolTip">
-                 <string>对选中项批量处理（预留）</string>
-                </property>
-                <property name="text">
-                 <string>批量处理</string>
-                </property>
-               </widget>
-              </item>
               <item>
                <spacer name="detail_export_spacer">
                 <property name="orientation">
