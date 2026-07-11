@@ -24,10 +24,11 @@ import logging
 import signal
 import sys
 import threading
+import types
 from pathlib import Path
 
 from fuscan.rules import load_ruleset
-from fuscan.watcher import FileEventType, FileMonitor, IncrementalScanner, MonitorConfig
+from fuscan.watcher import FileEvent, FileEventType, FileMonitor, IncrementalScanner, MonitorConfig
 
 logger = logging.getLogger("file_monitor")
 
@@ -82,7 +83,7 @@ class MonitorApp:
         logger.info("监控已停止")
         return 0
 
-    def _on_event(self, event) -> None:
+    def _on_event(self, event: FileEvent) -> None:
         """文件事件回调。"""
         if event.is_dir:
             return
@@ -95,7 +96,7 @@ class MonitorApp:
                 for hit in result.hits:
                     logger.warning("  [%s] %s: %s", hit.severity.value, hit.rule_name, hit.detail)
 
-    def _signal_handler(self, signum, frame) -> None:
+    def _signal_handler(self, signum: int, _frame: types.FrameType | None) -> None:
         """信号处理：触发停止。"""
         logger.info("收到信号 %d，准备停止...", signum)
         self._stop_event.set()

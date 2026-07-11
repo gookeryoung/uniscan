@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -876,7 +877,7 @@ class TestScanWorker:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        results: list = []
+        results: list[Any] = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
         worker.start()
 
@@ -899,8 +900,8 @@ class TestScanWorker:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path / "nonexistent"])
 
-        results: list = []
-        errors: list = []
+        results: list[Any] = []
+        errors: list[Any] = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
         worker.failed.connect(lambda msg: errors.append(msg))  # noqa: PLW0108
         worker.start()
@@ -1140,8 +1141,8 @@ class TestScanWorkerControl:
         rs = _build_ruleset()
         worker = _CancelOnProgressWorker(ruleset=rs, roots=[tmp_path])
 
-        finished_reports: list = []
-        cancelled_reports: list = []
+        finished_reports: list[Any] = []
+        cancelled_reports: list[Any] = []
         worker.finished_report.connect(lambda r: finished_reports.append(r))  # noqa: PLW0108
         worker.cancelled.connect(lambda r: cancelled_reports.append(r))  # noqa: PLW0108
         worker.start()
@@ -1167,7 +1168,7 @@ class TestScanWorkerControl:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        results: list = []
+        results: list[Any] = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
         worker.start()
 
@@ -1193,13 +1194,13 @@ class TestLaunchApp:
         """launch 应创建 QApplication 与 MainWindow 并进入事件循环。"""
         from fuscan.gui import app as app_module
 
-        created: list = []
-        set_attrs: list = []
+        created: list[Any] = []
+        set_attrs: list[Any] = []
 
         class FakeApp:
             def __init__(self, args):  # type: ignore[no-untyped-def]
                 created.append(self)
-                self._app_name = None
+                self._app_name: str | None = None
 
             def setApplicationName(self, name: str) -> None:
                 self._app_name = name
@@ -1218,7 +1219,7 @@ class TestLaunchApp:
             def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
                 set_attrs.append(attr)
 
-        shown: list = []
+        shown: list[Any] = []
 
         class FakeMainWindow:
             def __init__(self):  # type: ignore[no-untyped-def]
@@ -1253,7 +1254,7 @@ class TestLaunchApp:
                 "setStyleSheet": lambda self, s: None,
             },
         )()
-        created: list = []
+        created: list[Any] = []
 
         class FakeApp:
             def __init__(self, args):  # type: ignore[no-untyped-def]
@@ -1276,7 +1277,7 @@ class TestLaunchApp:
             def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
                 pass
 
-        shown: list = []
+        shown: list[Any] = []
 
         class FakeMainWindow:
             def __init__(self):  # type: ignore[no-untyped-def]
@@ -1295,6 +1296,62 @@ class TestLaunchApp:
         assert rc == 0
         assert len(created) == 0  # 复用现有实例，不创建新的
         assert len(shown) == 1
+
+    def test_launch_qss_load_error_logged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """QSS 样式表加载失败时应记录警告但不中断启动。"""
+        from fuscan.gui import app as app_module
+
+        class FakeApp:
+            def __init__(self, args):  # type: ignore[no-untyped-def]
+                pass
+
+            def setApplicationName(self, name: str) -> None:
+                pass
+
+            def setStyleSheet(self, sheet: str) -> None:
+                pass
+
+            def exec_(self) -> int:
+                return 0
+
+            @staticmethod
+            def instance() -> None:
+                return None
+
+            @staticmethod
+            def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
+                pass
+
+        class FakeMainWindow:
+            def __init__(self):  # type: ignore[no-untyped-def]
+                pass
+
+            def show(self) -> None:
+                pass
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(app_module, "QApplication", FakeApp)
+        monkeypatch.setattr(app_module, "MainWindow", FakeMainWindow)
+        monkeypatch.setattr(app_module, "_QSS_PATH", Path("/nonexistent/styles.qss"))
+
+        rc = app_module.launch(["test"])
+        assert rc == 0
+
+    def test_gui_package_lazy_launch_import(self) -> None:
+        """fuscan.gui 包应通过 __getattr__ 惰性导入 launch。"""
+        import fuscan.gui
+
+        launch = fuscan.gui.launch
+        assert callable(launch)
+
+    def test_gui_package_getattr_unknown_raises(self) -> None:
+        """访问 fuscan.gui 包不存在的属性应抛出 AttributeError。"""
+        import fuscan.gui
+
+        with pytest.raises(AttributeError, match="has no attribute"):
+            _ = fuscan.gui.__getattr__("nonexistent_attr")
 
 
 class TestHitDetailDialogHelpers:
@@ -1406,7 +1463,7 @@ class TestScanWorkerMultiRoot:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path / "dir_a", tmp_path / "dir_b"])
 
-        results: list = []
+        results: list[Any] = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
         worker.start()
 
@@ -1435,7 +1492,7 @@ class TestScanWorkerMultiRoot:
             roots=[tmp_path / "nonexistent", tmp_path],
         )
 
-        results: list = []
+        results: list[Any] = []
         worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
         worker.start()
 
@@ -1463,7 +1520,7 @@ class TestScanWorkerProgress:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        progress_infos: list = []
+        progress_infos: list[Any] = []
         worker.progress_info.connect(progress_infos.append)
         worker.start()
 
@@ -1499,7 +1556,7 @@ class TestScanWorkerProgress:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[dir_a, dir_b])
 
-        progress_infos: list = []
+        progress_infos: list[Any] = []
         worker.progress_info.connect(progress_infos.append)
         worker.start()
 
@@ -1527,7 +1584,7 @@ class TestScanWorkerProgress:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        progress_infos: list = []
+        progress_infos: list[Any] = []
         worker.progress_info.connect(progress_infos.append)
         worker.start()
 
@@ -1563,7 +1620,7 @@ class TestScanWorkerDirect:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        reports: list = []
+        reports: list[Any] = []
         worker.finished_report.connect(reports.append)
         worker.run()  # 直接调用，不通过 start()
 
@@ -1585,7 +1642,7 @@ class TestScanWorkerDirect:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[dir_a, dir_b])
 
-        reports: list = []
+        reports: list[Any] = []
         worker.finished_report.connect(reports.append)
         worker.run()
 
@@ -1600,7 +1657,7 @@ class TestScanWorkerDirect:
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
-        reports: list = []
+        reports: list[Any] = []
         worker.finished_report.connect(reports.append)
         worker.run()
 
@@ -1623,7 +1680,7 @@ class TestScanWorkerDirect:
         worker._cum_errors = 1
         worker._start_time = time.monotonic() - 2.0  # 2 秒前开始
 
-        emitted: list = []
+        emitted: list[Any] = []
         worker.progress_info.connect(emitted.append)
 
         info = ProgressInfo(current_file="test.txt", scanned=5, total=8, skipped=1, matched=2, errors=0, elapsed=1.0)
@@ -1653,9 +1710,9 @@ class TestScanWorkerDirect:
 
         monkeypatch.setattr(Scanner, "scan", boom)
 
-        failures: list = []
+        failures: list[Any] = []
         worker.failed.connect(failures.append)
-        reports: list = []
+        reports: list[Any] = []
         worker.finished_report.connect(reports.append)
         worker.run()
 
@@ -1671,7 +1728,7 @@ class TestScanWorkerDirect:
         worker = ScanWorker(ruleset=rs, roots=[Path("/tmp")])
         worker._start_time = time.monotonic()
 
-        emitted: list = []
+        emitted: list[Any] = []
         worker.progress_info.connect(emitted.append)
 
         info = ProgressInfo(current_file="", scanned=3, total=3, skipped=0, matched=1, errors=0, elapsed=0.5)
@@ -1773,7 +1830,7 @@ class TestScanWorkerDirect:
 
         monkeypatch.setattr(Scanner, "cancel", fake_cancel)
 
-        cancelled_reports: list = []
+        cancelled_reports: list[Any] = []
         worker.cancelled.connect(cancelled_reports.append)
         worker.run()
 
@@ -1798,7 +1855,7 @@ class TestScanWorkerDirect:
 
         monkeypatch.setattr(Scanner, "scan", fake_scan)
 
-        cancelled_reports: list = []
+        cancelled_reports: list[Any] = []
         worker.cancelled.connect(cancelled_reports.append)
         worker.run()
 
@@ -3375,3 +3432,70 @@ class TestSettingsDialog:
         # 取消后配置不变
         assert window._config.use_builtin == before
         window.close()
+
+    def test_settings_dialog_save_and_get_config(self, qapp: QApplication) -> None:
+        """_save_config 应将控件值保存到配置，get_config 应返回当前配置。"""
+        from fuscan.config import Config
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        config = Config()
+        config.max_workers = 4
+        config.max_depth = 10
+        config.scan_archives = False
+        config.include_network_drives = True
+        config.use_builtin = False
+
+        dialog = SettingsDialog(config)
+        # 修改控件值
+        dialog._max_workers_spin.setValue(8)
+        dialog._max_depth_spin.setValue(20)
+        dialog._scan_archives_check.setChecked(True)
+        dialog._include_network_check.setChecked(False)
+        dialog._use_builtin_check.setChecked(True)
+
+        dialog._save_config()
+
+        assert config.max_workers == 8
+        assert config.max_depth == 20
+        assert config.scan_archives is True
+        assert config.include_network_drives is False
+        assert config.use_builtin is True
+
+        # get_config 返回同一配置对象
+        assert dialog.get_config() is config
+        dialog.close()
+
+    def test_settings_dialog_save_config_depth_zero(self, qapp: QApplication) -> None:
+        """max_depth 为 0 时应保存为 None。"""
+        from fuscan.config import Config
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        config = Config()
+        config.max_depth = 5
+
+        dialog = SettingsDialog(config)
+        dialog._max_depth_spin.setValue(0)
+        dialog._save_config()
+
+        assert config.max_depth is None
+        dialog.close()
+
+    def test_settings_dialog_on_accept(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_on_accept 应调用 _save_config 并关闭对话框。"""
+        from fuscan.config import Config
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        config = Config()
+        config.max_workers = 2
+
+        dialog = SettingsDialog(config)
+        dialog._max_workers_spin.setValue(16)
+
+        accepted_called: list[bool] = []
+        monkeypatch.setattr(dialog, "accept", lambda: accepted_called.append(True))
+
+        dialog._on_accept()
+
+        assert config.max_workers == 16
+        assert accepted_called == [True]
+        dialog.close()

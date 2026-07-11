@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide2.QtCore import QObject, QTimer, Signal
 from PySide2.QtGui import QIcon
@@ -30,6 +31,10 @@ from fuscan.scanner import ScanReport
 from fuscan.watcher.ignore_dirs import default_ignore_dirs
 from fuscan.watcher.incremental import IncrementalScanner
 from fuscan.watcher.monitor import FileEvent, FileEventType, FileMonitor, MonitorConfig
+
+if TYPE_CHECKING:
+    from fuscan.gui.main_window import MainWindow
+    from fuscan.gui.worker import ScanWorker
 
 __all__ = ["TrayApp"]
 
@@ -73,8 +78,8 @@ class TrayApp(QObject):
 
         self._tray: QSystemTrayIcon | None = None
         self._tray_menu: QMenu | None = None
-        self._main_window = None
-        self._scan_worker = None
+        self._main_window: MainWindow | None = None
+        self._scan_worker: ScanWorker | None = None
 
         # 增量扫描队列与定时器（批量处理文件事件，避免频繁扫描）
         self._pending_paths: list[Path] = []
@@ -219,7 +224,7 @@ class TrayApp(QObject):
         # 全量扫描在后台线程执行，避免阻塞 UI
         from fuscan.gui.worker import ScanWorker
 
-        self._scan_worker = ScanWorker(ruleset=self._ruleset, root=self._watch_paths[0])
+        self._scan_worker = ScanWorker(ruleset=self._ruleset, roots=[self._watch_paths[0]])
         self._scan_worker.finished_report.connect(self._handle_scan_result)
         self._scan_worker.start()
 

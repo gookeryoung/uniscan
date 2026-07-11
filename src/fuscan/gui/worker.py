@@ -11,7 +11,7 @@ import logging
 import time
 from pathlib import Path
 
-from PySide2.QtCore import QThread, Signal
+from PySide2.QtCore import QObject, QThread, Signal
 
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
@@ -46,7 +46,7 @@ class ScanWorker(QThread):
         max_depth: int | None = None,
         scan_archives: bool = False,
         max_workers: int | None = None,
-        parent=None,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._ruleset = ruleset

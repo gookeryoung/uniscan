@@ -18,6 +18,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors.base import Extractor, ExtractorError
 
 __all__ = ["WpsExtractor"]
@@ -31,10 +33,14 @@ class WpsExtractor(Extractor):
     """WPS Office 文档提取器，按扩展名分发到对应的 OOXML 提取逻辑。"""
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 WPS 提取器支持的扩展名。"""
         return ("wps", "et", "dps")
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 WPS 文档文本，按扩展名分发到对应 OOXML 提取逻辑。"""
         if not self._is_ooxml(path):
             logger.info("WPS 文档非 OOXML 格式（旧版二进制），跳过: %s", path)
             return ""

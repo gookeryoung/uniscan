@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from typing_extensions import override
 
 from fuscan.archive import (
     ArchiveEntry,
@@ -240,17 +241,6 @@ class TestZipReader:
 
 
 class TestRarReader:
-    def test_rar_not_installed_skipped(self, tmp_path: Path) -> None:
-        """无 unrar 工具时打开 RAR 抛 ArchiveError（环境依赖）。"""
-        path = tmp_path / "a.rar"
-        path.write_bytes(b"Rar!\x1a\x07\x00fake")
-        try:
-            RarReader(path)
-        except ArchiveError:
-            return
-        # 如果 unrar 已安装且能解析，则关闭读取器
-        pytest.skip("需要 unrar 工具与真实 RAR 文件")
-
     def test_open_bad_rar(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.rar"
         path.write_bytes(b"not a rar file")
@@ -774,12 +764,15 @@ class TestArchiveEdgeCases:
 
         class FakeReader(ArchiveReader):
             @property
+            @override
             def supported_extensions(self) -> tuple[str, ...]:
                 return ("fake",)
 
+            @override
             def list_entries(self) -> list[ArchiveEntry]:
                 return []
 
+            @override
             def read_entry(self, entry_name: str) -> bytes:
                 return b""
 

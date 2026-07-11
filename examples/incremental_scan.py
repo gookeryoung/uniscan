@@ -67,7 +67,7 @@ def main(scan_path: Path, rules_path: Path) -> int:
 
     # 增量扫描指定路径列表（由文件监控触发时使用）
     print("\n演示 scan_paths：扫描指定路径列表")
-    specific_files = [scan_path / "example.txt"] if (scan_path / "example.txt").exists() else []
+    specific_files: list[Path] = [scan_path / "example.txt"] if (scan_path / "example.txt").exists() else []
     if specific_files:
         report3 = scanner.scan_paths(specific_files)
         print(f"  扫描 {len(specific_files)} 个文件，命中 {report3.stats.matched_files} 个")

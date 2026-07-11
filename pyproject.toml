@@ -16,6 +16,7 @@ dependencies = [
     "PySide2>=5.15.2.1; python_version <= '3.10'",
     "PySide6>=6.5.0; python_version >= '3.11'",
     "PyYAML>=6.0",
+    "typing-extensions>=4.0; python_version < '3.13'",
     "watchdog>=3.0.0",
     "python-docx>=1.1.0",
     "python-pptx>=0.6.23",
@@ -80,7 +81,7 @@ omit        = ["tests/*"]
 source      = ["fuscan"]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 96
 exclude_lines = [
     "if TYPE_CHECKING:",
     "if __name__ == .__main__.:",
@@ -137,10 +138,18 @@ select = [
 
 [tool.pyrefly]
 preset           = "strict"
-project-excludes = [".venv/**"]
+project-excludes = [".venv/**", "**/*_ui.py"]
 project-includes = ["**/*.ipynb", "**/*.py*"]
 python-version   = "3.8"
 search-path      = ["."]
+
+# PySide2 类型 stub 与实际 API 存在系统性偏差，以下规则在 GUI 代码中产生大量误报
+[tool.pyrefly.errors]
+missing-argument    = "ignore" # stub 方法签名与实际 API 不匹配（如 setSectionResizeMode/addWidget）
+missing-attribute   = "ignore" # Signal 描述符的 connect/emit 无法被静态推断
+bad-argument-type   = "ignore" # stub 参数类型描述错误（如 property name 误标为 bytes）
+bad-argument-count  = "ignore" # stub 参数数量与实际 API 不符（如 setContentsMargins）
+no-matching-overload = "ignore" # stub 重载签名不匹配实际调用
 
 [tool.bumpversion]
 current_version = "0.1.2"

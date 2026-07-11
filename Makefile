@@ -2,7 +2,7 @@
 # 运行 `make help` 查看所有可用命令
 
 PACKAGE := fuscan
-COV_THRESHOLD := 95
+COV_THRESHOLD := 96
 
 .PHONY: help sync build b clean c test cov lint typecheck check doc tox bump patch minor major push ui
 

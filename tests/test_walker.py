@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -259,7 +260,7 @@ class TestWalkerErrorHandling:
         original_scandir = os.scandir
 
         class FakeEntry:
-            def __init__(self, entry: os.DirEntry) -> None:
+            def __init__(self, entry: os.DirEntry[str]) -> None:
                 self._entry = entry
                 self.name = entry.name
                 self.path = entry.path
@@ -269,7 +270,7 @@ class TestWalkerErrorHandling:
                     raise OSError("模拟访问失败")
                 return self._entry.is_dir(follow_symlinks=follow_symlinks)
 
-        def mock_scandir(path: object) -> object:
+        def mock_scandir(path: object) -> Iterator[FakeEntry]:
             for entry in original_scandir(Path(str(path))):
                 yield FakeEntry(entry)  # type: ignore[misc]
 

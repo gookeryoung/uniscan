@@ -55,6 +55,7 @@ def parse_match(data: Any) -> MatchSpec:
 
 
 def _parse_leaf(match_type: str, data: Mapping[str, Any]) -> LeafMatch:
+    """解析叶子匹配条件（filename/content/path）。"""
     target = MatchTarget(match_type)
     mode_raw = data.get("mode")
     if not mode_raw:
@@ -74,6 +75,7 @@ def _parse_leaf(match_type: str, data: Mapping[str, Any]) -> LeafMatch:
 
 
 def _parse_composite(match_type: str, data: Mapping[str, Any]) -> MatchSpec:
+    """解析逻辑组合匹配条件（and/or/not）。"""
     if match_type in ("and", "or"):
         children_raw = data.get("children")
         if not isinstance(children_raw, Sequence) or isinstance(children_raw, (str, bytes)):
@@ -167,6 +169,7 @@ def parse_ruleset(data: Any) -> RuleSet:
 
 
 def _as_str_tuple(value: Any, *, field: str, strip_dot: bool = False) -> tuple[str, ...]:
+    """将列表规范化为字符串元组，可选去除前导点号。"""
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         raise RuleParseError(f"{field} 必须是列表")
     items: list[str] = []

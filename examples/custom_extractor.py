@@ -18,6 +18,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors import Extractor, ExtractorError, default_registry
 from fuscan.rules import load_ruleset
 from fuscan.scanner import Scanner
@@ -32,9 +34,11 @@ class IniExtractor(Extractor):
     """
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
         return ("ini", "cfg", "conf")
 
+    @override
     def extract(self, path: Path) -> str:
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")

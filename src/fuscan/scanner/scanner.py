@@ -113,10 +113,12 @@ class Scanner:
 
     @property
     def is_paused(self) -> bool:
+        """扫描是否处于暂停状态。"""
         return not self._pause_event.is_set()
 
     @property
     def is_cancelled(self) -> bool:
+        """扫描是否已被取消。"""
         return self._cancel_event.is_set()
 
     def _check_control(self) -> bool:

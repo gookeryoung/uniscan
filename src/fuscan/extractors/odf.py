@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors.base import Extractor, ExtractorError
 
 __all__ = ["OdtExtractor"]
@@ -19,10 +21,14 @@ class OdtExtractor(Extractor):
     """ODT 文字文档文本提取器。"""
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 ODT 提取器支持的扩展名。"""
         return ("odt",)
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 ODT 文档的段落与标题文本。"""
         try:
             from odf.opendocument import load
             from odf.text import H, P

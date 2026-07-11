@@ -19,10 +19,13 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from types import TracebackType
 from typing import Callable
 
+from typing_extensions import override
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.api import BaseObserver
 
 __all__ = [
     "FileEvent",
@@ -81,6 +84,7 @@ class _EventHandler(FileSystemEventHandler):
         self._last_events: dict[Path, float] = {}
         self._lock = threading.Lock()
 
+    @override
     def on_any_event(self, event: FileSystemEvent) -> None:
         """处理所有类型事件。"""
         path = Path(event.src_path)
@@ -158,7 +162,7 @@ class FileMonitor:
 
     def __init__(self, config: MonitorConfig) -> None:
         self._config = config
-        self._observer: Observer | None = None
+        self._observer: BaseObserver | None = None
         self._handler: _EventHandler | None = None
         self._running = False
         self._lock = threading.Lock()
@@ -239,5 +243,10 @@ class FileMonitor:
     def __enter__(self) -> FileMonitor:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.stop()

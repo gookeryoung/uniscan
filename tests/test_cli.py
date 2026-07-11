@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -418,7 +419,7 @@ class TestTrayCommand:
         tmp_path: Path,
     ) -> None:
         """正常调用时创建 TrayApp 并启动。"""
-        called: dict = {}
+        called: dict[str, Any] = {}
 
         class FakeTrayApp:
             def __init__(self, **kwargs: object) -> None:
@@ -563,7 +564,7 @@ class TestCliErrorPaths:
 
         from fuscan.cli import _configure_logging
 
-        calls: list = []
+        calls: list[dict[str, Any]] = []
 
         def mock_basic_config(**kwargs):  # type: ignore[no-untyped-def]
             calls.append(kwargs)

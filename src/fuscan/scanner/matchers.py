@@ -15,6 +15,8 @@ import re
 from abc import ABC, abstractmethod
 from typing import Pattern
 
+from typing_extensions import override
+
 from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
@@ -64,6 +66,7 @@ class LeafMatcher(Matcher):
             except re.error as exc:
                 raise ValueError(f"正则表达式编译失败 {spec.pattern!r}: {exc}") from exc
 
+    @override
     def matches(self, context: MatchContext) -> MatchResult:
         text = self._extract_text(context)
         return _apply_leaf(text, self.spec, self._compiled)
@@ -76,6 +79,7 @@ class LeafMatcher(Matcher):
 class FileNameMatcher(LeafMatcher):
     """对文件名应用叶子匹配。"""
 
+    @override
     def _extract_text(self, context: MatchContext) -> str:
         return context.entry.name
 
@@ -86,6 +90,7 @@ class ContentMatcher(LeafMatcher):
     首次访问会触发上下文的内容懒加载。
     """
 
+    @override
     def _extract_text(self, context: MatchContext) -> str:
         return context.content
 
@@ -93,6 +98,7 @@ class ContentMatcher(LeafMatcher):
 class PathMatcher(LeafMatcher):
     """对文件路径字符串应用叶子匹配。"""
 
+    @override
     def _extract_text(self, context: MatchContext) -> str:
         return str(context.entry.path)
 
@@ -103,6 +109,7 @@ class AndMatcher(Matcher):
     def __init__(self, children: tuple[Matcher, ...]) -> None:
         self.children = children
 
+    @override
     def matches(self, context: MatchContext) -> MatchResult:
         details: list[str] = []
         for child in self.children:
@@ -113,6 +120,7 @@ class AndMatcher(Matcher):
                 details.append(result.detail)
         return MatchResult(matched=True, detail=" AND ".join(details) if details else "全部命中")
 
+    @override
     def match_all(self, context: MatchContext) -> list[MatchResult]:
         results: list[MatchResult] = []
         for child in self.children:
@@ -126,6 +134,7 @@ class OrMatcher(Matcher):
     def __init__(self, children: tuple[Matcher, ...]) -> None:
         self.children = children
 
+    @override
     def matches(self, context: MatchContext) -> MatchResult:
         for child in self.children:
             result = child.matches(context)
@@ -133,6 +142,7 @@ class OrMatcher(Matcher):
                 return MatchResult(matched=True, detail=result.detail or "任一命中")
         return MatchResult(matched=False)
 
+    @override
     def match_all(self, context: MatchContext) -> list[MatchResult]:
         results: list[MatchResult] = []
         for child in self.children:
@@ -146,6 +156,7 @@ class NotMatcherImpl(Matcher):
     def __init__(self, child: Matcher) -> None:
         self.child = child
 
+    @override
     def matches(self, context: MatchContext) -> MatchResult:
         result = self.child.matches(context)
         if result.matched:

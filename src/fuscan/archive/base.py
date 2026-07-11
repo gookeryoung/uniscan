@@ -77,9 +77,11 @@ class ArchiveReaderFactory:
         self._factories: dict[str, type[ArchiveReader]] = {}
 
     def register(self, extension: str, reader_cls: type[ArchiveReader]) -> None:
+        """注册指定扩展名的读取器类。"""
         self._factories[extension.lower().lstrip(".")] = reader_cls
 
     def get(self, extension: str) -> type[ArchiveReader] | None:
+        """按扩展名查询已注册的读取器类，未注册返回 None。"""
         return self._factories.get(extension.lower().lstrip("."))
 
     def create(self, path: Path, password: str | None = None) -> ArchiveReader | None:

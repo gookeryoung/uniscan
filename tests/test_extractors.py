@@ -88,6 +88,7 @@ def xlsx_file(tmp_path: Path) -> Path:
 
     wb = Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "数据"
     ws["A1"] = "姓名"
     ws["B1"] = "密码"
@@ -432,6 +433,7 @@ class TestWpsExtractor:
 
         wb = Workbook()
         ws = wb.active
+        assert ws is not None
         ws["A1"] = "et_password"
         path = tmp_path / "test.et"
         wb.save(str(path))
@@ -686,6 +688,47 @@ class TestPdfExtractor:
         with pytest.raises(ExtractorError, match="pypdf 未安装"):
             PdfExtractor().extract(path)
 
+    def test_pdf_open_generic_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PdfReader 抛出非 PdfReadError 异常时应包装为 ExtractorError。"""
+        path = tmp_path / "corrupt.pdf"
+        path.write_bytes(b"corrupt")
+
+        def raise_oserror(_path: str) -> object:
+            raise OSError("模拟打开失败")
+
+        class FakeErrors:
+            class PdfReadError(Exception):
+                pass
+
+        fake_module = type("pypdf", (), {"PdfReader": staticmethod(raise_oserror)})
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", FakeErrors)
+
+        with pytest.raises(ExtractorError, match="PDF 打开失败"):
+            PdfExtractor().extract(path)
+
+    def test_pdf_read_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PdfReader 抛出 PdfReadError 时应包装为 ExtractorError。"""
+        path = tmp_path / "bad.pdf"
+        path.write_bytes(b"bad")
+
+        class FakePdfReadError(Exception):
+            pass
+
+        def raise_pdf_error(_path: str) -> object:
+            raise FakePdfReadError("模拟解析失败")
+
+        fake_module = type("pypdf", (), {"PdfReader": staticmethod(raise_pdf_error)})
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", type("errors", (), {"PdfReadError": FakePdfReadError}))
+
+        with pytest.raises(ExtractorError, match="PDF 解析失败"):
+            PdfExtractor().extract(path)
+
 
 # ---------------------------------------------------------------------------
 # OdtExtractor / OdsExtractor（依赖 odfpy）
@@ -764,6 +807,33 @@ class TestOdfExtractors:
         monkeypatch.setattr(builtins, "__import__", fake_import)
         with pytest.raises(ExtractorError, match="odfpy 未安装"):
             OdtExtractor().extract(path)
+
+    def test_ods_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """odfpy 未安装时 OdsExtractor 应抛出 ExtractorError。"""
+        path = tmp_path / "test.ods"
+        path.write_bytes(b"fake")
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "odf.opendocument":
+                raise ImportError("No module named 'odf'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="odfpy 未安装"):
+            OdsExtractor().extract(path)
+
+    def test_ods_cell_text_exception_returns_empty(self) -> None:
+        """_extract_cell_text 在 str(cell) 抛异常时应返回空字符串。"""
+        extractor = OdsExtractor()
+
+        class BadCell:
+            def __str__(self) -> str:
+                raise RuntimeError("模拟单元格转换失败")
+
+        assert extractor._extract_cell_text(BadCell()) == ""
 
 
 # ---------------------------------------------------------------------------

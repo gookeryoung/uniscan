@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
+from typing_extensions import override
 
 from fuscan.rules.model import (
     LeafMatch,
@@ -447,7 +449,7 @@ class TestIncrementalScannerErrorPaths:
 
         original = scanner._scan_entry
 
-        def faulty(entry):
+        def faulty(entry: Any) -> Any:
             if entry.path.name == "a.txt":
                 raise RuntimeError("模拟扫描失败")
             return original(entry)
@@ -488,7 +490,7 @@ class TestIncrementalScannerErrorPaths:
         rs = _build_ruleset(_content_rule("r", "password"))
         scanner = IncrementalScanner(rs)
 
-        def faulty(entry):
+        def faulty(entry: Any) -> None:
             raise RuntimeError("模拟扫描失败")
 
         monkeypatch.setattr(scanner, "_scan_entry", faulty)
@@ -516,8 +518,9 @@ class TestIncrementalScannerErrorPaths:
 
     def test_scan_entry_rule_exception_counts_rule_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """_scan_entry 中 matcher 抛异常时应计 rule_errors 并继续。"""
-        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.context import FileEntry, MatchContext
         from fuscan.scanner.matchers import FileNameMatcher
+        from fuscan.scanner.result import MatchResult
 
         f = tmp_path / "a.txt"
         f.write_text("password", encoding="utf-8")
@@ -528,7 +531,8 @@ class TestIncrementalScannerErrorPaths:
         rule = scanner._compiled[0][0]
 
         class FailingMatcher(FileNameMatcher):
-            def matches(self, context):
+            @override
+            def matches(self, context: MatchContext) -> MatchResult:
                 raise RuntimeError("匹配器异常")
 
         spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password")

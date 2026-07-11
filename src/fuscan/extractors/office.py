@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors.base import Extractor, ExtractorError
 
 __all__ = ["DocxExtractor", "PptxExtractor"]
@@ -20,10 +22,14 @@ class DocxExtractor(Extractor):
     """DOCX 文档文本提取器。"""
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 DOCX 提取器支持的扩展名。"""
         return ("docx",)
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 DOCX 段落、表格与页眉页脚文本。"""
         try:
             from docx import Document
         except ImportError as exc:
@@ -61,10 +67,14 @@ class PptxExtractor(Extractor):
     """PPTX 演示文稿文本提取器。"""
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 PPTX 提取器支持的扩展名。"""
         return ("pptx",)
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 PPTX 幻灯片文本框、表格与备注文本。"""
         try:
             from pptx import Presentation
         except ImportError as exc:

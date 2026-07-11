@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors.base import Extractor, ExtractorError
 
 __all__ = ["OdsExtractor", "XlsxExtractor"]
@@ -27,10 +29,14 @@ class XlsxExtractor(Extractor):
         self._max_cols = max_cols
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 XLSX 提取器支持的扩展名。"""
         return ("xlsx", "xlsm")
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 XLSX 工作簿所有工作表的单元格文本。"""
         try:
             from openpyxl import load_workbook
         except ImportError as exc:
@@ -77,10 +83,14 @@ class OdsExtractor(Extractor):
     """ODS 电子表格文本提取器（OpenDocument Spreadsheet）。"""
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回 ODS 提取器支持的扩展名。"""
         return ("ods",)
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取 ODS 表格所有行的单元格文本。"""
         try:
             from odf.opendocument import load
             from odf.table import TableCell, TableRow

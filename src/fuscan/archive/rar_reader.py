@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from types import TracebackType
+
+from typing_extensions import override
 
 from fuscan.archive.base import ArchiveEntry, ArchiveError, ArchiveReader
 
@@ -42,9 +45,12 @@ class RarReader(ArchiveReader):
             raise ArchiveError(f"打开 RAR 文件失败（可能缺少 unrar 工具）: {path}: {exc}") from exc
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """支持的压缩文件扩展名。"""
         return ("rar",)
 
+    @override
     def list_entries(self) -> list[ArchiveEntry]:
         """列出压缩包内所有条目。"""
         entries: list[ArchiveEntry] = []
@@ -60,6 +66,7 @@ class RarReader(ArchiveReader):
             )
         return entries
 
+    @override
     def read_entry(self, entry_name: str) -> bytes:
         """读取条目内容。
 
@@ -107,5 +114,10 @@ class RarReader(ArchiveReader):
     def __enter__(self) -> RarReader:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close()

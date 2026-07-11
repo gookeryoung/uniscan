@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -207,7 +208,7 @@ class TestTrayAppScanHandling:
 
         app._pending_paths = [f1, f2]
 
-        reports: list = []
+        reports: list[Any] = []
         app.scan_completed.connect(reports.append)
 
         app._flush_pending_scans()
@@ -227,8 +228,8 @@ class TestTrayAppScanHandling:
         app._init_tray()
         app._init_main_window(show=False)
 
-        completed_reports: list = []
-        hit_paths: list = []
+        completed_reports: list[Any] = []
+        hit_paths: list[Any] = []
         app.scan_completed.connect(completed_reports.append)
         app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))
 
@@ -259,7 +260,7 @@ class TestTrayAppScanHandling:
         rs = _build_ruleset()
         app = TrayApp(ruleset=rs)
 
-        hit_paths: list = []
+        hit_paths: list[Any] = []
         app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))
 
         result = ScanResult(path=tmp_path / "a.txt", size=10, hits=(), errors=0)

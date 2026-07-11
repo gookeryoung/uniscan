@@ -8,6 +8,9 @@ from __future__ import annotations
 import logging
 import zipfile
 from pathlib import Path
+from types import TracebackType
+
+from typing_extensions import override
 
 from fuscan.archive.base import ArchiveEntry, ArchiveError, ArchiveReader
 
@@ -34,9 +37,12 @@ class ZipReader(ArchiveReader):
             raise ArchiveError(f"无法打开 ZIP 文件: {path}: {exc}") from exc
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """支持的压缩文件扩展名。"""
         return ("zip",)
 
+    @override
     def list_entries(self) -> list[ArchiveEntry]:
         """列出压缩包内所有条目（目录与文件均列出）。"""
         entries: list[ArchiveEntry] = []
@@ -52,6 +58,7 @@ class ZipReader(ArchiveReader):
             )
         return entries
 
+    @override
     def read_entry(self, entry_name: str) -> bytes:
         """读取条目内容。
 
@@ -92,5 +99,10 @@ class ZipReader(ArchiveReader):
     def __enter__(self) -> ZipReader:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close()

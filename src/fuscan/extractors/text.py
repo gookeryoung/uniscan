@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from typing_extensions import override
+
 from fuscan.extractors.base import Extractor, ExtractorError
 
 __all__ = ["TEXT_EXTENSIONS", "TextExtractor"]
@@ -86,10 +88,14 @@ class TextExtractor(Extractor):
         self._max_size = max_size
 
     @property
+    @override
     def supported_extensions(self) -> tuple[str, ...]:
+        """返回纯文本提取器支持的扩展名。"""
         return TEXT_EXTENSIONS
 
+    @override
     def extract(self, path: Path) -> str:
+        """提取纯文本内容，自动检测编码并应用大小限制。"""
         try:
             size = path.stat().st_size
         except OSError as exc:
