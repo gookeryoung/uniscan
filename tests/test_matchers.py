@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.rules.model import (
+from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
     MatchMode,
@@ -14,8 +14,8 @@ from uniscan.rules.model import (
     NotMatch,
     OrMatch,
 )
-from uniscan.scanner.context import FileEntry, MatchContext
-from uniscan.scanner.matchers import (
+from fuscan.scanner.context import FileEntry, MatchContext
+from fuscan.scanner.matchers import (
     AndMatcher,
     ContentMatcher,
     FileNameMatcher,

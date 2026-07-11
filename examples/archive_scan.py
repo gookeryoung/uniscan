@@ -28,8 +28,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from uniscan.rules import load_ruleset
-from uniscan.scanner import Scanner
+from fuscan.rules import load_ruleset
+from fuscan.scanner import Scanner
 
 
 def main(scan_path: Path, rules_path: Path) -> int:

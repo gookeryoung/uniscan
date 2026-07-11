@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from uniscan.rules.merge import merge_multiple_rulesets, merge_rulesets
-from uniscan.rules.model import (
+from fuscan.rules.merge import merge_multiple_rulesets, merge_rulesets
+from fuscan.rules.model import (
     LeafMatch,
     MatchMode,
     MatchTarget,

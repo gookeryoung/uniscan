@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.archive import (
+from fuscan.archive import (
     ArchiveEntry,
     ArchiveError,
     ArchiveReader,
@@ -18,7 +18,7 @@ from uniscan.archive import (
     get_reader,
     register_all,
 )
-from uniscan.rules.model import (
+from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
     MatchMode,
@@ -28,7 +28,7 @@ from uniscan.rules.model import (
     RuleSet,
     Severity,
 )
-from uniscan.scanner import Scanner
+from fuscan.scanner import Scanner
 
 # ----------------------------- 工具函数 -----------------------------
 
@@ -770,7 +770,7 @@ class TestArchiveEdgeCases:
         assert len(hits) == 1
 
     def test_factory_register_custom(self) -> None:
-        from uniscan.archive.base import ArchiveReaderFactory
+        from fuscan.archive.base import ArchiveReaderFactory
 
         class FakeReader(ArchiveReader):
             @property
@@ -857,7 +857,7 @@ class TestArchiveContentExtraction:
             def read_entry(self, entry_name: str) -> bytes:
                 raise ArchiveError("mocked failure")
 
-        from uniscan.archive import scanner as scanner_module
+        from fuscan.archive import scanner as scanner_module
 
         original_get_reader = scanner_module.get_reader
         scanner_module.get_reader = lambda path, password=None: FailingReader()  # type: ignore[assignment]
@@ -966,7 +966,7 @@ class TestArchiveScannerErrorPaths:
             def close(self) -> None:
                 pass
 
-        from uniscan.archive import scanner as scanner_module
+        from fuscan.archive import scanner as scanner_module
 
         original_get_reader = scanner_module.get_reader
         scanner_module.get_reader = lambda path, password=None: FailingListReader()  # type: ignore[assignment]
@@ -984,14 +984,14 @@ class TestArchiveScannerErrorPaths:
         zip_path = _make_zip(tmp_path / "a.zip", {"a.txt": "hello"})
         rs = _build_ruleset(_content_rule("r", "hello"))
 
-        from uniscan.scanner.matchers import Matcher
+        from fuscan.scanner.matchers import Matcher
 
         # 包装 build_matcher 返回会抛异常的 matcher
         class FailingMatcher(Matcher):
             def matches(self, context):  # type: ignore[no-untyped-def]
                 raise RuntimeError("模拟匹配失败")
 
-        import uniscan.archive.scanner as scanner_mod
+        import fuscan.archive.scanner as scanner_mod
 
         monkeypatch.setattr(scanner_mod, "build_matcher", lambda match: FailingMatcher())
 
@@ -1036,7 +1036,7 @@ class TestArchiveScannerErrorPaths:
 
         rs = _build_ruleset(_content_rule("r", "password"))
 
-        import uniscan.archive.scanner as scanner_mod
+        import fuscan.archive.scanner as scanner_mod
 
         def fake_extract(path: Path) -> str:
             raise RuntimeError("模拟提取失败")

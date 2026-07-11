@@ -8,7 +8,7 @@
 
 ### 源代码（1 文件）
 
-- `src/uniscan/gui/main_window.py`：
+- `src/fuscan/gui/main_window.py`：
   - 导入 `QLineEdit` 和 `ScanResult`/`RuleHit`
   - `_build_main_splitter()`：结果树右侧增加筛选栏容器；结果树新增"命中数"列（共 5 列）；启用 `setSortingEnabled(True)` 支持表头点击排序
   - 新增 `_build_result_filter_bar()`：路径筛选输入框 + 规则筛选下拉 + 分组模式下拉

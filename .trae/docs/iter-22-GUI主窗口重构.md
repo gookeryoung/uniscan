@@ -8,7 +8,7 @@
 
 ### 源码（1 文件，重写）
 
-- `src/uniscan/gui/main_window.py`（~700 行 → ~1185 行，完全重写）：
+- `src/fuscan/gui/main_window.py`（~700 行 → ~1185 行，完全重写）：
   - **_init_ui**：中央 widget 改为「主操作区 + 主体分割器（列表区 | 详情区）」垂直布局。
   - **② 主操作区**（`_build_main_operation_area`）：扫描模式卡片按钮（全盘/盘符/文件夹）+ 盘符下拉 + 目标路径行 + 规则加载行 + 扫描/停止按钮 + 进度条 + 统计标签。
   - **③ 列表区**（`_build_list_area`）：`QTabWidget` 三 Tab（扫描结果/规则文件/扫描历史）+ ⑤ 底部操作区（`QPlainTextEdit` + 导出/批量按钮组）。

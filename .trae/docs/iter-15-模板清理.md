@@ -1,38 +1,38 @@
-# iter-15：coopie 模板残留清理与 pyfilescan→uniscan 命名统一
+# iter-15：coopie 模板残留清理与 pyfilescan→fuscan 命名统一
 
 ## 本轮目标
 
-项目使用 coopie 模板初始化并更名为 uniscan，但 commit `d299aa6` 仅改了包目录结构，代码内容、文档、配置中的旧名称与模板残留未清理。本轮完成全面清理。
+项目使用 coopie 模板初始化并更名为 fuscan，但 commit `d299aa6` 仅改了包目录结构，代码内容、文档、配置中的旧名称与模板残留未清理。本轮完成全面清理。
 
 ## 改动文件清单
 
 ### 源代码（10 文件）
 
-- `src/uniscan/__init__.py`：docstring `pyfilescan` → `uniscan`
-- `src/uniscan/__main__.py`：docstring `python -m pyfilescan` → `python -m uniscan`
-- `src/uniscan/cli.py`：logger 名、prog、版本输出、用法示例
-- `src/uniscan/config.py`：`CONFIG_DIR` 从 `~/.pyfilescan` 改为 `~/.uniscan`，docstring 同步
-- `src/uniscan/rules/parser.py`：docstring 中 `:mod:` 引用
-- `src/uniscan/scanner/matchers.py`：docstring 中 `:mod:` 引用
-- `src/uniscan/gui/main_window.py`：窗口标题、关于对话框、导出报告默认文件名
-- `src/uniscan/gui/app.py`：`setApplicationName`
-- `src/uniscan/watcher/tray.py`：`setApplicationName`、tooltip、托盘通知文案
-- `src/uniscan/builtin/rules.yaml`：注释
+- `src/fuscan/__init__.py`：docstring `pyfilescan` → `fuscan`
+- `src/fuscan/__main__.py`：docstring `python -m pyfilescan` → `python -m fuscan`
+- `src/fuscan/cli.py`：logger 名、prog、版本输出、用法示例
+- `src/fuscan/config.py`：`CONFIG_DIR` 从 `~/.pyfilescan` 改为 `~/.fuscan`，docstring 同步
+- `src/fuscan/rules/parser.py`：docstring 中 `:mod:` 引用
+- `src/fuscan/scanner/matchers.py`：docstring 中 `:mod:` 引用
+- `src/fuscan/gui/main_window.py`：窗口标题、关于对话框、导出报告默认文件名
+- `src/fuscan/gui/app.py`：`setApplicationName`
+- `src/fuscan/watcher/tray.py`：`setApplicationName`、tooltip、托盘通知文案
+- `src/fuscan/builtin/rules.yaml`：注释
 
 ### 测试（2 文件）
 
-- `tests/test_gui.py`：9 处 `pyfilescan.gui.main_window.*` mock 路径 → `uniscan.gui.main_window.*`；配置路径注释、窗口标题断言
+- `tests/test_gui.py`：9 处 `pyfilescan.gui.main_window.*` mock 路径 → `fuscan.gui.main_window.*`；配置路径注释、窗口标题断言
 - `tests/test_cli.py`：`pyfilescan.gui` 模块注入路径、`python -m pyfilescan` 入口测试注释
 
 ### 模板残留清理（2 文件）
 
-- `README.md`：从模板特性介绍重写为 uniscan 项目说明（特性/安装/CLI+GUI 用法/规则配置/示例/开发）
+- `README.md`：从模板特性介绍重写为 fuscan 项目说明（特性/安装/CLI+GUI 用法/规则配置/示例/开发）
 - `pyproject.toml`：移除 `extend-exclude = ["template"]`、`project-excludes` 中 `"template/**"`、`exclude = ["template/*"]`
 
 ### 文档与示例（9 文件）
 
-- `.trae/skills/pyfilescan-development.md` → `uniscan-development.md`：重命名并更新全部 pyfilescan 引用
-- `.trae/docs/iter-11~14`：改动清单中 `src/pyfilescan/` → `src/uniscan/`，配置路径与 skills 引用同步
+- `.trae/skills/pyfilescan-development.md` → `fuscan-development.md`：重命名并更新全部 pyfilescan 引用
+- `.trae/docs/iter-11~14`：改动清单中 `src/pyfilescan/` → `src/fuscan/`，配置路径与 skills 引用同步
 - `examples/README.md`、`examples/basic_scan.py`：标题、说明、代码示例中的引用
 - `rules/example.yaml`、`rules/examples/README.md`：注释与命令示例
 
@@ -43,10 +43,10 @@
 ## 关键决策与依据
 
 1. **`.copier-answers.yml` 保留**：用户确认保留以便后续 `copier update` 同步模板上游修复。
-2. **配置目录 `~/.pyfilescan` → `~/.uniscan`**：项目版本 0.1.0 无实际用户，可安全更改，与包名一致避免混淆。
-3. **skills 文件重命名**：`pyfilescan-development.md` → `uniscan-development.md`，文件名与内容同步更新。
-4. **README 重写而非微调**：原内容是模板特性介绍（构建工具链/CI/CD/多版本测试），非项目说明。重写为基于 `src/uniscan` 实际功能的项目文档。
-5. **iter 历史文档更新路径引用**：虽为历史记录，但 `src/pyfilescan/` 路径已不存在，更新为 `src/uniscan/` 避免读者困惑。
+2. **配置目录 `~/.pyfilescan` → `~/.fuscan`**：项目版本 0.1.0 无实际用户，可安全更改，与包名一致避免混淆。
+3. **skills 文件重命名**：`pyfilescan-development.md` → `fuscan-development.md`，文件名与内容同步更新。
+4. **README 重写而非微调**：原内容是模板特性介绍（构建工具链/CI/CD/多版本测试），非项目说明。重写为基于 `src/fuscan` 实际功能的项目文档。
+5. **iter 历史文档更新路径引用**：虽为历史记录，但 `src/pyfilescan/` 路径已不存在，更新为 `src/fuscan/` 避免读者困惑。
 
 ## 验证结果
 

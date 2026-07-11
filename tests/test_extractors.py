@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.extractors import (
+from fuscan.extractors import (
     DocxExtractor,
     ExtractorError,
     ExtractorRegistry,
@@ -24,7 +24,7 @@ from uniscan.extractors import (
     extract_content,
     get_extractor,
 )
-from uniscan.extractors.spreadsheet import OdsExtractor
+from fuscan.extractors.spreadsheet import OdsExtractor
 
 # ---------------------------------------------------------------------------
 # Fixture 工厂
@@ -522,7 +522,7 @@ class TestWpsExtractorErrorPaths:
         def fake_copyfile(src: Path, dst: Path) -> None:
             raise OSError("模拟复制失败")
 
-        monkeypatch.setattr("uniscan.extractors.wps.shutil.copyfile", fake_copyfile)
+        monkeypatch.setattr("fuscan.extractors.wps.shutil.copyfile", fake_copyfile)
         with pytest.raises(OSError, match="模拟复制失败"):
             extractor._temp_with_ext(path, "docx")
 
@@ -839,7 +839,7 @@ class TestExtractContent:
 
 class TestScannerWithExtractors:
     def test_scan_docx_content(self, docx_file: Path) -> None:
-        from uniscan.rules.model import (
+        from fuscan.rules.model import (
             LeafMatch,
             MatchMode,
             MatchTarget,
@@ -847,7 +847,7 @@ class TestScannerWithExtractors:
             RuleSet,
             Severity,
         )
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         rule = Rule(
             name="敏感词",
@@ -861,7 +861,7 @@ class TestScannerWithExtractors:
         assert result.hits[0].rule_name == "敏感词"
 
     def test_scan_xlsx_content(self, xlsx_file: Path) -> None:
-        from uniscan.rules.model import (
+        from fuscan.rules.model import (
             LeafMatch,
             MatchMode,
             MatchTarget,
@@ -869,7 +869,7 @@ class TestScannerWithExtractors:
             RuleSet,
             Severity,
         )
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         rule = Rule(
             name="敏感词",

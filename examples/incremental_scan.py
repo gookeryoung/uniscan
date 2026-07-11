@@ -23,8 +23,8 @@ import sys
 import time
 from pathlib import Path
 
-from uniscan.rules import load_ruleset
-from uniscan.watcher import IncrementalScanner
+from fuscan.rules import load_ruleset
+from fuscan.watcher import IncrementalScanner
 
 
 def main(scan_path: Path, rules_path: Path) -> int:

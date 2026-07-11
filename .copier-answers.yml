@@ -9,8 +9,8 @@ initial_version: 0.1.0
 license: MIT
 max_python_version: '3.14'
 min_python_version: '3.8'
-package_name: uniscan
-project_name: uniscan
+package_name: fuscan
+project_name: fuscan
 project_type: gui
 use_cicd: true
 use_cli: true
@@ -18,4 +18,3 @@ use_docker: false
 use_docs: true
 use_domestic_mirrors: true
 use_tox: true
-

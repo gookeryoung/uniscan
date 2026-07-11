@@ -1,5 +1,5 @@
-uniscan
-=======
+fuscan
+======
 
 极速通用文件扫描器.
 
@@ -20,13 +20,13 @@ uniscan
 
 .. code-block:: bash
 
-   pip install uniscan
+   pip install fuscan
 
 或使用 uv_:
 
 .. code-block:: bash
 
-   uv add uniscan
+   uv add fuscan
 
 .. _uv: https://docs.astral.sh/uv/
 
@@ -35,7 +35,7 @@ uniscan
 
 .. code-block:: python
 
-   import uniscan
+   import fuscan
 
    # TODO: 添加使用示例
 

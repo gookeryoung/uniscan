@@ -8,7 +8,7 @@
 
 ### 源代码（2 文件）
 
-- `src/uniscan/gui/rule_editor.py`（新增）：
+- `src/fuscan/gui/rule_editor.py`（新增）：
   - `RuleEditorDialog(QDialog)`：规则文件编辑对话框
   - 文件选择下拉框（QComboBox）切换已加载的规则文件
   - 等宽字体 QTextEdit 编辑区
@@ -17,7 +17,7 @@
   - `rules_saved = Signal(str)`：保存成功后通知主窗口重新加载
   - 空规则文件列表时禁用编辑器并显示提示
 
-- `src/uniscan/gui/main_window.py`：
+- `src/fuscan/gui/main_window.py`：
   - 左侧规则文件列表按钮栏新增"编辑"按钮
   - 文件菜单新增"编辑规则..."菜单项
   - `_on_edit_rules()`：打开 RuleEditorDialog，连接 `rules_saved` 信号
@@ -26,7 +26,7 @@
 ### 测试（1 文件）
 
 - `tests/test_gui.py`：
-  - 顶部导入块新增 `from uniscan.gui.detail_dialog import HitDetailDialog`（修复 P3 遗留 F821）
+  - 顶部导入块新增 `from fuscan.gui.detail_dialog import HitDetailDialog`（修复 P3 遗留 F821）
   - `TestRuleEditor` 测试类（14 项测试）：
     - 编辑按钮存在性、无规则时提示
     - 编辑器加载文件内容、切换文件

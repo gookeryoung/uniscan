@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from uniscan import __version__
-from uniscan.cli import build_parser, main
+from fuscan import __version__
+from fuscan.cli import build_parser, main
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -345,13 +345,13 @@ class TestGuiCommand:
             called["launch"] = True
             return 0
 
-        # 注入 fake launch 到 uniscan.gui 命名空间
+        # 注入 fake launch 到 fuscan.gui 命名空间
         import sys
         import types
 
-        fake_gui = types.ModuleType("uniscan.gui")
+        fake_gui = types.ModuleType("fuscan.gui")
         fake_gui.launch = fake_launch  # type: ignore[attr-defined]
-        monkeypatch.setitem(sys.modules, "uniscan.gui", fake_gui)
+        monkeypatch.setitem(sys.modules, "fuscan.gui", fake_gui)
 
         rc = main(["gui"])
         assert rc == 0
@@ -368,7 +368,7 @@ class TestGuiCommand:
         original_import = builtins.__import__
 
         def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if name == "uniscan.gui":
+            if name == "fuscan.gui":
                 raise ImportError("No module named 'PySide2'")
             return original_import(name, *args, **kwargs)
 
@@ -428,7 +428,7 @@ class TestTrayCommand:
                 called["show_window"] = show_window
                 return 0
 
-        import uniscan.watcher.tray as tray_mod
+        import fuscan.watcher.tray as tray_mod
 
         monkeypatch.setattr(tray_mod, "TrayApp", FakeTrayApp)
 
@@ -466,8 +466,8 @@ class TestMainErrorHandling:
 
 class TestMainModuleImport:
     def test_main_module_importable(self) -> None:
-        """``python -m uniscan`` 入口模块可被导入。"""
-        import uniscan.__main__ as main_mod
+        """``python -m fuscan`` 入口模块可被导入。"""
+        import fuscan.__main__ as main_mod
 
         assert hasattr(main_mod, "main")
 
@@ -483,7 +483,7 @@ class TestCliErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """KeyboardInterrupt 时返回 130。"""
-        import uniscan.cli as cli_mod
+        import fuscan.cli as cli_mod
 
         def raise_keyboard_interrupt(*args, **kwargs):  # type: ignore[no-untyped-def]
             raise KeyboardInterrupt
@@ -502,7 +502,7 @@ class TestCliErrorPaths:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """未预期异常时返回 1。"""
-        import uniscan.cli as cli_mod
+        import fuscan.cli as cli_mod
 
         def raise_exception(*args, **kwargs):  # type: ignore[no-untyped-def]
             raise RuntimeError("模拟未知错误")
@@ -539,9 +539,9 @@ class TestCliErrorPaths:
 
     def test_format_text_path_not_relative_to_root(self) -> None:
         """命中路径不在扫描根下时 _format_text 回退到绝对路径。"""
-        from uniscan.cli import _format_text
-        from uniscan.rules.model import Severity
-        from uniscan.scanner.result import RuleHit, ScanReport, ScanResult, ScanStats
+        from fuscan.cli import _format_text
+        from fuscan.rules.model import Severity
+        from fuscan.scanner.result import RuleHit, ScanReport, ScanResult, ScanStats
 
         report = ScanReport(
             root=Path("C:/scan"),
@@ -561,7 +561,7 @@ class TestCliErrorPaths:
         """_configure_logging 不同 verbose 级别传入不同日志级别到 basicConfig。"""
         import logging
 
-        from uniscan.cli import _configure_logging
+        from fuscan.cli import _configure_logging
 
         calls: list = []
 

@@ -8,18 +8,18 @@
 
 ### 源代码（4 文件）
 
-- `src/uniscan/scanner/result.py`：`ScanReport` 新增 `cancelled: bool = False` 字段，标识扫描是否被取消
-- `src/uniscan/scanner/scanner.py`：
+- `src/fuscan/scanner/result.py`：`ScanReport` 新增 `cancelled: bool = False` 字段，标识扫描是否被取消
+- `src/fuscan/scanner/scanner.py`：
   - 新增 `threading.Event` 控制机制（`_pause_event` / `_cancel_event`）
   - 新增 `pause()` / `resume()` / `cancel()` / `is_paused` / `is_cancelled` / `_check_control()` 方法
   - 重构 `scan()`：提取 `_scan_archive_phase()` 消除 PLR0912（分支过多）；进度上下文移至实例属性
   - 简化 `_emit_progress()` / `_scan_sequential()` / `_scan_concurrent()` 签名（移除 `start`/`total`/`skipped` 参数，改用实例属性），同时消除 PLR0913
-- `src/uniscan/gui/worker.py`：
+- `src/fuscan/gui/worker.py`：
   - 新增 `cancelled = Signal(object)` 信号
   - 新增 `_cancel_requested` 标志，解决 Scanner 尚未创建时 cancel 丢失的竞态
   - `cancel()` 设置标志并委托 Scanner；`run()` 创建 Scanner 后检查标志
   - `run()` 在 roots 循环中检查取消标志；取消时 emit `cancelled` 而非 `finished_report`
-- `src/uniscan/gui/main_window.py`：
+- `src/fuscan/gui/main_window.py`：
   - 新增 `ScanState` 枚举（IDLE / RUNNING / PAUSED）驱动三态按钮
   - 扫描按钮 + 停止按钮 HBox 布局（停止按钮初始隐藏，扫描时显示）
   - `_set_scan_controls_text()` 同步按钮与菜单文本

@@ -27,8 +27,8 @@ import threading
 from pathlib import Path
 from typing import List
 
-from uniscan.rules import load_ruleset
-from uniscan.watcher import FileEventType, FileMonitor, IncrementalScanner, MonitorConfig
+from fuscan.rules import load_ruleset
+from fuscan.watcher import FileEventType, FileMonitor, IncrementalScanner, MonitorConfig
 
 logger = logging.getLogger("file_monitor")
 

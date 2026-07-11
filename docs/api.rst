@@ -1,7 +1,7 @@
 API 参考
 =======
 
-.. automodule:: uniscan
+.. automodule:: fuscan
    :members:
    :undoc-members:
    :show-inheritance:

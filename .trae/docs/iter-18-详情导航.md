@@ -8,7 +8,7 @@
 
 ### 源代码（1 文件）
 
-- `src/uniscan/gui/detail_dialog.py`：
+- `src/fuscan/gui/detail_dialog.py`：
   - 导入 `QColor`、`QTextCharFormat`、`QTextCursor`（来自 `PySide2.QtGui`）
   - `__init__` 新增 `_hit_positions` 和 `_current_hit_index` 状态
   - `_init_ui` 新增命中位置导航栏（上一个/下一个按钮 + "N / M" 计数标签）

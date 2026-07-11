@@ -1,9 +1,9 @@
-# uniscan
+# fuscan
 
 > 极速通用文件扫描器.
 
-[![PyPI](https://img.shields.io/pypi/v/uniscan)](https://pypi.org/project/uniscan/)
-[![CI](https://github.com/gookeryoung/uniscan/actions/workflows/ci.yml/badge.svg)](https://github.com/gookeryoung/uniscan/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/fuscan)](https://pypi.org/project/fuscan/)
+[![CI](https://github.com/gookeryoung/fuscan/actions/workflows/ci.yml/badge.svg)](https://github.com/gookeryoung/fuscan/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Coverage](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen.svg)
@@ -24,13 +24,13 @@
 ## 安装
 
 ```bash
-pip install uniscan
+pip install fuscan
 ```
 
 或使用 [uv](https://docs.astral.sh/uv/)：
 
 ```bash
-uv add uniscan
+uv add fuscan
 ```
 
 GUI 与托盘功能需要 PySide2（仅支持 Python 3.8~3.10）。
@@ -41,28 +41,28 @@ GUI 与托盘功能需要 PySide2（仅支持 Python 3.8~3.10）。
 
 ```bash
 # 扫描指定路径（默认使用内置通用规则）
-uniscan scan /path/to/scan
+fuscan scan /path/to/scan
 
 # 使用自定义规则文件，输出 JSON 报告
-uniscan scan /path/to/scan -r rules/custom.yaml -o json -f report.json
+fuscan scan /path/to/scan -r rules/custom.yaml -o json -f report.json
 
 # 加载多个规则文件（后者覆盖前者同名规则）
-uniscan scan /path/to/scan -r base.yaml -r override.yaml
+fuscan scan /path/to/scan -r base.yaml -r override.yaml
 
 # 校验规则文件格式
-uniscan rules -r rules/custom.yaml
+fuscan rules -r rules/custom.yaml
 
 # 启动 GUI
-uniscan gui
+fuscan gui
 
 # 启动托盘驻守（监控指定目录的新增文件）
-uniscan tray -w /path/to/watch -r rules/custom.yaml
+fuscan tray -w /path/to/watch -r rules/custom.yaml
 ```
 
 ### GUI
 
 ```bash
-uniscan gui
+fuscan gui
 ```
 
 GUI 提供杀毒软件风格界面：模式卡片选择扫描范围（全盘/盘符/文件夹）、规则文件列表管理、实时进度反馈（当前文件/已扫描/命中/错误/已用时）、结果分类展示与详情预览（关键词高亮）、扫描结果导出（CSV/JSON）。
@@ -121,7 +121,7 @@ uv sync --extra dev
 make check
 
 # 运行测试
-uv run pytest -m "not slow" --cov=uniscan --cov-fail-under=95
+uv run pytest -m "not slow" --cov=fuscan --cov-fail-under=95
 
 # 构建 Sphinx 文档
 make doc

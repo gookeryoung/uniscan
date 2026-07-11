@@ -19,9 +19,9 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
-from uniscan.extractors import Extractor, ExtractorError, default_registry
-from uniscan.rules import load_ruleset
-from uniscan.scanner import Scanner
+from fuscan.extractors import Extractor, ExtractorError, default_registry
+from fuscan.rules import load_ruleset
+from fuscan.scanner import Scanner
 
 
 class IniExtractor(Extractor):

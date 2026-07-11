@@ -1,7 +1,7 @@
-# Makefile - uniscan 项目快捷命令
+# Makefile - fuscan 项目快捷命令
 # 运行 `make help` 查看所有可用命令
 
-PACKAGE := uniscan
+PACKAGE := fuscan
 COV_THRESHOLD := 95
 
 .PHONY: help sync build b clean c test cov lint typecheck check doc tox bump patch minor major push ui
@@ -13,9 +13,9 @@ sync: ## 安装开发依赖
 	uv sync --extra dev
 
 ui: ## 编译 .ui 文件到 _ui.py (pyside2-uic)
-	pyside2-uic src/uniscan/gui/main_window.ui -o src/uniscan/gui/main_window_ui.py
-	pyside2-uic src/uniscan/gui/detail_dialog.ui -o src/uniscan/gui/detail_dialog_ui.py
-	pyside2-uic src/uniscan/gui/rule_editor.ui -o src/uniscan/gui/rule_editor_ui.py
+	pyside2-uic src/fuscan/gui/main_window.ui -o src/fuscan/gui/main_window_ui.py
+	pyside2-uic src/fuscan/gui/detail_dialog.ui -o src/fuscan/gui/detail_dialog_ui.py
+	pyside2-uic src/fuscan/gui/rule_editor.ui -o src/fuscan/gui/rule_editor_ui.py
 
 build b: ## 构建分发包 (wheel + sdist)
 	uv build

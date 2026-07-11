@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.rules.model import (
+from fuscan.rules.model import (
     LeafMatch,
     MatchMode,
     MatchTarget,
@@ -15,9 +15,9 @@ from uniscan.rules.model import (
     RuleSet,
     Severity,
 )
-from uniscan.watcher.ignore_dirs import default_ignore_dirs
-from uniscan.watcher.incremental import IncrementalScanner
-from uniscan.watcher.monitor import (
+from fuscan.watcher.ignore_dirs import default_ignore_dirs
+from fuscan.watcher.incremental import IncrementalScanner
+from fuscan.watcher.monitor import (
     FileEvent,
     FileEventType,
     FileMonitor,
@@ -67,7 +67,7 @@ class TestIgnoreDirs:
 class TestWatcherLazyImport:
     def test_trayapp_lazy_import(self) -> None:
         """TrayApp 通过 __getattr__ 懒加载，避免无 GUI 环境 import 失败。"""
-        import uniscan.watcher as watcher_pkg
+        import fuscan.watcher as watcher_pkg
 
         tray_cls = watcher_pkg.TrayApp
         assert tray_cls is not None
@@ -75,7 +75,7 @@ class TestWatcherLazyImport:
 
     def test_watcher_getattr_unknown_attribute_raises(self) -> None:
         """访问不存在的属性应抛出 AttributeError。"""
-        import uniscan.watcher as watcher_pkg
+        import fuscan.watcher as watcher_pkg
 
         with pytest.raises(AttributeError, match="has no attribute"):
             _ = watcher_pkg.NonExistent  # type: ignore[attr-defined]
@@ -245,7 +245,7 @@ class TestFileMonitorEdgeCases:
         """未知事件类型应被跳过（返回 None 映射）。"""
         from watchdog.events import FileSystemEvent
 
-        from uniscan.watcher.monitor import _EventHandler
+        from fuscan.watcher.monitor import _EventHandler
 
         events: list[FileEvent] = []
         handler = _EventHandler(
@@ -265,7 +265,7 @@ class TestFileMonitorEdgeCases:
         """回调抛异常时不应传播，仅记录日志。"""
         from watchdog.events import FileSystemEvent
 
-        from uniscan.watcher.monitor import _EventHandler
+        from fuscan.watcher.monitor import _EventHandler
 
         def faulty_callback(event: FileEvent) -> None:
             raise RuntimeError("回调异常")
@@ -498,7 +498,7 @@ class TestIncrementalScannerErrorPaths:
 
     def test_should_scan_dir_returns_false(self, tmp_path: Path) -> None:
         """_should_scan 对目录返回 False。"""
-        from uniscan.scanner.context import FileEntry
+        from fuscan.scanner.context import FileEntry
 
         rs = _build_ruleset(_content_rule("r", "password"))
         scanner = IncrementalScanner(rs)
@@ -516,8 +516,8 @@ class TestIncrementalScannerErrorPaths:
 
     def test_scan_entry_rule_exception_counts_rule_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """_scan_entry 中 matcher 抛异常时应计 rule_errors 并继续。"""
-        from uniscan.scanner.context import FileEntry
-        from uniscan.scanner.matchers import FileNameMatcher
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.matchers import FileNameMatcher
 
         f = tmp_path / "a.txt"
         f.write_text("password", encoding="utf-8")

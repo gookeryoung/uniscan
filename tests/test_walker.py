@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.scanner.walker import FileWalker, list_drives
+from fuscan.scanner.walker import FileWalker, list_drives
 
 
 def _create_tree(root: Path) -> None:

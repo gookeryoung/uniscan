@@ -19,7 +19,7 @@
 
 ```bash
 uv run ruff check src tests
-uv run pytest -m "not slow" --cov=uniscan --cov-fail-under=95
+uv run pytest -m "not slow" --cov=fuscan --cov-fail-under=95
 uv run pytest -m "not slow" --gui  # 若启用 GUI 测试标记
 ```
 
@@ -76,7 +76,7 @@ return run()
 
 ## 模块与入口
 
-- 入口 `src/uniscan/main.py`：`QApplication(sys.argv)` → 构建主窗口 → 事件循环（见上兼容写法）。
+- 入口 `src/fuscan/main.py`：`QApplication(sys.argv)` → 构建主窗口 → 事件循环（见上兼容写法）。
 - `main()` 加 `# pragma: no cover`（事件循环阻塞），拆出 `create_main_window()` 等可测函数。
 - 业务逻辑放纯 Python 模块（不 import PySide），GUI 层只做信号槽连接与状态展示；惰性导入重型部件以加快启动。
 
@@ -105,8 +105,8 @@ class MainWindow(QMainWindow):
 - `.qrc` 管理图标/样式表/翻译等静态资源，编译为 `_rc.py`：
 
 ```bash
-pyside2-rcc resources.qrc -o src/uniscan/resources_rc.py  # PySide2
-pyside6-rcc resources.qrc -o src/uniscan/resources_rc.py  # PySide6
+pyside2-rcc resources.qrc -o src/fuscan/resources_rc.py  # PySide2
+pyside6-rcc resources.qrc -o src/fuscan/resources_rc.py  # PySide6
 ```
 
 - 引用资源用 `:/` 前缀：`QIcon(":/icons/app.png")`，路径前缀在 `.qrc` 的 `<qresource prefix="/">` 定义。
@@ -165,7 +165,7 @@ class Worker(QObject):
 pyinstaller --noconsole --onefile --icon=assets/app.ico \
   --hidden-import=PySide2.QtWidgets \
   --add-data "assets;assets" \
-  src/uniscan/main.py
+  src/fuscan/main.py
 ```
 
 - PySide6 项目把 `--hidden-import=PySide2.QtWidgets` 换成 `--hidden-import=PySide6.QtWidgets`。

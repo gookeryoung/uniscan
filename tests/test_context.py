@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.scanner.context import FileEntry, MatchContext, default_content_provider
+from fuscan.scanner.context import FileEntry, MatchContext, default_content_provider
 
 
 class TestFileEntry:

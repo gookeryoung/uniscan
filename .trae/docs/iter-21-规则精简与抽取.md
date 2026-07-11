@@ -25,9 +25,9 @@
 
 ### skills 文件（1 文件，新增）
 
-- `.trae/skills/uniscan-gui-layout.md`：承载 uniscan 项目特定的 GitHub Desktop 风格界面布局规范，含：
+- `.trae/skills/fuscan-gui-layout.md`：承载 fuscan 项目特定的 GitHub Desktop 风格界面布局规范，含：
   - 5 区布局结构 ASCII 示意图
-  - 5 区职责（含 uniscan 业务映射：扫描模式/规则/命中/导出等）
+  - 5 区职责（含 fuscan 业务映射：扫描模式/规则/命中/导出等）
   - 8 个子节：菜单栏、主操作区、列表区、底部操作区、详情操作栏、详情主体、分割器与伸缩、样式约束
   - 开头说明「通用编码规范见 rule-12」
 
@@ -35,7 +35,7 @@
 
 1. **rule-12 回归通用定位**：rule-12 是 `project_type=gui` 的通用规则，不应锚定特定设计风格（GitHub Desktop）或特定业务（扫描/命中）。项目特定约束移至 skills，使 rule-12 可复用于其他 PyQt 项目。
 2. **整体移走而非拆分**：「界面布局（GitHub Desktop 风格）」章节整体移到 skills，未拆分「通用布局原则」与「业务映射」。理由：GitHub Desktop 风格本身即项目特定选择，且 rule-12 既有「布局」章节已含通用布局原则（QVBoxLayout/QSplitter/stretch），无需补充。
-3. **skill 文件独立而非追加**：新建 `uniscan-gui-layout.md` 而非追加到既有 `uniscan-development.md`。理由：主题独立（界面布局 vs 通用开发技能），内容较多（5 区 + 业务映射 + 配色），独立文件便于查找维护。
+3. **skill 文件独立而非追加**：新建 `fuscan-gui-layout.md` 而非追加到既有 `fuscan-development.md`。理由：主题独立（界面布局 vs 通用开发技能），内容较多（5 区 + 业务映射 + 配色），独立文件便于查找维护。
 4. **精简策略：合并冗余 + 压缩解释，保持约束语义**：不删减约束条目，仅合并表述相近的条目、去除解释性文字。如「模块与入口」4 条合并为 3 条（惰性导入并入业务逻辑条目），「布局」5 条合并为 3 条（嵌套布局与伸缩比合并）。
 5. **开头引导语**：rule-12 开头加一句指向 skills 的引导，避免读者误以为界面布局规范缺失。
 
@@ -50,7 +50,7 @@
   - 测试：qapp/qtbot/waitSignal/gui 标记/offscreen 全部保留。
   - 打包：PyInstaller 命令/`_MEIPASS`/Nuitka 全部保留。
   - 其余章节条目均保留。
-- skill 文件完整性：`uniscan-gui-layout.md` 含原界面布局章节全部内容 + 项目背景说明，约束无丢失。
+- skill 文件完整性：`fuscan-gui-layout.md` 含原界面布局章节全部内容 + 项目背景说明，约束无丢失。
 - Markdown 格式：代码块闭合正确，表格格式正确，标题层级一致。
 
 ## 遗留事项

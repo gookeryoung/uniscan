@@ -12,12 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # -- 项目信息 --------------------------------------------------------------
-project = "uniscan"
+project = "fuscan"
 author = "gooker_young"
 copyright = "2026, gooker_young"
 
 try:
-    from uniscan import __version__  # type: ignore[import-not-found]
+    from fuscan import __version__  # type: ignore[import-not-found]
+
     release = __version__
     version = __version__
 except ImportError:

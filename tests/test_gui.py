@@ -21,11 +21,11 @@ try:
     from PySide2.QtCore import Qt
     from PySide2.QtWidgets import QApplication
 
-    from uniscan.gui.detail_dialog import HitDetailDialog
-    from uniscan.gui.main_window import MainWindow, ScanState
-    from uniscan.gui.worker import ScanWorker
-    from uniscan.rules import load_ruleset
-    from uniscan.rules.model import (
+    from fuscan.gui.detail_dialog import HitDetailDialog
+    from fuscan.gui.main_window import MainWindow, ScanState
+    from fuscan.gui.worker import ScanWorker
+    from fuscan.rules import load_ruleset
+    from fuscan.rules.model import (
         LeafMatch,
         MatchMode,
         MatchTarget,
@@ -33,7 +33,7 @@ try:
         RuleSet,
         Severity,
     )
-    from uniscan.scanner import ScanReport
+    from fuscan.scanner import ScanReport
 
     PYSIDE2_AVAILABLE = True
 except ImportError:
@@ -52,17 +52,17 @@ def qapp() -> QApplication:  # type: ignore[misc]
 
 @pytest.fixture(autouse=True)
 def _isolate_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """隔离配置文件，避免测试读写用户主目录 ~/.uniscan/config.yaml。"""
-    from uniscan.config import load_config as _load_impl
-    from uniscan.config import save_config as _save_impl
+    """隔离配置文件，避免测试读写用户主目录 ~/.fuscan/config.yaml。"""
+    from fuscan.config import load_config as _load_impl
+    from fuscan.config import save_config as _save_impl
 
     config_path = tmp_path / "config.yaml"
     monkeypatch.setattr(
-        "uniscan.gui.main_window.load_config",
+        "fuscan.gui.main_window.load_config",
         lambda path=None: _load_impl(config_path),
     )
     monkeypatch.setattr(
-        "uniscan.gui.main_window.save_config",
+        "fuscan.gui.main_window.save_config",
         lambda config, path=None: _save_impl(config, config_path),
     )
 
@@ -83,7 +83,7 @@ def _build_ruleset() -> RuleSet:
 class TestMainWindow:
     def test_window_creation(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert window.windowTitle().startswith("uniscan")
+        assert window.windowTitle().startswith("fuscan")
         assert window._scan_btn is not None
         assert window._rules_tree is not None
         assert window._result_tree is not None
@@ -122,7 +122,7 @@ rules:
 
     def test_populate_results_displays_hits(self, qapp: QApplication, tmp_path: Path) -> None:
         """结果树应展示命中项。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         # 准备测试文件
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
@@ -141,7 +141,7 @@ rules:
 
     def test_export_csv(self, qapp: QApplication, tmp_path: Path) -> None:
         """CSV 导出应写入文件。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -160,7 +160,7 @@ rules:
 
     def test_export_json(self, qapp: QApplication, tmp_path: Path) -> None:
         """JSON 导出应写入文件。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -193,7 +193,7 @@ rules:
 
         # mock QFileDialog.getOpenFileName 返回规则文件路径
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (str(rules_yaml), ""),
         )
 
@@ -210,7 +210,7 @@ rules:
         # 启动时已加载通用规则
         assert window._ruleset is not None
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: ("", ""),
         )
         window._on_load_rules()
@@ -232,12 +232,12 @@ rules:
         window._use_builtin_checkbox.setChecked(False)
         assert window._ruleset is None
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (str(bad_rules), ""),
         )
         warned = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.warning",
+            "fuscan.gui.main_window.QMessageBox.warning",
             lambda *args, **kwargs: warned.update(called=True),
         )
         window._on_load_rules()
@@ -249,7 +249,7 @@ rules:
         """通过模拟对话框选择扫描路径。"""
         window = MainWindow()
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getExistingDirectory",
+            "fuscan.gui.main_window.QFileDialog.getExistingDirectory",
             lambda *args, **kwargs: str(tmp_path),
         )
         window._on_select_path()
@@ -348,7 +348,7 @@ class TestBuiltinRulesToggle:
         builtin_count = window._rules_tree.topLevelItemCount()
 
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (str(rules_yaml), ""),
         )
         window._on_load_rules()
@@ -402,7 +402,7 @@ class TestMultiRulesList:
         # 先返回 r1，再返回 r2
         paths_iter = iter([str(r1), str(r2)])
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (next(paths_iter), ""),
         )
         window._on_load_rules()
@@ -430,12 +430,12 @@ class TestMultiRulesList:
         window._use_builtin_checkbox.setChecked(False)
 
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getOpenFileName",
+            "fuscan.gui.main_window.QFileDialog.getOpenFileName",
             lambda *args, **kwargs: (str(r1), ""),
         )
         # 抑制提示框
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
         window._on_load_rules()
@@ -657,8 +657,8 @@ class TestConfigPersistence:
 
     def test_rules_paths_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """启动时从配置恢复规则文件列表。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         r1 = tmp_path / "r1.yaml"
         r1.write_text(
@@ -678,8 +678,8 @@ class TestConfigPersistence:
 
     def test_nonexistent_rules_paths_skipped(self, qapp: QApplication, tmp_path: Path) -> None:
         """配置中不存在的规则文件路径应被跳过。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(rules_paths=[str(tmp_path / "nonexistent.yaml")], use_builtin=False)
         _save_impl(config, tmp_path / "config.yaml")
@@ -690,8 +690,8 @@ class TestConfigPersistence:
 
     def test_use_builtin_restored(self, qapp: QApplication, tmp_path: Path) -> None:
         """通用规则开关状态从配置恢复。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(use_builtin=False)
         _save_impl(config, tmp_path / "config.yaml")
@@ -703,8 +703,8 @@ class TestConfigPersistence:
 
     def test_scan_paths_history_restored(self, qapp: QApplication, tmp_path: Path) -> None:
         """扫描路径历史从配置恢复到下拉框。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         (tmp_path / "dir_a").mkdir()
         (tmp_path / "dir_b").mkdir()
@@ -723,7 +723,7 @@ class TestConfigPersistence:
         window._use_builtin_checkbox.setChecked(False)
         window.close()
 
-        from uniscan.config import load_config as _load_impl
+        from fuscan.config import load_config as _load_impl
 
         config = _load_impl(tmp_path / "config.yaml")
         assert config.use_builtin is False
@@ -740,7 +740,7 @@ class TestConfigPersistence:
         window._rules_paths = [r1]
         window.close()
 
-        from uniscan.config import load_config as _load_impl
+        from fuscan.config import load_config as _load_impl
 
         config = _load_impl(tmp_path / "config.yaml")
         assert str(r1) in config.rules_paths
@@ -752,7 +752,7 @@ class TestConfigPersistence:
         window._add_scan_path_history(str(tmp_path / "scan_dir"))
         window.close()
 
-        from uniscan.config import load_config as _load_impl
+        from fuscan.config import load_config as _load_impl
 
         config = _load_impl(tmp_path / "config.yaml")
         assert str(tmp_path / "scan_dir") in config.scan_paths
@@ -777,7 +777,7 @@ class TestConfigPersistence:
 
     def test_path_history_limit(self, qapp: QApplication, tmp_path: Path) -> None:
         """历史路径超过上限时自动截断。"""
-        from uniscan.config import MAX_HISTORY
+        from fuscan.config import MAX_HISTORY
 
         window = MainWindow()
         for i in range(MAX_HISTORY + 5):
@@ -789,8 +789,8 @@ class TestConfigPersistence:
 
     def test_window_geometry_restored(self, qapp: QApplication, tmp_path: Path) -> None:
         """窗口几何从配置恢复。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         # 高度需大于窗口最小高度（5 区布局约 680px），否则 Qt 会强制抬升到最小值
         config = Config(window_geometry=[50, 60, 900, 800])
@@ -807,8 +807,8 @@ class TestConfigPersistence:
 
     def test_splitter_sizes_restored(self, qapp: QApplication, tmp_path: Path) -> None:
         """分割器大小从配置恢复（按比例）。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(window_geometry=[0, 0, 1000, 700], splitter_sizes=[400, 600])
         _save_impl(config, tmp_path / "config.yaml")
@@ -826,8 +826,8 @@ class TestConfigPersistence:
 
     def test_valid_scan_path_enables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """配置中有有效路径时启动后扫描按钮应启用。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         scan_dir = tmp_path / "scan_target"
         scan_dir.mkdir()
@@ -841,8 +841,8 @@ class TestConfigPersistence:
 
     def test_invalid_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """配置中路径无效时启动后扫描按钮应禁用。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(scan_paths=[str(tmp_path / "nonexistent")], use_builtin=False)
         _save_impl(config, tmp_path / "config.yaml")
@@ -854,8 +854,8 @@ class TestConfigPersistence:
 
     def test_no_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """配置中无路径时启动后扫描按钮应禁用。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(scan_paths=[], use_builtin=False)
         _save_impl(config, tmp_path / "config.yaml")
@@ -1064,8 +1064,8 @@ class TestScanControlIntegration:
 
     def test_scan_cancel_through_main_window(self, qapp: QApplication, tmp_path: Path) -> None:
         """通过 MainWindow 取消扫描应显示已取消状态。"""
-        from uniscan.scanner import ScanReport
-        from uniscan.scanner.result import ScanStats
+        from fuscan.scanner import ScanReport
+        from fuscan.scanner.result import ScanStats
 
         window = MainWindow()
         window._ruleset = _build_ruleset()
@@ -1106,7 +1106,7 @@ class TestScanControlIntegration:
         """IDLE 状态有规则集但无有效扫描目标时应提示。"""
         warned: dict[str, bool] = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.warning",
+            "fuscan.gui.main_window.QMessageBox.warning",
             lambda *args, **kwargs: warned.update(called=True),
         )
         window = MainWindow()
@@ -1191,7 +1191,7 @@ class TestScanWorkerControl:
 class TestLaunchApp:
     def test_launch_creates_window_and_returns(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """launch 应创建 QApplication 与 MainWindow 并进入事件循环。"""
-        from uniscan.gui import app as app_module
+        from fuscan.gui import app as app_module
 
         created: list = []
         set_attrs: list = []
@@ -1242,7 +1242,7 @@ class TestLaunchApp:
 
     def test_launch_reuses_existing_app(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """已有 QApplication 实例时复用，不创建新实例。"""
-        from uniscan.gui import app as app_module
+        from fuscan.gui import app as app_module
 
         existing_app = type(
             "ExistingApp",
@@ -1301,31 +1301,31 @@ class TestHitDetailDialogHelpers:
     """详情对话框辅助函数测试。"""
 
     def test_format_size_bytes(self) -> None:
-        from uniscan.gui.detail_dialog import _format_size
+        from fuscan.gui.detail_dialog import _format_size
 
         assert _format_size(0) == "0 B"
         assert _format_size(512) == "512 B"
         assert _format_size(1023) == "1023 B"
 
     def test_format_size_kb(self) -> None:
-        from uniscan.gui.detail_dialog import _format_size
+        from fuscan.gui.detail_dialog import _format_size
 
         assert _format_size(1024) == "1.0 KB"
         assert _format_size(2048) == "2.0 KB"
 
     def test_format_size_mb(self) -> None:
-        from uniscan.gui.detail_dialog import _format_size
+        from fuscan.gui.detail_dialog import _format_size
 
         assert _format_size(1024 * 1024) == "1.0 MB"
 
     def test_format_size_gb(self) -> None:
-        from uniscan.gui.detail_dialog import _format_size
+        from fuscan.gui.detail_dialog import _format_size
 
         assert "GB" in _format_size(1024 * 1024 * 1024)
 
     def test_extract_keywords_contains(self) -> None:
-        from uniscan.gui.detail_dialog import _extract_keywords
-        from uniscan.scanner import RuleHit
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner import RuleHit
 
         hits = (
             RuleHit("r1", Severity.WARNING, "包含 'password'"),
@@ -1336,16 +1336,16 @@ class TestHitDetailDialogHelpers:
         assert "secret" in kws
 
     def test_extract_keywords_regex(self) -> None:
-        from uniscan.gui.detail_dialog import _extract_keywords
-        from uniscan.scanner import RuleHit
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner import RuleHit
 
         hits = (RuleHit("r", Severity.CRITICAL, "正则命中: 'AKIA1234'"),)
         kws = _extract_keywords(hits)
         assert "AKIA1234" in kws
 
     def test_extract_keywords_dedup(self) -> None:
-        from uniscan.gui.detail_dialog import _extract_keywords
-        from uniscan.scanner import RuleHit
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner import RuleHit
 
         hits = (
             RuleHit("r1", Severity.WARNING, "包含 'password'"),
@@ -1355,36 +1355,36 @@ class TestHitDetailDialogHelpers:
         assert kws.count("password") == 1
 
     def test_extract_keywords_no_match(self) -> None:
-        from uniscan.gui.detail_dialog import _extract_keywords
-        from uniscan.scanner import RuleHit
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner import RuleHit
 
         hits = (RuleHit("r", Severity.INFO, "完全相等"),)
         kws = _extract_keywords(hits)
         assert kws == []
 
     def test_build_preview_html_no_keywords(self) -> None:
-        from uniscan.gui.detail_dialog import _build_preview_html
+        from fuscan.gui.detail_dialog import _build_preview_html
 
         result = _build_preview_html("hello world", [])
         assert "hello" in result
         assert "<span" not in result
 
     def test_build_preview_html_with_keywords(self) -> None:
-        from uniscan.gui.detail_dialog import _build_preview_html
+        from fuscan.gui.detail_dialog import _build_preview_html
 
         result = _build_preview_html("hello password world", ["password"])
         assert "span" in result
         assert "background-color: yellow" in result
 
     def test_build_preview_html_escapes_html(self) -> None:
-        from uniscan.gui.detail_dialog import _build_preview_html
+        from fuscan.gui.detail_dialog import _build_preview_html
 
         result = _build_preview_html("<script>alert(1)</script>", [])
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
 
     def test_build_preview_html_case_insensitive(self) -> None:
-        from uniscan.gui.detail_dialog import _build_preview_html
+        from fuscan.gui.detail_dialog import _build_preview_html
 
         result = _build_preview_html("PASSWORD password Password", ["password"])
         # 所有大小的 password 都应被高亮（3 次匹配 = 6 个 span 标签：开+关）
@@ -1520,7 +1520,7 @@ class TestScanWorkerProgress:
         """progress_info 携带 ProgressInfo 对象且字段类型正确。"""
         from PySide2.QtCore import QEventLoop, QTimer
 
-        from uniscan.scanner.result import ProgressInfo
+        from fuscan.scanner.result import ProgressInfo
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -1611,7 +1611,7 @@ class TestScanWorkerDirect:
 
     def test_on_progress_emits_cumulative(self, qapp: QApplication) -> None:
         """_on_progress 应累加 _cum_* 字段后 emit。"""
-        from uniscan.scanner.result import ProgressInfo
+        from fuscan.scanner.result import ProgressInfo
 
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[Path("/tmp")])
@@ -1643,7 +1643,7 @@ class TestScanWorkerDirect:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Scanner.scan 抛异常时 run() 应 emit failed 信号。"""
-        from uniscan.scanner.scanner import Scanner
+        from fuscan.scanner.scanner import Scanner
 
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
@@ -1665,7 +1665,7 @@ class TestScanWorkerDirect:
 
     def test_on_progress_zero_cumulative(self, qapp: QApplication) -> None:
         """_cum_* 全为 0 时 _on_progress 应原样传递 info 值。"""
-        from uniscan.scanner.result import ProgressInfo
+        from fuscan.scanner.result import ProgressInfo
 
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[Path("/tmp")])
@@ -1757,7 +1757,7 @@ class TestScanWorkerDirect:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """_cancel_requested 为 True 时 run() 应在创建 Scanner 后立即 cancel。"""
-        from uniscan.scanner.scanner import Scanner
+        from fuscan.scanner.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -1784,7 +1784,7 @@ class TestScanWorkerDirect:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Scanner 被取消后 run() 应 emit cancelled 信号。"""
-        from uniscan.scanner.scanner import Scanner
+        from fuscan.scanner.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -1869,7 +1869,7 @@ class TestScanMode:
 
     def test_build_scan_roots_full_mode(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """full 模式应返回所有盘符。"""
-        from uniscan.gui import main_window as mw_mod
+        from fuscan.gui import main_window as mw_mod
 
         fake_drives = [Path("C:\\"), Path("D:\\")]
         monkeypatch.setattr(mw_mod, "list_drives", lambda: fake_drives)
@@ -1913,8 +1913,8 @@ class TestScanModePersistence:
 
     def test_scan_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """启动时从配置恢复扫描模式。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(scan_mode="full")
         _save_impl(config, tmp_path / "config.yaml")
@@ -1926,8 +1926,8 @@ class TestScanModePersistence:
 
     def test_drive_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """启动时从配置恢复 drive 模式。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         config = Config(scan_mode="drive")
         _save_impl(config, tmp_path / "config.yaml")
@@ -1943,15 +1943,15 @@ class TestScanModePersistence:
         window._scan_mode_combo.setCurrentIndex(0)
         window.close()
 
-        from uniscan.config import load_config as _load_impl
+        from fuscan.config import load_config as _load_impl
 
         config = _load_impl(tmp_path / "config.yaml")
         assert config.scan_mode == "full"
 
     def test_last_drive_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
         """启动时从配置恢复上次选择的盘符。"""
-        from uniscan.config import Config
-        from uniscan.config import save_config as _save_impl
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
 
         # 使用存在的盘符
         window = MainWindow()
@@ -1975,8 +1975,8 @@ class TestHitDetailDialog:
 
     def test_dialog_shows_file_info(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框应展示文件路径、大小等信息。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
 
         path = tmp_path / "secret.txt"
         path.write_text("my password here", encoding="utf-8")
@@ -1994,8 +1994,8 @@ class TestHitDetailDialog:
 
     def test_dialog_hits_table(self, qapp: QApplication, tmp_path: Path) -> None:
         """命中规则表应正确显示。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
 
         path = tmp_path / "test.txt"
         path.write_text("content", encoding="utf-8")
@@ -2015,8 +2015,8 @@ class TestHitDetailDialog:
 
     def test_dialog_preview_highlights_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
         """内容预览应高亮关键词。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
 
         path = tmp_path / "data.txt"
         path.write_text("the password is secret123", encoding="utf-8")
@@ -2036,8 +2036,8 @@ class TestHitDetailDialog:
 
     def test_dialog_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
         """空文件预览应显示提示。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
 
         path = tmp_path / "empty.txt"
         path.write_text("", encoding="utf-8")
@@ -2053,8 +2053,8 @@ class TestHitDetailDialog:
 
     def test_dialog_preview_nonexistent_file(self, qapp: QApplication, tmp_path: Path) -> None:
         """文件不存在时预览应显示错误提示。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
 
         result = ScanResult(
             path=tmp_path / "nonexistent.txt",
@@ -2069,8 +2069,8 @@ class TestHitDetailDialog:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """双击结果项应弹出详情对话框。"""
-        from uniscan.gui import main_window as mw_module
-        from uniscan.scanner import Scanner
+        from fuscan.gui import main_window as mw_module
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password", encoding="utf-8")
         rs = _build_ruleset()
@@ -2122,8 +2122,8 @@ class TestHitDetailDialogNavigation:
         self, qapp: QApplication, tmp_path: Path, content: str, keyword: str
     ) -> HitDetailDialog:
         """构造带内容的详情对话框。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner.result import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
 
         path = tmp_path / "test.txt"
         path.write_text(content, encoding="utf-8")
@@ -2198,8 +2198,8 @@ class TestHitDetailDialogNavigation:
 
     def test_nonexistent_file_no_crash(self, qapp: QApplication, tmp_path: Path) -> None:
         """文件不存在时不应导致导航异常。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner.result import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
 
         result = ScanResult(
             path=tmp_path / "nonexistent.txt",
@@ -2212,8 +2212,8 @@ class TestHitDetailDialogNavigation:
 
     def test_multiple_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
         """多个不同关键词的命中都应被找到。"""
-        from uniscan.gui.detail_dialog import HitDetailDialog
-        from uniscan.scanner.result import RuleHit, ScanResult
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
 
         content = "password here and api_key there"
         path = tmp_path / "multi.txt"
@@ -2234,7 +2234,7 @@ class TestHitDetailDialogNavigation:
 
 def _build_multi_hit_report(tmp_path: Path) -> ScanReport:
     """构造多规则、多文件命中的测试报告。"""
-    from uniscan.rules.model import (
+    from fuscan.rules.model import (
         LeafMatch,
         MatchMode,
         MatchTarget,
@@ -2242,7 +2242,7 @@ def _build_multi_hit_report(tmp_path: Path) -> ScanReport:
         RuleSet,
         Severity,
     )
-    from uniscan.scanner import Scanner
+    from fuscan.scanner import Scanner
 
     (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
     (tmp_path / "safe.txt").write_text("normal content", encoding="utf-8")
@@ -2417,7 +2417,7 @@ class TestResultFilterAndGroup:
 
     def test_double_click_grouped_child_opens_dialog(self, qapp: QApplication, tmp_path: Path) -> None:
         """分组模式下双击子项应打开详情对话框。"""
-        from uniscan.gui import detail_dialog as dd_module
+        from fuscan.gui import detail_dialog as dd_module
 
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
@@ -2491,7 +2491,7 @@ class TestRuleEditor:
         window._rules_paths = []
         called = {"count": 0}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: called.update(count=called["count"] + 1),
         )
         window._on_edit_rules()
@@ -2500,7 +2500,7 @@ class TestRuleEditor:
 
     def test_editor_dialog_opens_with_content(self, qapp: QApplication, tmp_path: Path) -> None:
         """编辑器应加载规则文件内容。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2512,7 +2512,7 @@ class TestRuleEditor:
 
     def test_editor_switch_files(self, qapp: QApplication, tmp_path: Path) -> None:
         """切换文件下拉应加载对应内容。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         r1 = self._make_rules_file(tmp_path, "r1.yaml")
         r2 = tmp_path / "r2.yaml"
@@ -2528,7 +2528,7 @@ class TestRuleEditor:
 
     def test_save_writes_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """保存应写入文件。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2537,7 +2537,7 @@ class TestRuleEditor:
         )
 
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.information",
+            "fuscan.gui.rule_editor.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
         saved_paths: list[str] = []
@@ -2553,7 +2553,7 @@ class TestRuleEditor:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """无效 YAML 应提示错误且不保存。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         original = rules_path.read_text(encoding="utf-8")
@@ -2562,11 +2562,11 @@ class TestRuleEditor:
 
         warned = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.warning",
+            "fuscan.gui.rule_editor.QMessageBox.warning",
             lambda *args, **kwargs: warned.update(called=True),
         )
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.information",
+            "fuscan.gui.rule_editor.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
         dialog._on_save()
@@ -2577,7 +2577,7 @@ class TestRuleEditor:
 
     def test_reload_restores_content(self, qapp: QApplication, tmp_path: Path) -> None:
         """重新加载应恢复文件原始内容。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2588,7 +2588,7 @@ class TestRuleEditor:
 
     def test_empty_rules_paths(self, qapp: QApplication) -> None:
         """无规则文件时编辑器应显示提示。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         dialog = RuleEditorDialog([])
         assert dialog._file_combo.count() == 0
@@ -2616,14 +2616,14 @@ class TestRuleEditor:
         assert window._ruleset is not None
         assert len(window._ruleset.rules) == 2
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
         window.close()
 
     def test_load_file_content_invalid_index(self, qapp: QApplication, tmp_path: Path) -> None:
         """无效索引应清空编辑器。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2633,7 +2633,7 @@ class TestRuleEditor:
 
     def test_load_file_content_read_error(self, qapp: QApplication, tmp_path: Path) -> None:
         """文件读取失败应显示错误信息并禁用编辑器。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2654,7 +2654,7 @@ class TestRuleEditor:
 
     def test_save_invalid_index_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
         """无效索引时保存不应执行任何操作。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2671,7 +2671,7 @@ class TestRuleEditor:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """写入文件失败应提示且不发射信号。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2679,11 +2679,11 @@ class TestRuleEditor:
 
         warned = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.warning",
+            "fuscan.gui.rule_editor.QMessageBox.warning",
             lambda *args, **kwargs: warned.update(called=True),
         )
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.information",
+            "fuscan.gui.rule_editor.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
 
@@ -2708,7 +2708,7 @@ class TestRuleEditor:
         self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """规则解析失败时仍应发射信号（文件已保存）。"""
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
@@ -2717,11 +2717,11 @@ class TestRuleEditor:
 
         warned = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.warning",
+            "fuscan.gui.rule_editor.QMessageBox.warning",
             lambda *args, **kwargs: warned.update(called=True),
         )
         monkeypatch.setattr(
-            "uniscan.gui.rule_editor.QMessageBox.information",
+            "fuscan.gui.rule_editor.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
 
@@ -2739,7 +2739,7 @@ class TestMainWindowHelpers:
 
     def test_format_size_bytes(self) -> None:
         """_format_size 应正确格式化字节数。"""
-        from uniscan.gui.main_window import _format_size
+        from fuscan.gui.main_window import _format_size
 
         assert _format_size(0) == "0 B"
         assert _format_size(512) == "512 B"
@@ -2749,9 +2749,9 @@ class TestMainWindowHelpers:
 
     def test_extract_keywords(self) -> None:
         """_extract_keywords 应从 detail 中提取单引号包裹的关键词。"""
-        from uniscan.gui.main_window import _extract_keywords
-        from uniscan.rules.model import Severity
-        from uniscan.scanner.result import RuleHit
+        from fuscan.gui.main_window import _extract_keywords
+        from fuscan.rules.model import Severity
+        from fuscan.scanner.result import RuleHit
 
         hits = [
             RuleHit(rule_name="r1", severity=Severity.WARNING, detail="包含 'password'"),
@@ -2763,9 +2763,9 @@ class TestMainWindowHelpers:
 
     def test_extract_keywords_dedup(self) -> None:
         """_extract_keywords 应去重相同关键词。"""
-        from uniscan.gui.main_window import _extract_keywords
-        from uniscan.rules.model import Severity
-        from uniscan.scanner.result import RuleHit
+        from fuscan.gui.main_window import _extract_keywords
+        from fuscan.rules.model import Severity
+        from fuscan.scanner.result import RuleHit
 
         hits = [
             RuleHit(rule_name="r1", severity=Severity.WARNING, detail="包含 'secret'"),
@@ -2776,7 +2776,7 @@ class TestMainWindowHelpers:
 
     def test_build_preview_html_no_keywords(self) -> None:
         """_build_preview_html 无关键词时只转义不高亮。"""
-        from uniscan.gui.main_window import _build_preview_html
+        from fuscan.gui.main_window import _build_preview_html
 
         result = _build_preview_html("hello & world", [])
         assert "hello &amp; world" in result
@@ -2784,7 +2784,7 @@ class TestMainWindowHelpers:
 
     def test_build_preview_html_with_keywords(self) -> None:
         """_build_preview_html 有关键词时应高亮。"""
-        from uniscan.gui.main_window import _build_preview_html
+        from fuscan.gui.main_window import _build_preview_html
 
         result = _build_preview_html("hello password world", ["password"])
         assert "<span" in result
@@ -2792,7 +2792,7 @@ class TestMainWindowHelpers:
 
     def test_build_preview_html_escapes_html(self) -> None:
         """_build_preview_html 应先转义再高亮，避免 XSS。"""
-        from uniscan.gui.main_window import _build_preview_html
+        from fuscan.gui.main_window import _build_preview_html
 
         result = _build_preview_html("<script>alert(1)</script>", ["script"])
         # 原始 <script> 标签不应原样出现（已转义）
@@ -2829,7 +2829,7 @@ class TestDetailArea:
 
     def test_detail_show_result(self, qapp: QApplication, tmp_path: Path) -> None:
         """选中结果项后详情区应切换到非空态并展示详情。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
         rs = _build_ruleset()
@@ -2851,7 +2851,7 @@ class TestDetailArea:
 
     def test_detail_show_result_grouped_child(self, qapp: QApplication, tmp_path: Path) -> None:
         """分组模式下选中子项应展示对应详情。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret1.txt").write_text("x", encoding="utf-8")
         (tmp_path / "secret2.txt").write_text("y", encoding="utf-8")
@@ -2882,7 +2882,7 @@ class TestDetailArea:
 
     def test_detail_hit_navigation(self, qapp: QApplication, tmp_path: Path) -> None:
         """命中导航按钮应在多个命中间切换。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password password password", encoding="utf-8")
         rs = _build_ruleset()
@@ -2956,7 +2956,7 @@ class TestDetailArea:
 
     def test_detail_copy_path(self, qapp: QApplication, tmp_path: Path) -> None:
         """复制路径应将路径写入剪贴板。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -2995,7 +2995,7 @@ class TestDetailArea:
 
     def test_detail_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
         """空文件预览应显示提示文本。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("", encoding="utf-8")
         rs = _build_ruleset()
@@ -3017,7 +3017,7 @@ class TestScanCallbacks:
 
     def test_on_scan_progress(self, qapp: QApplication) -> None:
         """_on_scan_progress 应更新进度条和统计标签。"""
-        from uniscan.scanner.result import ProgressInfo
+        from fuscan.scanner.result import ProgressInfo
 
         window = MainWindow()
         window._progress.setVisible(True)
@@ -3038,7 +3038,7 @@ class TestScanCallbacks:
 
     def test_on_scan_progress_long_path(self, qapp: QApplication) -> None:
         """_on_scan_progress 应截断过长的文件路径。"""
-        from uniscan.scanner.result import ProgressInfo
+        from fuscan.scanner.result import ProgressInfo
 
         window = MainWindow()
         long_path = "/" + "a" * 200 + ".txt"
@@ -3053,7 +3053,7 @@ class TestScanCallbacks:
         window = MainWindow()
         warned = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.critical",
+            "fuscan.gui.main_window.QMessageBox.critical",
             lambda *args, **kwargs: warned.update(called=True),
         )
         window._on_scan_failed("测试错误")
@@ -3063,7 +3063,7 @@ class TestScanCallbacks:
 
     def test_on_scan_cancelled(self, qapp: QApplication, tmp_path: Path) -> None:
         """_on_scan_cancelled 应填充结果并显示取消统计。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -3078,8 +3078,8 @@ class TestScanCallbacks:
 
     def test_pause_resume_scan(self, qapp: QApplication, tmp_path: Path) -> None:
         """暂停/恢复扫描应更新状态和按钮文字。"""
-        from uniscan.gui.worker import ScanWorker
-        from uniscan.scanner import Scanner
+        from fuscan.gui.worker import ScanWorker
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -3112,7 +3112,7 @@ class TestExportAndMenu:
         window = MainWindow()
         informed = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: informed.update(called=True),
         )
         window._on_export_menu()
@@ -3124,7 +3124,7 @@ class TestExportAndMenu:
         window = MainWindow()
         informed = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: informed.update(called=True),
         )
         window._on_export("csv")
@@ -3133,7 +3133,7 @@ class TestExportAndMenu:
 
     def test_export_csv_to_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """导出 CSV 应写入文件。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -3144,11 +3144,11 @@ class TestExportAndMenu:
         window = MainWindow()
         window._last_report = report
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getSaveFileName",
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
             lambda *args, **kwargs: (str(out_path), ""),
         )
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: None,
         )
         window._on_export("csv")
@@ -3158,7 +3158,7 @@ class TestExportAndMenu:
 
     def test_export_cancelled(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """取消导出对话框不应写文件。"""
-        from uniscan.scanner import Scanner
+        from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         rs = _build_ruleset()
@@ -3169,7 +3169,7 @@ class TestExportAndMenu:
         window = MainWindow()
         window._last_report = report
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QFileDialog.getSaveFileName",
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
             lambda *args, **kwargs: ("", ""),
         )
         window._on_export("csv")
@@ -3181,7 +3181,7 @@ class TestExportAndMenu:
         window = MainWindow()
         about_called = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.about",
+            "fuscan.gui.main_window.QMessageBox.about",
             lambda *args, **kwargs: about_called.update(called=True),
         )
         window._on_about()
@@ -3193,7 +3193,7 @@ class TestExportAndMenu:
         window = MainWindow()
         informed = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: informed.update(called=True),
         )
         window._on_batch_process()
@@ -3276,7 +3276,7 @@ class TestRulesManagement:
         window._use_builtin_checkbox.setChecked(False)
         informed = {"called": False}
         monkeypatch.setattr(
-            "uniscan.gui.main_window.QMessageBox.information",
+            "fuscan.gui.main_window.QMessageBox.information",
             lambda *args, **kwargs: informed.update(called=True),
         )
         window._on_edit_rules()
@@ -3297,7 +3297,7 @@ class TestRulesManagement:
         window._refresh_rules_file_list()
 
         # mock exec_ 避免阻塞
-        from uniscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.rule_editor import RuleEditorDialog
 
         original_exec = RuleEditorDialog.exec_
         RuleEditorDialog.exec_ = lambda self: 0  # type: ignore[method-assign]

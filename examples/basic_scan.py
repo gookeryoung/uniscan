@@ -1,6 +1,6 @@
 """基础扫描示例：加载规则、扫描目录、遍历命中报告。
 
-演示 uniscan 最常见的程序化用法：
+演示 fuscan 最常见的程序化用法：
 
 1. 通过 load_ruleset 加载 YAML 规则
 2. 构造 Scanner 并扫描目录
@@ -16,8 +16,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from uniscan.rules import load_ruleset
-from uniscan.scanner import Scanner
+from fuscan.rules import load_ruleset
+from fuscan.scanner import Scanner
 
 
 def main(scan_path: Path, rules_path: Path) -> int:

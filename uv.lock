@@ -3064,7 +3064,7 @@ wheels = [
 ]
 
 [[package]]
-name = "uniscan"
+name = "fuscan"
 version = "0.1.1"
 source = { editable = "." }
 dependencies = [
@@ -3141,7 +3141,7 @@ test = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "uniscan", extra = ["dev", "docs"] },
+    { name = "fuscan", extra = ["dev", "docs"] },
 ]
 
 [package.metadata]
@@ -3169,13 +3169,13 @@ requires-dist = [
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=2.0" },
     { name = "tox", marker = "extra == 'dev'", specifier = ">=4.25.0" },
     { name = "tox-uv", marker = "extra == 'dev'", specifier = ">=1.13.1" },
-    { name = "uniscan", extras = ["lint", "test"], marker = "extra == 'dev'" },
+    { name = "fuscan", extras = ["lint", "test"], marker = "extra == 'dev'" },
     { name = "watchdog", specifier = ">=3.0.0" },
 ]
 provides-extras = ["dev", "docs", "lint", "test"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "uniscan", extras = ["dev", "docs"] }]
+dev = [{ name = "fuscan", extras = ["dev", "docs"] }]
 
 [[package]]
 name = "urllib3"

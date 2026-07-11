@@ -16,7 +16,7 @@
 uv run ruff check src tests
 uv run ruff format --check src tests
 uv run pyrefly check
-uv run pytest -m "not slow" --cov=uniscan --cov-fail-under=95
+uv run pytest -m "not slow" --cov=fuscan --cov-fail-under=95
 ```
 
 ## 兼容性

@@ -28,14 +28,14 @@ dependencies = [
 
 description     = "极速通用文件扫描器."
 license         = "MIT"
-name            = "uniscan"
+name            = "fuscan"
 readme          = "README.md"
 requires-python = ">=3.8"
 version         = "0.1.1"
 
 [project.optional-dependencies]
 dev = [
-    "uniscan[lint,test]",
+    "fuscan[lint,test]",
     "prek>=0.4.5",
     "tox-uv>=1.13.1",
     "tox>=4.25.0",
@@ -51,7 +51,7 @@ test = [
 ]
 
 [project.scripts]
-uniscan = "uniscan.cli:main"
+fuscan = "fuscan.cli:main"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -65,19 +65,19 @@ default = true
 url     = "https://mirrors.aliyun.com/pypi/simple/"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/uniscan"]
+packages = ["src/fuscan"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/uniscan/py.typed" = "uniscan/py.typed"
+"src/fuscan/py.typed" = "fuscan/py.typed"
 
 [dependency-groups]
-dev = ["uniscan[dev,docs]"]
+dev = ["fuscan[dev,docs]"]
 
 [tool.coverage.run]
 branch      = true
 concurrency = ["thread"]
 omit        = ["tests/*"]
-source      = ["uniscan"]
+source      = ["fuscan"]
 
 [tool.coverage.report]
 fail_under = 95
@@ -130,10 +130,10 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["ARG001", "ARG002", "ARG005", "PLR0913"]
 "**/*_ui.py" = ["F401", "F403", "F405", "UP004", "UP009", "UP025"]
-"src/uniscan/cli.py" = ["PLR0911"]
-"src/uniscan/scanner/matchers.py" = ["PLR0911"]
-"src/uniscan/scanner/scanner.py" = ["PLR0913"]
-"src/uniscan/gui/worker.py" = ["PLR0913"]
+"src/fuscan/cli.py" = ["PLR0911"]
+"src/fuscan/scanner/matchers.py" = ["PLR0911"]
+"src/fuscan/scanner/scanner.py" = ["PLR0913"]
+"src/fuscan/gui/worker.py" = ["PLR0913"]
 
 [tool.pyrefly]
 preset           = "strict"
@@ -156,6 +156,6 @@ search = '(version\s+=\s+)"{current_version}"'
 replace = '\1"{new_version}"'
 
 [[tool.bumpversion.files]]
-filename = "src/uniscan/__init__.py"
+filename = "src/fuscan/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'

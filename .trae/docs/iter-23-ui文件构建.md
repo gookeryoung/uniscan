@@ -8,20 +8,20 @@
 
 ### 新增文件
 
-- `src/uniscan/gui/styles.qss`：GitHub Desktop 风格样式表（从 main_window.py 的 _apply_qss 提取）
-- `src/uniscan/gui/main_window.ui`：主窗口 UI 定义（QMainWindow + menubar + toolbar + 5 区布局）
-- `src/uniscan/gui/main_window_ui.py`：pyside2-uic 编译产物
-- `src/uniscan/gui/detail_dialog.ui`：命中详情对话框 UI 定义
-- `src/uniscan/gui/detail_dialog_ui.py`：pyside2-uic 编译产物
-- `src/uniscan/gui/rule_editor.ui`：规则编辑器 UI 定义
-- `src/uniscan/gui/rule_editor_ui.py`：pyside2-uic 编译产物
+- `src/fuscan/gui/styles.qss`：GitHub Desktop 风格样式表（从 main_window.py 的 _apply_qss 提取）
+- `src/fuscan/gui/main_window.ui`：主窗口 UI 定义（QMainWindow + menubar + toolbar + 5 区布局）
+- `src/fuscan/gui/main_window_ui.py`：pyside2-uic 编译产物
+- `src/fuscan/gui/detail_dialog.ui`：命中详情对话框 UI 定义
+- `src/fuscan/gui/detail_dialog_ui.py`：pyside2-uic 编译产物
+- `src/fuscan/gui/rule_editor.ui`：规则编辑器 UI 定义
+- `src/fuscan/gui/rule_editor_ui.py`：pyside2-uic 编译产物
 
 ### 修改文件
 
-- `src/uniscan/gui/main_window.py`：移除 _init_ui/_build_*/_apply_qss 等方法，改为 _bind_widgets + _configure_ui 模式
-- `src/uniscan/gui/detail_dialog.py`：移除 _init_ui 方法，改为 _bind_widgets + _configure_ui 模式
-- `src/uniscan/gui/rule_editor.py`：移除 _init_ui 方法，改为 _bind_widgets + _configure_ui 模式
-- `src/uniscan/gui/app.py`：加载 styles.qss 应用程序级样式表，事件循环双兼容（exec/exec_）
+- `src/fuscan/gui/main_window.py`：移除 _init_ui/_build_*/_apply_qss 等方法，改为 _bind_widgets + _configure_ui 模式
+- `src/fuscan/gui/detail_dialog.py`：移除 _init_ui 方法，改为 _bind_widgets + _configure_ui 模式
+- `src/fuscan/gui/rule_editor.py`：移除 _init_ui 方法，改为 _bind_widgets + _configure_ui 模式
+- `src/fuscan/gui/app.py`：加载 styles.qss 应用程序级样式表，事件循环双兼容（exec/exec_）
 - `tests/test_gui.py`：FakeApp/ExistingApp 添加 setStyleSheet 方法
 - `Makefile`：新增 `ui` 目标编译 .ui 文件
 
@@ -89,12 +89,12 @@ pyproject.toml 的 `[tool.pytest.ini_options].markers` 已注册 `gui` marker，
 - `tests/test_cli.py`：CLI 异常路径（5 个测试）
 - `tests/test_gui.py`：ScanWorker 异常路径（5 个测试）
 - `tests/test_scanner.py`：Scanner 异常路径（6 个测试）
-- `src/uniscan/extractors/text.py`：删除不可达死代码（latin-1 fallback 永不失败）
-- `src/uniscan/cli.py`：删除不可达死代码（required=True 时 parser.print_help 不可达）
+- `src/fuscan/extractors/text.py`：删除不可达死代码（latin-1 fallback 永不失败）
+- `src/fuscan/cli.py`：删除不可达死代码（required=True 时 parser.print_help 不可达）
 
 ### 4. 图标美化 ✅
 
-为扫描控制按钮添加 SVG 图标（`src/uniscan/assets/icons/` 下的 scan.svg、stop.svg、pause.svg、rescan.svg），
+为扫描控制按钮添加 SVG 图标（`src/fuscan/assets/icons/` 下的 scan.svg、stop.svg、pause.svg、rescan.svg），
 采用磁盘路径加载方式（QIcon(str(path))），扫描状态切换时图标随之变化。
 
 ### 5. ruff per-file-ignores 优化

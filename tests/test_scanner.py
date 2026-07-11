@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.rules.model import (
+from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
     MatchMode,
@@ -19,8 +19,8 @@ from uniscan.rules.model import (
     RuleSet,
     Severity,
 )
-from uniscan.scanner import Scanner, ScanReport, ScanResult
-from uniscan.scanner.result import ProgressInfo
+from fuscan.scanner import Scanner, ScanReport, ScanResult
+from fuscan.scanner.result import ProgressInfo
 
 
 def _build_ruleset(*rules: Rule) -> RuleSet:
@@ -194,7 +194,7 @@ class TestScannerRules:
 
 class TestScanResult:
     def test_has_hit(self) -> None:
-        from uniscan.scanner.result import RuleHit
+        from fuscan.scanner.result import RuleHit
 
         result = ScanResult(path=Path("/x"), size=0, hits=(RuleHit("r", Severity.INFO, "d"),))
         assert result.has_hit is True
@@ -204,7 +204,7 @@ class TestScanResult:
         assert result.has_hit is False
 
     def test_max_severity(self) -> None:
-        from uniscan.scanner.result import RuleHit
+        from fuscan.scanner.result import RuleHit
 
         result = ScanResult(
             path=Path("/x"),
@@ -224,7 +224,7 @@ class TestScanResult:
 
 class TestScanReport:
     def test_hits_filters_matched(self, tmp_path: Path) -> None:
-        from uniscan.scanner.result import RuleHit, ScanStats
+        from fuscan.scanner.result import RuleHit, ScanStats
 
         results = (
             ScanResult(path=tmp_path / "a", size=0, hits=(RuleHit("r", Severity.INFO, "d"),)),
@@ -238,7 +238,7 @@ class TestScanReport:
 class TestScannerErrorHandling:
     def test_scan_continues_on_content_error(self, tmp_path: Path) -> None:
         """当内容提供器抛异常时，扫描器应记录错误并继续。"""
-        from uniscan.scanner.context import FileEntry
+        from fuscan.scanner.context import FileEntry
 
         (tmp_path / "good.txt").write_text("password", encoding="utf-8")
         (tmp_path / "bad.txt").write_text("password", encoding="utf-8")
@@ -310,7 +310,7 @@ class TestScannerConcurrency:
 
     def test_concurrent_error_handling(self, tmp_path: Path) -> None:
         """多线程模式下错误处理应正常工作。"""
-        from uniscan.scanner.context import FileEntry
+        from fuscan.scanner.context import FileEntry
 
         for i in range(10):
             (tmp_path / f"file_{i}.txt").write_text("password", encoding="utf-8")
@@ -564,8 +564,8 @@ class TestScannerExtraCoverage:
 
     def test_default_extract_content_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """extract_content 抛异常时回退到 read_text。"""
-        from uniscan.scanner.context import FileEntry
-        from uniscan.scanner.scanner import default_extract_content
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.scanner import default_extract_content
 
         path = tmp_path / "a.txt"
         path.write_text("password fallback", encoding="utf-8")
@@ -574,7 +574,7 @@ class TestScannerExtraCoverage:
         def raise_extract(p: Path) -> str:
             raise RuntimeError("提取失败")
 
-        monkeypatch.setattr("uniscan.scanner.scanner.extract_content", raise_extract)
+        monkeypatch.setattr("fuscan.scanner.scanner.extract_content", raise_extract)
         content = default_extract_content(entry)
         assert "password fallback" in content
 
@@ -622,7 +622,7 @@ class TestScannerExtraCoverage:
 
     def test_should_scan_dir_returns_false(self) -> None:
         """_should_scan 对目录返回 False。"""
-        from uniscan.scanner.context import FileEntry
+        from fuscan.scanner.context import FileEntry
 
         rs = _build_ruleset(_filename_rule("r", "x"))
         scanner = Scanner(rs)
@@ -640,7 +640,7 @@ class TestScannerExtraCoverage:
         rs = _build_ruleset(_filename_rule("r", "secret"))
         scanner = Scanner(rs, scan_archives=True)
 
-        from uniscan.archive import scanner as archive_scanner_mod
+        from fuscan.archive import scanner as archive_scanner_mod
 
         def fake_scan_archive(self, path):  # type: ignore[no-untyped-def]
             raise RuntimeError("模拟压缩包扫描失败")

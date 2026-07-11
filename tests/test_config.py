@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from uniscan.config import Config, load_config, save_config
+from fuscan.config import Config, load_config, save_config
 
 
 class TestConfig:
