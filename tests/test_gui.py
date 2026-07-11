@@ -20,7 +20,7 @@ pytestmark = pytest.mark.gui
 try:
     from PySide2.QtWidgets import QApplication
 
-    from uniscan.gui.main_window import MainWindow
+    from uniscan.gui.main_window import MainWindow, ScanState
     from uniscan.gui.worker import ScanWorker
     from uniscan.rules import load_ruleset
     from uniscan.rules.model import (
@@ -910,6 +910,287 @@ class TestScanWorker:
         assert not worker.isRunning()
         # 无效路径返回空报告，不应有 error
         assert len(errors) == 0
+
+
+class TestScanControlUI:
+    """扫描控制 UI 状态测试：开始/暂停/继续/停止。"""
+
+    def test_scan_state_idle_initially(self, qapp: QApplication) -> None:
+        """启动时扫描状态应为 IDLE。"""
+        window = MainWindow()
+        assert window._scan_state == ScanState.IDLE
+        window.close()
+
+    def test_scan_button_text_idle(self, qapp: QApplication) -> None:
+        """IDLE 状态扫描按钮文本为"开始扫描"。"""
+        window = MainWindow()
+        assert window._scan_btn.text() == "开始扫描"
+        assert window._scan_action.text() == "开始扫描"
+        window.close()
+
+    def test_stop_button_hidden_initially(self, qapp: QApplication) -> None:
+        """启动时停止按钮应隐藏。"""
+        window = MainWindow()
+        assert not window._stop_btn.isVisible()
+        window.close()
+
+    def test_set_scan_controls_text_updates_both(self, qapp: QApplication) -> None:
+        """_set_scan_controls_text 应同步更新按钮和 action 文本。"""
+        window = MainWindow()
+        window._set_scan_controls_text("暂停扫描")
+        assert window._scan_btn.text() == "暂停扫描"
+        assert window._scan_action.text() == "暂停扫描"
+        window._set_scan_controls_text("继续扫描")
+        assert window._scan_btn.text() == "继续扫描"
+        assert window._scan_action.text() == "继续扫描"
+        window.close()
+
+    def test_update_scan_button_running_stays_enabled(self, qapp: QApplication) -> None:
+        """RUNNING 状态下扫描按钮应始终可用，即使无规则集。"""
+        window = MainWindow()
+        window._ruleset = None
+        window._scan_state = ScanState.RUNNING
+        window._update_scan_button()
+        assert window._scan_btn.isEnabled()
+        assert window._scan_action.isEnabled()
+        window.close()
+
+    def test_update_scan_button_paused_stays_enabled(self, qapp: QApplication) -> None:
+        """PAUSED 状态下扫描按钮应始终可用。"""
+        window = MainWindow()
+        window._ruleset = None
+        window._scan_state = ScanState.PAUSED
+        window._update_scan_button()
+        assert window._scan_btn.isEnabled()
+        assert window._scan_action.isEnabled()
+        window.close()
+
+    def test_pause_scan_changes_state_and_text(self, qapp: QApplication) -> None:
+        """_pause_scan 应设置 PAUSED 状态和"继续扫描"文本。"""
+        window = MainWindow()
+        window._scan_state = ScanState.RUNNING
+        window._pause_scan()
+        assert window._scan_state == ScanState.PAUSED
+        assert window._scan_btn.text() == "继续扫描"
+        assert window._scan_action.text() == "继续扫描"
+        assert "已暂停" in window._stats_label.text()
+        window.close()
+
+    def test_resume_scan_changes_state_and_text(self, qapp: QApplication) -> None:
+        """_resume_scan 应设置 RUNNING 状态和"暂停扫描"文本。"""
+        window = MainWindow()
+        window._scan_state = ScanState.PAUSED
+        window._resume_scan()
+        assert window._scan_state == ScanState.RUNNING
+        assert window._scan_btn.text() == "暂停扫描"
+        assert window._scan_action.text() == "暂停扫描"
+        window.close()
+
+    def test_reset_scan_ui_resets_state(self, qapp: QApplication) -> None:
+        """_reset_scan_ui 应重置到 IDLE 状态并恢复"开始扫描"文本。"""
+        window = MainWindow()
+        window._scan_state = ScanState.RUNNING
+        window._set_scan_controls_text("暂停扫描")
+        window._stop_btn.setVisible(True)
+        window._reset_scan_ui()
+        assert window._scan_state == ScanState.IDLE
+        assert window._scan_btn.text() == "开始扫描"
+        assert window._scan_action.text() == "开始扫描"
+        assert not window._stop_btn.isVisible()
+        assert not window._progress.isVisible()
+        assert not window._current_file_label.isVisible()
+        window.close()
+
+    def test_on_scan_with_no_ruleset_does_nothing(self, qapp: QApplication) -> None:
+        """IDLE 状态无规则集时点击扫描按钮不应启动。"""
+        window = MainWindow()
+        window._ruleset = None
+        window._on_scan()
+        assert window._scan_state == ScanState.IDLE
+        assert window._worker is None
+        window.close()
+
+    def test_on_scan_running_triggers_pause(self, qapp: QApplication) -> None:
+        """RUNNING 状态点击扫描按钮应触发暂停。"""
+        window = MainWindow()
+        window._scan_state = ScanState.RUNNING
+        window._set_scan_controls_text("暂停扫描")
+        window._on_scan()
+        assert window._scan_state == ScanState.PAUSED
+        assert window._scan_btn.text() == "继续扫描"
+        window.close()
+
+    def test_on_scan_paused_triggers_resume(self, qapp: QApplication) -> None:
+        """PAUSED 状态点击扫描按钮应触发恢复。"""
+        window = MainWindow()
+        window._scan_state = ScanState.PAUSED
+        window._set_scan_controls_text("继续扫描")
+        window._on_scan()
+        assert window._scan_state == ScanState.RUNNING
+        assert window._scan_btn.text() == "暂停扫描"
+        window.close()
+
+
+class TestScanControlIntegration:
+    """扫描控制集成测试：通过 MainWindow 运行完整扫描流程。"""
+
+    def test_scan_completes_through_main_window(self, qapp: QApplication, tmp_path: Path) -> None:
+        """通过 MainWindow 启动扫描应完成并填充结果树。"""
+        from PySide2.QtCore import QEventLoop, QTimer
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "normal.txt").write_text("y", encoding="utf-8")
+
+        window = MainWindow()
+        window._ruleset = _build_ruleset()
+        window._scan_root = tmp_path
+        window._scan_mode = "folder"
+        window._on_scan()
+
+        assert window._scan_state == ScanState.RUNNING
+        assert window._scan_btn.text() == "暂停扫描"
+        assert window._stop_btn.isVisible()
+
+        loop = QEventLoop()
+        QTimer.singleShot(10000, loop.quit)
+        window._worker.finished.connect(loop.quit) if window._worker is not None else None
+        loop.exec_()
+
+        if window._worker is not None:
+            window._worker.wait(2000)
+
+        assert window._scan_state == ScanState.IDLE
+        assert window._scan_btn.text() == "开始扫描"
+        assert window._result_tree.topLevelItemCount() >= 1
+        assert window._worker is None
+        window.close()
+
+    def test_scan_cancel_through_main_window(self, qapp: QApplication, tmp_path: Path) -> None:
+        """通过 MainWindow 取消扫描应显示已取消状态。"""
+        from uniscan.scanner import ScanReport
+        from uniscan.scanner.result import ScanStats
+
+        window = MainWindow()
+        window._ruleset = _build_ruleset()
+        window._scan_root = tmp_path
+        window._scan_mode = "folder"
+
+        # 模拟扫描中状态
+        window._scan_state = ScanState.RUNNING
+        window._set_scan_controls_text("暂停扫描")
+        window._stop_btn.setVisible(True)
+        window._progress.setVisible(True)
+
+        # 直接调用 _on_scan_cancelled 模拟取消回调
+        report = ScanReport(
+            root=tmp_path,
+            results=(),
+            stats=ScanStats(total_files=100, scanned_files=50, matched_files=10),
+            cancelled=True,
+        )
+        window._on_scan_cancelled(report)
+
+        assert window._scan_state == ScanState.IDLE
+        assert window._scan_btn.text() == "开始扫描"
+        assert not window._stop_btn.isVisible()
+        assert "已取消" in window._stats_label.text()
+        window.close()
+
+    def test_cleanup_worker_sets_none(self, qapp: QApplication) -> None:
+        """_cleanup_worker 应将 _worker 设为 None。"""
+        window = MainWindow()
+        # 模拟有 worker 的情况
+        window._worker = None  # 已经是 None
+        window._cleanup_worker()
+        assert window._worker is None
+        window.close()
+
+    def test_on_scan_no_roots_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """IDLE 状态有规则集但无有效扫描目标时应提示。"""
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.warning",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        window = MainWindow()
+        window._ruleset = _build_ruleset()
+        window._scan_mode = "folder"
+        window._scan_root = None
+        window._on_scan()
+        assert warned["called"]
+        assert window._scan_state == ScanState.IDLE
+        window.close()
+
+
+class TestScanWorkerControl:
+    """ScanWorker 暂停/取消控制信号测试。"""
+
+    def test_worker_cancel_emits_cancelled_signal(self, qapp: QApplication, tmp_path: Path) -> None:
+        """取消扫描应发射 cancelled 信号并携带部分结果。"""
+        from PySide2.QtCore import QEventLoop, QTimer
+
+        # 300 个文件确保遍历阶段触发进度回调（每 200 个文件一次）
+        for i in range(300):
+            (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
+
+        class _CancelOnProgressWorker(ScanWorker):
+            """首个进度事件后自动取消的 ScanWorker。"""
+
+            def _on_progress(self, info) -> None:  # type: ignore[no-untyped-def]
+                ScanWorker._on_progress(self, info)
+                self.cancel()
+
+        rs = _build_ruleset()
+        worker = _CancelOnProgressWorker(ruleset=rs, roots=[tmp_path])
+
+        finished_reports: list = []
+        cancelled_reports: list = []
+        worker.finished_report.connect(lambda r: finished_reports.append(r))  # noqa: PLW0108
+        worker.cancelled.connect(lambda r: cancelled_reports.append(r))  # noqa: PLW0108
+        worker.start()
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)
+        loop.exec_()
+
+        worker.wait(2000)
+        assert not worker.isRunning()
+        assert len(finished_reports) == 0
+        assert len(cancelled_reports) == 1
+        report = cancelled_reports[0]
+        assert report.cancelled
+
+    def test_worker_pause_resume_delegates_to_scanner(self, qapp: QApplication, tmp_path: Path) -> None:
+        """pause/resume 应委托给 Scanner，扫描仍正常完成。"""
+        from PySide2.QtCore import QEventLoop, QTimer
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = ScanWorker(ruleset=rs, roots=[tmp_path])
+
+        results: list = []
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.start()
+
+        # 暂停后立即恢复
+        QTimer.singleShot(50, worker.pause)
+        QTimer.singleShot(100, worker.resume)
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)
+        loop.exec_()
+
+        worker.wait(2000)
+        assert not worker.isRunning()
+        assert len(results) == 1
+        report = results[0]
+        assert not report.cancelled
+        assert report.stats.matched_files >= 1
 
 
 class TestLaunchApp:

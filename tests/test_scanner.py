@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 from uniscan.rules.model import (
@@ -442,3 +444,114 @@ class TestScannerProgress:
         assert last.errors == 0
         assert last.elapsed >= 0
         assert isinstance(last.current_file, str)
+
+
+class TestScannerControl:
+    """扫描器暂停/取消控制测试。"""
+
+    def test_initial_state_not_paused_not_cancelled(self, tmp_path: Path) -> None:
+        """新构造的 Scanner 应处于运行（非暂停、非取消）状态。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        assert not scanner.is_paused
+        assert not scanner.is_cancelled
+
+    def test_pause_sets_is_paused(self, tmp_path: Path) -> None:
+        """pause() 后 is_paused 应为 True。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        scanner.pause()
+        assert scanner.is_paused
+        assert not scanner.is_cancelled
+
+    def test_resume_clears_is_paused(self, tmp_path: Path) -> None:
+        """resume() 后 is_paused 应为 False。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        scanner.pause()
+        scanner.resume()
+        assert not scanner.is_paused
+
+    def test_cancel_sets_is_cancelled(self, tmp_path: Path) -> None:
+        """cancel() 后 is_cancelled 应为 True。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        scanner.cancel()
+        assert scanner.is_cancelled
+
+    def test_cancel_unblocks_pause(self, tmp_path: Path) -> None:
+        """cancel() 应解除暂停阻塞，_check_control() 立即返回 True。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        scanner.pause()
+        scanner.cancel()
+        # _check_control 不应阻塞
+        assert scanner._check_control() is True
+
+    def test_cancel_before_scan_returns_cancelled_report(self, tmp_path: Path) -> None:
+        """扫描前取消：scan() 应立即返回 cancelled=True 的空报告。"""
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "secret")))
+        scanner.cancel()
+        report = scanner.scan(tmp_path)
+        assert report.cancelled
+        assert report.stats.scanned_files == 0
+        assert report.stats.matched_files == 0
+
+    def test_cancel_during_scan_returns_partial(self, tmp_path: Path) -> None:
+        """扫描中取消：应返回 cancelled=True。"""
+        for i in range(50):
+            (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "secret")), progress_interval=0.0)
+
+        # 通过进度回调在首个进度事件时触发取消，确保扫描已开始
+        def cancel_on_first_progress(_info: ProgressInfo) -> None:
+            scanner.cancel()
+
+        scanner._on_progress = cancel_on_first_progress
+        report = scanner.scan(tmp_path)
+        assert report.cancelled
+
+    def test_cancel_during_concurrent_scan(self, tmp_path: Path) -> None:
+        """并发扫描中取消：应返回 cancelled=True。"""
+        for i in range(30):
+            (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(
+            _build_ruleset(_filename_rule("r", "secret")),
+            max_workers=4,
+            progress_interval=0.0,
+        )
+
+        def cancel_on_first_progress(_info: ProgressInfo) -> None:
+            scanner.cancel()
+
+        scanner._on_progress = cancel_on_first_progress
+        report = scanner.scan(tmp_path)
+        assert report.cancelled
+
+    def test_pause_resume_completes_scan(self, tmp_path: Path) -> None:
+        """暂停后恢复：扫描应正常完成且结果完整。"""
+        for i in range(20):
+            (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "secret")), progress_interval=0.0)
+
+        started = threading.Event()
+
+        def on_progress(_info: ProgressInfo) -> None:
+            if not started.is_set():
+                started.set()
+
+        scanner._on_progress = on_progress
+
+        report_holder: dict[str, ScanReport | None] = {"report": None}
+        scan_thread = threading.Thread(target=lambda: report_holder.__setitem__("report", scanner.scan(tmp_path)))
+        scan_thread.start()
+        # 等待扫描线程开始工作后暂停
+        assert started.wait(timeout=2)
+        scanner.pause()
+        assert scanner.is_paused
+        time.sleep(0.05)
+        scanner.resume()
+        assert not scanner.is_paused
+        scan_thread.join(timeout=5)
+
+        assert not scan_thread.is_alive()
+        report = report_holder["report"]
+        assert report is not None
+        assert not report.cancelled
+        assert report.stats.matched_files == 20

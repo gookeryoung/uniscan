@@ -32,11 +32,13 @@ class ScanWorker(QThread):
     - ``progress_info``：实时进度信息（ProgressInfo，含当前文件、已扫描/跳过/命中数等）
     - ``finished_report``：扫描完成，携带合并后的 ScanReport
     - ``failed``：扫描异常，携带错误信息
+    - ``cancelled``：扫描被用户取消，携带已扫描的部分结果
     """
 
     progress_info = Signal(object)
     finished_report = Signal(object)
     failed = Signal(str)
+    cancelled = Signal(object)
 
     def __init__(
         self,
@@ -54,6 +56,7 @@ class ScanWorker(QThread):
         self._scan_archives = scan_archives
         self._max_workers = max_workers
         self._scanner: Optional[Scanner] = None
+        self._cancel_requested: bool = False
         # 多根路径累计统计
         self._cum_scanned = 0
         self._cum_total = 0
@@ -61,6 +64,22 @@ class ScanWorker(QThread):
         self._cum_matched = 0
         self._cum_errors = 0
         self._start_time: float = 0.0
+
+    def pause(self) -> None:
+        """暂停扫描。"""
+        if self._scanner is not None:
+            self._scanner.pause()
+
+    def resume(self) -> None:
+        """恢复扫描。"""
+        if self._scanner is not None:
+            self._scanner.resume()
+
+    def cancel(self) -> None:
+        """取消扫描，即使 Scanner 尚未创建也能生效。"""
+        self._cancel_requested = True
+        if self._scanner is not None:
+            self._scanner.cancel()
 
     def _on_progress(self, info: ProgressInfo) -> None:
         """Scanner 进度回调：累加前序根路径的统计后 emit。"""
@@ -88,6 +107,8 @@ class ScanWorker(QThread):
                 max_workers=self._max_workers,
                 on_progress=self._on_progress,
             )
+            if self._cancel_requested:
+                self._scanner.cancel()
             all_results: List[ScanResult] = []
             total_scanned = 0
             total_files = 0
@@ -96,6 +117,8 @@ class ScanWorker(QThread):
             total_errors = 0
 
             for root in self._roots:
+                if self._scanner is not None and self._scanner.is_cancelled:
+                    break
                 report: ScanReport = self._scanner.scan(root)
                 all_results.extend(report.results)
                 total_scanned += report.stats.scanned_files
@@ -110,6 +133,7 @@ class ScanWorker(QThread):
                 self._cum_matched = total_matched
                 self._cum_errors = total_errors
 
+            was_cancelled = self._scanner is not None and self._scanner.is_cancelled
             elapsed = time.monotonic() - self._start_time
             merged = ScanReport(
                 root=self._roots[0] if len(self._roots) == 1 else Path("（多路径）"),
@@ -122,8 +146,12 @@ class ScanWorker(QThread):
                     errors=total_errors,
                     duration_seconds=elapsed,
                 ),
+                cancelled=was_cancelled,
             )
-            self.finished_report.emit(merged)
+            if was_cancelled:
+                self.cancelled.emit(merged)
+            else:
+                self.finished_report.emit(merged)
         except Exception as exc:
             logger.exception("后台扫描失败")
             self.failed.emit(str(exc))

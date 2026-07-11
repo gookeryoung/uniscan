@@ -86,6 +86,7 @@ class ScanReport:
     root: Path
     results: Tuple[ScanResult, ...] = field(default_factory=tuple)
     stats: ScanStats = field(default_factory=ScanStats)
+    cancelled: bool = False
 
     @property
     def hits(self) -> Tuple[ScanResult, ...]:

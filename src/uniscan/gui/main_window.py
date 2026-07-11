@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import csv
+import enum
 import io
 import json
 import logging
@@ -57,9 +58,17 @@ from uniscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from uniscan.rules.model import RuleSet
 from uniscan.scanner import ScanReport, list_drives
 
-__all__ = ["MainWindow"]
+__all__ = ["MainWindow", "ScanState"]
 
 logger = logging.getLogger(__name__)
+
+
+class ScanState(enum.Enum):
+    """扫描状态。"""
+
+    IDLE = "idle"
+    RUNNING = "running"
+    PAUSED = "paused"
 
 
 class MainWindow(QMainWindow):
@@ -76,6 +85,7 @@ class MainWindow(QMainWindow):
         self._scan_root: Optional[Path] = None
         self._last_report: Optional[ScanReport] = None
         self._worker: Optional[ScanWorker] = None
+        self._scan_state: ScanState = ScanState.IDLE
         self._use_builtin: bool = True
         # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
         self._scan_mode: str = "folder"
@@ -160,14 +170,24 @@ class MainWindow(QMainWindow):
         layout.addLayout(self._build_rules_row())
         layout.addWidget(self._build_target_row())
 
-        # 醒目扫描按钮
+        # 扫描控制按钮行：扫描按钮（开始/暂停/继续）+ 停止按钮
+        btn_row = QHBoxLayout()
         self._scan_btn = QPushButton("开始扫描")
         self._scan_btn.setObjectName("scanBtn")
         self._scan_btn.setCursor(Qt.PointingHandCursor)
         self._scan_btn.setMinimumHeight(48)
         self._scan_btn.clicked.connect(self._on_scan)
         self._scan_btn.setEnabled(False)
-        layout.addWidget(self._scan_btn)
+        btn_row.addWidget(self._scan_btn, stretch=3)
+
+        self._stop_btn = QPushButton("停止")
+        self._stop_btn.setObjectName("stopBtn")
+        self._stop_btn.setCursor(Qt.PointingHandCursor)
+        self._stop_btn.setMinimumHeight(48)
+        self._stop_btn.clicked.connect(self._on_stop)
+        self._stop_btn.setVisible(False)
+        btn_row.addWidget(self._stop_btn, stretch=1)
+        layout.addLayout(btn_row)
 
         # 大进度条
         self._progress = QProgressBar()
@@ -360,6 +380,26 @@ class MainWindow(QMainWindow):
                 background: #2E7D32;
             }
             QPushButton#scanBtn:disabled {
+                background: #BDBDBD;
+                color: #EEEEEE;
+            }
+            QPushButton#stopBtn {
+                background: #E53935;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 14px 24px;
+                min-height: 24px;
+            }
+            QPushButton#stopBtn:hover {
+                background: #C62828;
+            }
+            QPushButton#stopBtn:pressed {
+                background: #B71C1C;
+            }
+            QPushButton#stopBtn:disabled {
                 background: #BDBDBD;
                 color: #EEEEEE;
             }
@@ -612,12 +652,21 @@ class MainWindow(QMainWindow):
             self._scan_root = path if path.exists() else None
         self._update_scan_button()
 
+    def _set_scan_controls_text(self, text: str) -> None:
+        """同步设置扫描按钮与菜单/工具栏 action 的文本。"""
+        self._scan_btn.setText(text)
+        self._scan_action.setText(text)
+
     def _on_scan(self) -> None:
-        """触发扫描。"""
-        if self._ruleset is None:
+        """扫描按钮：根据当前状态执行开始/暂停/继续。"""
+        if self._scan_state == ScanState.RUNNING:
+            self._pause_scan()
             return
-        if self._worker is not None and self._worker.isRunning():
-            QMessageBox.information(self, "提示", "扫描正在进行中")
+        if self._scan_state == ScanState.PAUSED:
+            self._resume_scan()
+            return
+
+        if self._ruleset is None:
             return
 
         roots = self._build_scan_roots()
@@ -626,10 +675,11 @@ class MainWindow(QMainWindow):
             return
 
         self._result_tree.clear()
-        self._scan_btn.setEnabled(False)
-        self._scan_btn.setText("扫描中...")
+        self._scan_state = ScanState.RUNNING
+        self._set_scan_controls_text("暂停扫描")
+        self._stop_btn.setVisible(True)
         self._progress.setVisible(True)
-        self._progress.setRange(0, 0)  # 初始不确定进度，收到首个进度后切换为确定模式
+        self._progress.setRange(0, 0)
         self._current_file_label.setVisible(True)
         self._current_file_label.setText("准备扫描...")
         self._stats_label.setText("扫描中...")
@@ -643,7 +693,58 @@ class MainWindow(QMainWindow):
         self._worker.progress_info.connect(self._on_scan_progress)
         self._worker.finished_report.connect(self._on_scan_finished)
         self._worker.failed.connect(self._on_scan_failed)
+        self._worker.cancelled.connect(self._on_scan_cancelled)
         self._worker.start()
+
+    def _pause_scan(self) -> None:
+        """暂停扫描。"""
+        if self._worker is not None:
+            self._worker.pause()
+        self._scan_state = ScanState.PAUSED
+        self._set_scan_controls_text("继续扫描")
+        self._stats_label.setText("已暂停")
+
+    def _resume_scan(self) -> None:
+        """恢复扫描。"""
+        if self._worker is not None:
+            self._worker.resume()
+        self._scan_state = ScanState.RUNNING
+        self._set_scan_controls_text("暂停扫描")
+        self._stats_label.setText("扫描中...")
+
+    def _on_stop(self) -> None:
+        """停止扫描。"""
+        if self._worker is not None:
+            self._worker.cancel()
+
+    def _on_scan_cancelled(self, report: ScanReport) -> None:
+        """扫描被取消后的回调。"""
+        self._last_report = report
+        self._reset_scan_ui()
+        self._populate_results(report)
+        stats = report.stats
+        self._stats_label.setText(
+            f"已取消: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
+            f"命中 {stats.matched_files} | 耗时 {stats.duration_seconds:.2f}s"
+        )
+
+    def _reset_scan_ui(self) -> None:
+        """重置扫描 UI 到空闲状态。"""
+        self._scan_state = ScanState.IDLE
+        self._progress.setVisible(False)
+        self._current_file_label.setVisible(False)
+        self._stop_btn.setVisible(False)
+        self._set_scan_controls_text("开始扫描")
+        self._cleanup_worker()
+        self._update_scan_button()
+
+    def _cleanup_worker(self) -> None:
+        """清理后台扫描线程：等待退出后释放引用。"""
+        if self._worker is None:
+            return
+        self._worker.wait(2000)
+        self._worker.deleteLater()
+        self._worker = None
 
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
         """扫描实时进度回调。"""
@@ -669,10 +770,7 @@ class MainWindow(QMainWindow):
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调。"""
         self._last_report = report
-        self._progress.setVisible(False)
-        self._current_file_label.setVisible(False)
-        self._scan_btn.setEnabled(True)
-        self._scan_btn.setText("开始扫描")
+        self._reset_scan_ui()
 
         self._populate_results(report)
 
@@ -685,10 +783,7 @@ class MainWindow(QMainWindow):
 
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调。"""
-        self._progress.setVisible(False)
-        self._current_file_label.setVisible(False)
-        self._scan_btn.setEnabled(True)
-        self._scan_btn.setText("开始扫描")
+        self._reset_scan_ui()
         self._stats_label.setText("扫描失败")
         QMessageBox.critical(self, "扫描失败", error)
 
@@ -839,7 +934,15 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def _update_scan_button(self) -> None:
-        """根据规则、扫描模式与目标就绪状态更新扫描按钮。"""
+        """根据规则、扫描模式与目标就绪状态更新扫描按钮。
+
+        扫描进行中（RUNNING/PAUSED）时按钮始终可用，供暂停/继续使用，
+        不受规则或目标就绪状态影响。
+        """
+        if self._scan_state in (ScanState.RUNNING, ScanState.PAUSED):
+            self._scan_btn.setEnabled(True)
+            self._scan_action.setEnabled(True)
+            return
         if self._ruleset is None:
             ready = False
         elif self._scan_mode == "full":
@@ -882,7 +985,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         """关闭时保存配置并终止后台线程。"""
         if self._worker is not None and self._worker.isRunning():
-            self._worker.quit()
+            self._worker.cancel()
             self._worker.wait(3000)
         self._save_config()
         super().closeEvent(event)
