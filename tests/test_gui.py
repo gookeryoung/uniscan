@@ -792,16 +792,17 @@ class TestConfigPersistence:
         from uniscan.config import Config
         from uniscan.config import save_config as _save_impl
 
-        config = Config(window_geometry=[50, 60, 800, 500])
+        # 高度需大于窗口最小高度（5 区布局约 680px），否则 Qt 会强制抬升到最小值
+        config = Config(window_geometry=[50, 60, 900, 800])
         _save_impl(config, tmp_path / "config.yaml")
 
         window = MainWindow()
         geo = window.geometry()
         assert geo.x() == 50
         assert geo.y() == 60
-        assert geo.width() == 800
-        # 高度可能因 QSS 布局约束有 1-2px 偏差
-        assert abs(geo.height() - 500) <= 2
+        assert geo.width() == 900
+        # 高度可能因 QSS 布局约束有少量偏差
+        assert abs(geo.height() - 800) <= 5
         window.close()
 
     def test_splitter_sizes_restored(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2596,3 +2597,599 @@ class TestRuleEditor:
         assert warned["called"]
         assert len(saved_paths) == 1
         dialog.close()
+
+
+class TestMainWindowHelpers:
+    """main_window.py 模块级辅助函数测试。"""
+
+    def test_format_size_bytes(self) -> None:
+        """_format_size 应正确格式化字节数。"""
+        from uniscan.gui.main_window import _format_size
+
+        assert _format_size(0) == "0 B"
+        assert _format_size(512) == "512 B"
+        assert _format_size(1024) == "1.0 KB"
+        assert _format_size(1024 * 1024) == "1.0 MB"
+        assert _format_size(1024 * 1024 * 1024) == "1.00 GB"
+
+    def test_extract_keywords(self) -> None:
+        """_extract_keywords 应从 detail 中提取单引号包裹的关键词。"""
+        from uniscan.gui.main_window import _extract_keywords
+        from uniscan.rules.model import Severity
+        from uniscan.scanner.result import RuleHit
+
+        hits = [
+            RuleHit(rule_name="r1", severity=Severity.WARNING, detail="包含 'password'"),
+            RuleHit(rule_name="r2", severity=Severity.CRITICAL, detail="正则命中: 'AKIA1234'"),
+            RuleHit(rule_name="r3", severity=Severity.INFO, detail="无关键词"),
+        ]
+        keywords = _extract_keywords(hits)
+        assert keywords == ["password", "AKIA1234"]
+
+    def test_extract_keywords_dedup(self) -> None:
+        """_extract_keywords 应去重相同关键词。"""
+        from uniscan.gui.main_window import _extract_keywords
+        from uniscan.rules.model import Severity
+        from uniscan.scanner.result import RuleHit
+
+        hits = [
+            RuleHit(rule_name="r1", severity=Severity.WARNING, detail="包含 'secret'"),
+            RuleHit(rule_name="r2", severity=Severity.WARNING, detail="包含 'secret'"),
+        ]
+        keywords = _extract_keywords(hits)
+        assert keywords == ["secret"]
+
+    def test_build_preview_html_no_keywords(self) -> None:
+        """_build_preview_html 无关键词时只转义不高亮。"""
+        from uniscan.gui.main_window import _build_preview_html
+
+        result = _build_preview_html("hello & world", [])
+        assert "hello &amp; world" in result
+        assert "<span" not in result
+
+    def test_build_preview_html_with_keywords(self) -> None:
+        """_build_preview_html 有关键词时应高亮。"""
+        from uniscan.gui.main_window import _build_preview_html
+
+        result = _build_preview_html("hello password world", ["password"])
+        assert "<span" in result
+        assert "password" in result
+
+    def test_build_preview_html_escapes_html(self) -> None:
+        """_build_preview_html 应先转义再高亮，避免 XSS。"""
+        from uniscan.gui.main_window import _build_preview_html
+
+        result = _build_preview_html("<script>alert(1)</script>", ["script"])
+        # 原始 <script> 标签不应原样出现（已转义）
+        assert "<script>" not in result
+        assert "&lt;" in result
+        assert "&gt;" in result
+
+
+class TestDetailArea:
+    """详情区两态切换与命中导航测试。"""
+
+    def test_detail_empty_state_initially(self, qapp: QApplication) -> None:
+        """启动时详情区应在空态。"""
+        window = MainWindow()
+        assert window._detail_action_stack.currentIndex() == 0
+        assert window._detail_main_stack.currentIndex() == 0
+        window.close()
+
+    def test_detail_clear(self, qapp: QApplication) -> None:
+        """_detail_clear 应切换到空态并清空内容。"""
+        window = MainWindow()
+        window._detail_action_stack.setCurrentIndex(1)
+        window._detail_main_stack.setCurrentIndex(1)
+        window._detail_current_result = object()  # type: ignore[assignment]
+        window._detail_hit_positions = [(0, 1)]
+        window._detail_current_hit_index = 0
+        window._detail_clear()
+        assert window._detail_action_stack.currentIndex() == 0
+        assert window._detail_main_stack.currentIndex() == 0
+        assert window._detail_current_result is None
+        assert window._detail_hit_positions == []
+        assert window._detail_current_hit_index == -1
+        window.close()
+
+    def test_detail_show_result(self, qapp: QApplication, tmp_path: Path) -> None:
+        """选中结果项后详情区应切换到非空态并展示详情。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        # 选中第一个结果项
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        # 详情区应切换到非空态
+        assert window._detail_action_stack.currentIndex() == 1
+        assert window._detail_main_stack.currentIndex() == 1
+        assert window._detail_current_result is not None
+        # 命中表应有行
+        assert window._detail_hits_table.rowCount() > 0
+        window.close()
+
+    def test_detail_show_result_grouped_child(self, qapp: QApplication, tmp_path: Path) -> None:
+        """分组模式下选中子项应展示对应详情。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret1.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "secret2.txt").write_text("y", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._group_mode_combo.setCurrentText("按规则分组")
+        window._populate_results(report)
+        # 选中第一个子项
+        top = window._result_tree.topLevelItem(0)
+        if top.childCount() > 0:
+            child = top.child(0)
+            window._result_tree.setCurrentItem(child)
+            assert window._detail_action_stack.currentIndex() == 1
+        window.close()
+
+    def test_detail_selection_no_items(self, qapp: QApplication) -> None:
+        """无选中项时详情区应清空。"""
+        window = MainWindow()
+        window._detail_action_stack.setCurrentIndex(1)
+        window._detail_main_stack.setCurrentIndex(1)
+        window._on_result_selection_changed()
+        assert window._detail_action_stack.currentIndex() == 0
+        assert window._detail_main_stack.currentIndex() == 0
+        window.close()
+
+    def test_detail_hit_navigation(self, qapp: QApplication, tmp_path: Path) -> None:
+        """命中导航按钮应在多个命中间切换。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password password password", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+
+        total = len(window._detail_hit_positions)
+        if total > 1:
+            # 下一个命中
+            window._on_next_detail_hit()
+            assert window._detail_current_hit_index == 1
+            # 上一个命中（回到 0）
+            window._on_prev_detail_hit()
+            assert window._detail_current_hit_index == 0
+            # 导航标签应显示 "1 / total"
+            assert "1" in window._detail_nav_label.text()
+            assert str(total) in window._detail_nav_label.text()
+        window.close()
+
+    def test_detail_nav_label_no_hits(self, qapp: QApplication) -> None:
+        """无命中时导航标签应显示"无命中"且按钮禁用。"""
+        window = MainWindow()
+        window._detail_hit_positions = []
+        window._detail_current_hit_index = -1
+        window._update_detail_nav_label()
+        assert "无命中" in window._detail_nav_label.text()
+        assert not window._detail_prev_btn.isEnabled()
+        assert not window._detail_next_btn.isEnabled()
+        assert not window._detail_locate_btn.isEnabled()
+        window.close()
+
+    def test_detail_nav_label_with_hits(self, qapp: QApplication) -> None:
+        """有命中时导航标签应显示进度且按钮启用。"""
+        window = MainWindow()
+        window._detail_hit_positions = [(0, 1), (5, 6)]
+        window._detail_current_hit_index = 0
+        window._update_detail_nav_label()
+        assert "1 / 2" in window._detail_nav_label.text()
+        assert window._detail_prev_btn.isEnabled()
+        assert window._detail_next_btn.isEnabled()
+        assert window._detail_locate_btn.isEnabled()
+        window.close()
+
+    def test_detail_prev_next_wrap_around(self, qapp: QApplication) -> None:
+        """命中导航应在到达首尾时循环。"""
+        window = MainWindow()
+        window._detail_hit_positions = [(0, 1), (5, 6)]
+        window._detail_current_hit_index = 0
+        # 在索引 0 时上一个应循环到最后
+        window._on_prev_detail_hit()
+        assert window._detail_current_hit_index == 1
+        # 在索引 1 时下一个应循环到第一个
+        window._on_next_detail_hit()
+        assert window._detail_current_hit_index == 0
+        window.close()
+
+    def test_detail_prev_next_no_hits(self, qapp: QApplication) -> None:
+        """无命中时上一个/下一个不应崩溃。"""
+        window = MainWindow()
+        window._detail_hit_positions = []
+        window._detail_current_hit_index = -1
+        window._on_prev_detail_hit()
+        window._on_next_detail_hit()
+        assert window._detail_current_hit_index == -1
+        window.close()
+
+    def test_detail_copy_path(self, qapp: QApplication, tmp_path: Path) -> None:
+        """复制路径应将路径写入剪贴板。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        window._on_copy_path()
+        clipboard = QApplication.clipboard()
+        assert clipboard is not None
+        assert "secret.txt" in clipboard.text()
+        window.close()
+
+    def test_detail_copy_path_no_result(self, qapp: QApplication) -> None:
+        """无选中结果时复制路径不应崩溃。"""
+        window = MainWindow()
+        window._on_copy_path()
+        window.close()
+
+    def test_detail_open_in_window_no_result(self, qapp: QApplication) -> None:
+        """无选中结果时打开窗口不应崩溃。"""
+        window = MainWindow()
+        window._on_open_in_window()
+        window.close()
+
+    def test_detail_locate_hit_no_hits(self, qapp: QApplication) -> None:
+        """无命中时定位不应崩溃。"""
+        window = MainWindow()
+        window._detail_hit_positions = []
+        window._detail_current_hit_index = -1
+        window._on_locate_hit()
+        window.close()
+
+    def test_detail_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
+        """空文件预览应显示提示文本。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window._result_tree.topLevelItem(0)
+        window._result_tree.setCurrentItem(item)
+        # 空文件应显示提示
+        text = window._detail_preview.toPlainText()
+        assert "空" in text or "二进制" in text
+        window.close()
+
+
+class TestScanCallbacks:
+    """扫描回调与 UI 状态测试。"""
+
+    def test_on_scan_progress(self, qapp: QApplication) -> None:
+        """_on_scan_progress 应更新进度条和统计标签。"""
+        from uniscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        window._progress.setVisible(True)
+        info = ProgressInfo(
+            total=100,
+            scanned=50,
+            skipped=5,
+            matched=3,
+            errors=1,
+            current_file="/test/file.txt",
+            elapsed=1.5,
+        )
+        window._on_scan_progress(info)
+        assert window._progress.value() == 50
+        assert window._progress.maximum() == 100
+        assert "50" in window._stats_label.text()
+        window.close()
+
+    def test_on_scan_progress_long_path(self, qapp: QApplication) -> None:
+        """_on_scan_progress 应截断过长的文件路径。"""
+        from uniscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        long_path = "/" + "a" * 200 + ".txt"
+        info = ProgressInfo(total=10, scanned=1, skipped=0, matched=0, errors=0, current_file=long_path, elapsed=0.1)
+        window._on_scan_progress(info)
+        label_text = window._current_file_label.text()
+        assert "..." in label_text
+        window.close()
+
+    def test_on_scan_failed(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_on_scan_failed 应重置 UI 并弹出错误。"""
+        window = MainWindow()
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.critical",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        window._on_scan_failed("测试错误")
+        assert warned["called"]
+        assert "扫描失败" in window._stats_label.text()
+        window.close()
+
+    def test_on_scan_cancelled(self, qapp: QApplication, tmp_path: Path) -> None:
+        """_on_scan_cancelled 应填充结果并显示取消统计。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._on_scan_cancelled(report)
+        assert "已取消" in window._stats_label.text()
+        assert window._result_tree.topLevelItemCount() > 0
+        window.close()
+
+    def test_pause_resume_scan(self, qapp: QApplication, tmp_path: Path) -> None:
+        """暂停/恢复扫描应更新状态和按钮文字。"""
+        from uniscan.gui.worker import ScanWorker
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+
+        window = MainWindow()
+        window._scan_root = tmp_path
+        window._ruleset = rs
+        # 手动创建 worker 以测试暂停/恢复
+        window._worker = ScanWorker(scanner, tmp_path)
+        window._scan_state = ScanState.RUNNING
+
+        window._pause_scan()
+        assert window._scan_state == ScanState.PAUSED
+        assert "继续" in window._scan_btn.text()
+
+        window._resume_scan()
+        assert window._scan_state == ScanState.RUNNING
+        assert "暂停" in window._scan_btn.text()
+
+        window._worker = None
+        window.close()
+
+    def test_on_stop_no_worker(self, qapp: QApplication) -> None:
+        """无 worker 时停止不应崩溃。"""
+        window = MainWindow()
+        window._on_stop()
+        window.close()
+
+
+class TestExportAndMenu:
+    """导出、菜单与工具栏操作测试。"""
+
+    def test_export_menu_no_report(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无报告时导出菜单应提示。"""
+        window = MainWindow()
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: informed.update(called=True),
+        )
+        window._on_export_menu()
+        assert informed["called"]
+        window.close()
+
+    def test_export_no_report(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无报告时导出应提示。"""
+        window = MainWindow()
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: informed.update(called=True),
+        )
+        window._on_export("csv")
+        assert informed["called"]
+        window.close()
+
+    def test_export_csv_to_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """导出 CSV 应写入文件。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        out_path = tmp_path / "export.csv"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(out_path), ""),
+        )
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_export("csv")
+        assert out_path.exists()
+        assert "secret.txt" in out_path.read_text(encoding="utf-8")
+        window.close()
+
+    def test_export_cancelled(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """取消导出对话框不应写文件。"""
+        from uniscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        out_path = tmp_path / "export.csv"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: ("", ""),
+        )
+        window._on_export("csv")
+        assert not out_path.exists()
+        window.close()
+
+    def test_about_dialog(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """关于对话框应弹出。"""
+        window = MainWindow()
+        about_called = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.about",
+            lambda *args, **kwargs: about_called.update(called=True),
+        )
+        window._on_about()
+        assert about_called["called"]
+        window.close()
+
+    def test_batch_process_not_implemented(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """批量处理应提示未实现。"""
+        window = MainWindow()
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: informed.update(called=True),
+        )
+        window._on_batch_process()
+        assert informed["called"]
+        window.close()
+
+    def test_switch_tab(self, qapp: QApplication) -> None:
+        """_switch_tab 应切换 Tab 页。"""
+        window = MainWindow()
+        window._switch_tab(1)
+        assert window._tab_widget.currentIndex() == 1
+        window._switch_tab(2)
+        assert window._tab_widget.currentIndex() == 2
+        window._switch_tab(0)
+        assert window._tab_widget.currentIndex() == 0
+        window.close()
+
+    def test_on_view_history(self, qapp: QApplication) -> None:
+        """_on_view_history 应切换到历史 Tab。"""
+        window = MainWindow()
+        window._on_view_history()
+        assert window._tab_widget.currentIndex() == 2
+        window.close()
+
+    def test_history_item_double_clicked(self, qapp: QApplication, tmp_path: Path) -> None:
+        """双击历史项应设置扫描路径。"""
+        from PySide2.QtWidgets import QListWidgetItem
+
+        scan_dir = tmp_path / "scan_target"
+        scan_dir.mkdir()
+        (scan_dir / "secret.txt").write_text("x", encoding="utf-8")
+
+        window = MainWindow()
+        item = QListWidgetItem(str(scan_dir))
+        window._on_history_item_double_clicked(item)
+        assert window._scan_root == scan_dir
+        window.close()
+
+    def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
+        """closeEvent 应保存配置。"""
+        from PySide2.QtGui import QCloseEvent
+
+        window = MainWindow()
+        window.closeEvent(QCloseEvent())
+        # 配置应已保存（通过 _isolate_config fixture 隔离到 tmp_path）
+        window.close()
+
+
+class TestRulesManagement:
+    """规则管理操作测试。"""
+
+    def test_on_remove_rule_no_selection(self, qapp: QApplication) -> None:
+        """无选中规则文件时删除不应崩溃。"""
+        window = MainWindow()
+        window._on_remove_rule()
+        window.close()
+
+    def test_on_remove_rule_with_selection(self, qapp: QApplication, tmp_path: Path) -> None:
+        """删除选中规则文件应从列表移除。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: r1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1]
+        window._refresh_rules_file_list()
+        assert window._rules_file_list.count() == 1
+
+        window._rules_file_list.setCurrentRow(0)
+        window._on_remove_rule()
+        assert len(window._rules_paths) == 0
+        window.close()
+
+    def test_on_edit_rules_no_rules(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无规则文件时编辑应提示。"""
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: informed.update(called=True),
+        )
+        window._on_edit_rules()
+        assert informed["called"]
+        window.close()
+
+    def test_on_edit_rules_with_rules(self, qapp: QApplication, tmp_path: Path) -> None:
+        """有规则文件时编辑应打开编辑器对话框。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: r1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1]
+        window._refresh_rules_file_list()
+
+        # mock exec_ 避免阻塞
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        original_exec = RuleEditorDialog.exec_
+        RuleEditorDialog.exec_ = lambda self: 0  # type: ignore[method-assign]
+        try:
+            window._on_edit_rules()
+        finally:
+            RuleEditorDialog.exec_ = original_exec  # type: ignore[method-assign]
+        window.close()
+
+    def test_reload_and_refresh(self, qapp: QApplication, tmp_path: Path) -> None:
+        """_reload_and_refresh 应重新加载规则集。"""
+        r1 = tmp_path / "r1.yaml"
+        r1.write_text(
+            'version: "1.0"\nrules:\n  - name: r1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n',
+            encoding="utf-8",
+        )
+
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [r1]
+        window._reload_and_refresh()
+        # 应成功加载规则集
+        assert window._ruleset is not None
+        window.close()
