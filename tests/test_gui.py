@@ -1817,34 +1817,32 @@ class TestScanMode:
         window.close()
 
     def test_folder_mode_shows_path_row(self, qapp: QApplication) -> None:
-        """folder 模式下路径行可见，盘符按钮隐藏。"""
+        """folder 模式下 target_stack 切到文件夹页。"""
         window = MainWindow()
         window.show()
         qapp.processEvents()
+        assert window._target_stack.currentIndex() == 2
         assert window._path_combo.isVisible()
-        assert not window._drive_buttons_container.isVisible()
         window.close()
 
     def test_full_mode_hides_target_selectors(self, qapp: QApplication) -> None:
-        """full 模式下隐藏路径行与盘符按钮。"""
+        """full 模式下 target_stack 切到全盘页。"""
         window = MainWindow()
         window.show()
         qapp.processEvents()
         window._scan_mode_combo.setCurrentIndex(0)
         assert window._scan_mode == "full"
-        assert not window._path_combo.isVisible()
-        assert not window._drive_buttons_container.isVisible()
+        assert window._target_stack.currentIndex() == 0
         window.close()
 
     def test_drive_mode_shows_drive_buttons(self, qapp: QApplication) -> None:
-        """drive 模式下盘符按钮可见，路径行隐藏。"""
+        """drive 模式下 target_stack 切到盘符页。"""
         window = MainWindow()
         window.show()
         qapp.processEvents()
         window._scan_mode_combo.setCurrentIndex(1)
         assert window._scan_mode == "drive"
-        assert window._drive_buttons_container.isVisible()
-        assert not window._path_combo.isVisible()
+        assert window._target_stack.currentIndex() == 1
         window.close()
 
     def test_full_mode_enables_scan_without_path(self, qapp: QApplication) -> None:

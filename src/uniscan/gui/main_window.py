@@ -30,7 +30,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from PySide2.QtCore import Qt
+from PySide2.QtCore import QSize, Qt
 from PySide2.QtGui import QColor, QIcon, QTextCharFormat, QTextCursor
 from PySide2.QtWidgets import (
     QAbstractButton,
@@ -92,6 +92,7 @@ _ICON_FOLDER = str(_ICONS_DIR / "folder.svg")
 _ICON_HISTORY = str(_ICONS_DIR / "history.svg")
 _ICON_LOAD_LIST = str(_ICONS_DIR / "load_list.svg")
 _ICON_RIGHT = str(_ICONS_DIR / "right.svg")
+_ICON_HARD_DISK = str(_ICONS_DIR / "hard_disk.svg")
 
 
 def _format_size(size: int) -> str:
@@ -195,7 +196,7 @@ class MainWindow(QMainWindow):
         self._scan_btn = ui.scan_btn
         self._progress = ui.progress
         self._scan_mode_combo = ui.scan_mode_combo
-        self._drive_buttons_container = ui.drive_buttons_container
+        self._target_stack = ui.target_stack
         self._drive_buttons_layout = ui.drive_buttons_layout
         self._arrow_label_1 = ui.arrow_label_1
         self._arrow_label_2 = ui.arrow_label_2
@@ -283,7 +284,7 @@ class MainWindow(QMainWindow):
         ui.verticalLayout_2.setStretch(1, 1)
         ui.verticalLayout_2.setStretch(2, 0)
         # horizontalLayout_3: 扫描模式组 / 箭头 / 规则组 / 箭头 / 扫描按钮
-        ui.horizontalLayout_3.setStretch(0, 1)
+        ui.horizontalLayout_3.setStretch(0, 2)
         ui.horizontalLayout_3.setStretch(1, 0)
         ui.horizontalLayout_3.setStretch(2, 1)
         ui.horizontalLayout_3.setStretch(3, 0)
@@ -330,6 +331,7 @@ class MainWindow(QMainWindow):
         self._icon_history = QIcon(_ICON_HISTORY)
         self._icon_load_list = QIcon(_ICON_LOAD_LIST)
         self._icon_right = QIcon(_ICON_RIGHT)
+        self._icon_hard_disk = QIcon(_ICON_HARD_DISK)
         self._scan_btn.setIcon(self._icon_scan)
         # 扫描按钮垂直填满，与旁边的 QGroupBox 高度一致
         self._scan_btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.MinimumExpanding)
@@ -569,15 +571,12 @@ class MainWindow(QMainWindow):
         self._update_scan_button()
 
     def _update_target_visibility(self) -> None:
-        """根据扫描模式更新目标选择器可见性。"""
-        is_drive = self._scan_mode == "drive"
-        is_folder = self._scan_mode == "folder"
-        self._drive_buttons_container.setVisible(is_drive)
-        self._path_combo.setVisible(is_folder)
-        self._select_path_btn.setVisible(is_folder)
+        """根据扫描模式切换目标选择区页面（QStackedWidget 保持布局稳定）。"""
+        page_map = {"full": 0, "drive": 1, "folder": 2}
+        self._target_stack.setCurrentIndex(page_map.get(self._scan_mode, 2))
 
     def _refresh_drive_buttons(self) -> None:
-        """刷新盘符按钮列表（平铺展示所有可用盘符）。"""
+        """刷新盘符按钮列表（hard_disk 图标 + 盘符字母，平铺展示）。"""
         # 清除旧按钮
         for btn in self._drive_buttons:
             self._drive_button_group.removeButton(btn)
@@ -586,10 +585,13 @@ class MainWindow(QMainWindow):
         self._drive_buttons.clear()
 
         for drive in list_drives():
-            btn = QPushButton(str(drive), self._drive_buttons_container)
-            btn.setObjectName(f"drive_btn_{drive}")
+            letter = str(drive)[:1]
+            btn = QPushButton(letter, self._target_stack.widget(1))
+            btn.setObjectName(f"drive_btn_{letter}")
             btn.setCheckable(True)
             btn.setProperty("drive", str(drive))
+            btn.setIcon(self._icon_hard_disk)
+            btn.setIconSize(QSize(14, 14))
             self._drive_buttons_layout.addWidget(btn)
             self._drive_button_group.addButton(btn)
             self._drive_buttons.append(btn)

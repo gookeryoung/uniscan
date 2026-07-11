@@ -117,24 +117,33 @@ QStatusBar QLabel {
     padding: 0 4px;
 }
 
-/* ========== 扫描模式下拉 ========== */
+/* ========== 扫描模式下拉（主选择器） ========== */
 
 QComboBox#scan_mode_combo {
     min-width: 120px;
     font-weight: bold;
+    font-size: 14px;
 }
 
-/* ========== 盘符按钮（平铺，checkable） ========== */
+/* ========== 全盘扫描提示 ========== */
+
+QLabel#full_scan_label {
+    color: #586069;
+    font-style: italic;
+    padding: 4px 8px;
+}
+
+/* ========== 盘符按钮（图标+字母，checkable） ========== */
 
 QPushButton[drive!=""] {
     background: #ffffff;
     color: #24292e;
     border: 1px solid #d0d7de;
     border-radius: 6px;
-    padding: 6px 12px;
+    padding: 4px 8px;
     font-size: 13px;
     font-weight: bold;
-    min-width: 40px;
+    min-width: 48px;
 }
 
 QPushButton[drive!=""]:hover {
