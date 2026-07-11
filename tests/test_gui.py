@@ -21,6 +21,7 @@ try:
     from PySide2.QtCore import Qt
     from PySide2.QtWidgets import QApplication
 
+    from uniscan.gui.detail_dialog import HitDetailDialog
     from uniscan.gui.main_window import MainWindow, ScanState
     from uniscan.gui.worker import ScanWorker
     from uniscan.rules import load_ruleset
@@ -1983,7 +1984,7 @@ class TestHitDetailDialogNavigation:
 
     def _make_dialog_with_content(
         self, qapp: QApplication, tmp_path: Path, content: str, keyword: str
-    ) -> "HitDetailDialog":
+    ) -> HitDetailDialog:
         """构造带内容的详情对话框。"""
         from uniscan.gui.detail_dialog import HitDetailDialog
         from uniscan.scanner.result import RuleHit, ScanResult
@@ -2007,26 +2008,20 @@ class TestHitDetailDialogNavigation:
 
     def test_hit_positions_found(self, qapp: QApplication, tmp_path: Path) -> None:
         """应在内容中找到关键词位置。"""
-        dialog = self._make_dialog_with_content(
-            qapp, tmp_path, "password and password again", "password"
-        )
+        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
         assert len(dialog._hit_positions) == 2
         dialog.close()
 
     def test_first_hit_selected_on_open(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框打开时应定位到首个命中。"""
-        dialog = self._make_dialog_with_content(
-            qapp, tmp_path, "first password and second password", "password"
-        )
+        dialog = self._make_dialog_with_content(qapp, tmp_path, "first password and second password", "password")
         assert dialog._current_hit_index == 0
         assert "1 / 2" in dialog._nav_label.text()
         dialog.close()
 
     def test_next_hit_advances(self, qapp: QApplication, tmp_path: Path) -> None:
         """下一个按钮应前进到下一个命中。"""
-        dialog = self._make_dialog_with_content(
-            qapp, tmp_path, "password and password again", "password"
-        )
+        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
         assert dialog._current_hit_index == 0
         dialog._on_next_hit()
         assert dialog._current_hit_index == 1
@@ -2035,9 +2030,7 @@ class TestHitDetailDialogNavigation:
 
     def test_next_wraps_around(self, qapp: QApplication, tmp_path: Path) -> None:
         """到达最后一个命中后再下一个应回到首个。"""
-        dialog = self._make_dialog_with_content(
-            qapp, tmp_path, "password and password again", "password"
-        )
+        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
         dialog._on_next_hit()
         assert dialog._current_hit_index == 1
         dialog._on_next_hit()
@@ -2046,9 +2039,7 @@ class TestHitDetailDialogNavigation:
 
     def test_prev_wraps_around(self, qapp: QApplication, tmp_path: Path) -> None:
         """在首个命中时上一个应跳转到最后一个。"""
-        dialog = self._make_dialog_with_content(
-            qapp, tmp_path, "password and password again", "password"
-        )
+        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
         assert dialog._current_hit_index == 0
         dialog._on_prev_hit()
         assert dialog._current_hit_index == 1
@@ -2336,3 +2327,272 @@ class TestResultFilterAndGroup:
         window._populate_results(report)
         assert window._rule_filter_combo.currentData() == "密钥内容"
         window.close()
+
+
+class TestRuleEditor:
+    """规则编辑器测试。"""
+
+    def _make_rules_file(self, tmp_path: Path, name: str = "rules.yaml") -> Path:
+        """创建测试规则文件。"""
+        path = tmp_path / name
+        path.write_text(
+            'version: "1.0"\nrules:\n  - name: 测试规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: secret\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_edit_button_exists(self, qapp: QApplication) -> None:
+        """主窗口应包含编辑按钮。"""
+        window = MainWindow()
+        assert window._edit_rule_btn is not None
+        assert window._edit_rule_btn.text() == "编辑"
+        window.close()
+
+    def test_edit_no_rules_shows_message(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无规则文件时点击编辑应提示。"""
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = []
+        called = {"count": 0}
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: called.update(count=called["count"] + 1),
+        )
+        window._on_edit_rules()
+        assert called["count"] == 1
+        window.close()
+
+    def test_editor_dialog_opens_with_content(self, qapp: QApplication, tmp_path: Path) -> None:
+        """编辑器应加载规则文件内容。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        assert dialog._file_combo.count() == 1
+        assert dialog._file_combo.itemText(0) == "rules.yaml"
+        content = dialog._editor.toPlainText()
+        assert "测试规则" in content
+        dialog.close()
+
+    def test_editor_switch_files(self, qapp: QApplication, tmp_path: Path) -> None:
+        """切换文件下拉应加载对应内容。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        r1 = self._make_rules_file(tmp_path, "r1.yaml")
+        r2 = tmp_path / "r2.yaml"
+        r2.write_text(
+            'version: "1.0"\nrules:\n  - name: 规则二\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: key\n',
+            encoding="utf-8",
+        )
+        dialog = RuleEditorDialog([r1, r2])
+        assert "测试规则" in dialog._editor.toPlainText()
+        dialog._file_combo.setCurrentIndex(1)
+        assert "规则二" in dialog._editor.toPlainText()
+        dialog.close()
+
+    def test_save_writes_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """保存应写入文件。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        dialog._editor.setPlainText(
+            'version: "1.0"\nrules:\n  - name: 新规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: test\n',
+        )
+
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        saved_paths: list[str] = []
+        dialog.rules_saved.connect(lambda p: saved_paths.append(p))
+        dialog._on_save()
+
+        content = rules_path.read_text(encoding="utf-8")
+        assert "新规则" in content
+        assert len(saved_paths) == 1
+        dialog.close()
+
+    def test_save_invalid_yaml_shows_error(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """无效 YAML 应提示错误且不保存。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        original = rules_path.read_text(encoding="utf-8")
+        dialog = RuleEditorDialog([rules_path])
+        dialog._editor.setPlainText("invalid: yaml: content: [")
+
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.warning",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        dialog._on_save()
+
+        assert warned["called"]
+        assert rules_path.read_text(encoding="utf-8") == original
+        dialog.close()
+
+    def test_reload_restores_content(self, qapp: QApplication, tmp_path: Path) -> None:
+        """重新加载应恢复文件原始内容。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        dialog._editor.setPlainText("modified content")
+        dialog._on_reload()
+        assert "测试规则" in dialog._editor.toPlainText()
+        dialog.close()
+
+    def test_empty_rules_paths(self, qapp: QApplication) -> None:
+        """无规则文件时编辑器应显示提示。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        dialog = RuleEditorDialog([])
+        assert dialog._file_combo.count() == 0
+        assert not dialog._editor.isEnabled()
+        dialog.close()
+
+    def test_main_window_edit_and_save_reloads(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """通过 MainWindow 编辑保存后应重新加载规则集。"""
+
+        rules_path = self._make_rules_file(tmp_path)
+        window = MainWindow()
+        window._use_builtin_checkbox.setChecked(False)
+        window._rules_paths = [rules_path]
+        window._reload_and_refresh()
+        assert window._ruleset is not None
+        assert len(window._ruleset.rules) == 1
+
+        # 模拟编辑保存
+        new_content = 'version: "1.0"\nrules:\n  - name: 新规则1\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: a\n  - name: 新规则2\n    severity: critical\n    match:\n      type: filename\n      mode: contains\n      pattern: b\n'
+        rules_path.write_text(new_content, encoding="utf-8")
+        window._on_rules_saved(str(rules_path))
+
+        assert window._ruleset is not None
+        assert len(window._ruleset.rules) == 2
+        monkeypatch.setattr(
+            "uniscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window.close()
+
+    def test_load_file_content_invalid_index(self, qapp: QApplication, tmp_path: Path) -> None:
+        """无效索引应清空编辑器。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        dialog._load_file_content(99)
+        assert dialog._editor.toPlainText() == ""
+        dialog.close()
+
+    def test_load_file_content_read_error(self, qapp: QApplication, tmp_path: Path) -> None:
+        """文件读取失败应显示错误信息并禁用编辑器。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+
+        def _raise_oserror(self: Path, *args: object, **kwargs: object) -> str:
+            raise OSError("模拟读取失败")
+
+        monkeypatch_method = type(rules_path).read_text
+        try:
+            type(rules_path).read_text = _raise_oserror  # type: ignore[method-assign]
+            dialog._load_file_content(0)
+        finally:
+            type(rules_path).read_text = monkeypatch_method  # type: ignore[method-assign]
+
+        assert "读取文件失败" in dialog._editor.toPlainText()
+        assert not dialog._editor.isEnabled()
+        dialog.close()
+
+    def test_save_invalid_index_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
+        """无效索引时保存不应执行任何操作。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        saved_paths: list[str] = []
+        dialog.rules_saved.connect(lambda p: saved_paths.append(p))
+
+        # 模拟无效索引
+        dialog._file_combo.setCurrentIndex(-1)
+        dialog._on_save()
+        assert len(saved_paths) == 0
+        dialog.close()
+
+    def test_save_write_error_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """写入文件失败应提示且不发射信号。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        dialog._editor.setPlainText("version: '1.0'\nrules: []\n")
+
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.warning",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+
+        original_write = Path.write_text
+
+        def _raise_on_write(self: Path, *args: object, **kwargs: object) -> int:
+            raise OSError("模拟写入失败")
+
+        monkeypatch.setattr(Path, "write_text", _raise_on_write)
+        saved_paths: list[str] = []
+        dialog.rules_saved.connect(lambda p: saved_paths.append(p))
+        dialog._on_save()
+
+        try:
+            assert warned["called"]
+            assert len(saved_paths) == 0
+        finally:
+            monkeypatch.setattr(Path, "write_text", original_write)
+        dialog.close()
+
+    def test_save_rule_parse_error_emits_signal(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """规则解析失败时仍应发射信号（文件已保存）。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        # 写入合法 YAML 但无效规则（缺少 match 字段）
+        dialog._editor.setPlainText('version: "1.0"\nrules:\n  - name: bad\n    severity: warning\n')
+
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.warning",
+            lambda *args, **kwargs: warned.update(called=True),
+        )
+        monkeypatch.setattr(
+            "uniscan.gui.rule_editor.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+
+        saved_paths: list[str] = []
+        dialog.rules_saved.connect(lambda p: saved_paths.append(p))
+        dialog._on_save()
+
+        assert warned["called"]
+        assert len(saved_paths) == 1
+        dialog.close()

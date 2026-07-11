@@ -329,9 +329,13 @@ class MainWindow(QMainWindow):
         self._remove_rule_btn = QPushButton("移除")
         self._remove_rule_btn.setToolTip("移除选中的规则文件")
         self._remove_rule_btn.clicked.connect(self._on_remove_rule)
+        self._edit_rule_btn = QPushButton("编辑")
+        self._edit_rule_btn.setToolTip("编辑选中的规则文件")
+        self._edit_rule_btn.clicked.connect(self._on_edit_rules)
         btn_layout.addWidget(self._move_up_btn)
         btn_layout.addWidget(self._move_down_btn)
         btn_layout.addWidget(self._remove_rule_btn)
+        btn_layout.addWidget(self._edit_rule_btn)
         layout.addLayout(btn_layout)
 
         self._rules_tree = QTreeWidget()
@@ -348,6 +352,10 @@ class MainWindow(QMainWindow):
         load_rules_action = QAction("加载规则...", self)
         load_rules_action.triggered.connect(self._on_load_rules)
         file_menu.addAction(load_rules_action)
+
+        edit_rules_action = QAction("编辑规则...", self)
+        edit_rules_action.triggered.connect(self._on_edit_rules)
+        file_menu.addAction(edit_rules_action)
 
         export_csv_action = QAction("导出 CSV...", self)
         export_csv_action.triggered.connect(lambda: self._on_export("csv"))
@@ -874,11 +882,13 @@ class MainWindow(QMainWindow):
         if self._ruleset is None:
             return
         for rule in self._ruleset.rules:
-            item = QTreeWidgetItem([
-                rule.name,
-                rule.severity.value,
-                ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
-            ])
+            item = QTreeWidgetItem(
+                [
+                    rule.name,
+                    rule.severity.value,
+                    ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
+                ]
+            )
             self._rules_tree.addTopLevelItem(item)
 
     def _refresh_rules_file_list(self) -> None:
@@ -930,6 +940,21 @@ class MainWindow(QMainWindow):
             return
         del self._rules_paths[row]
         self._refresh_rules_file_list()
+        self._reload_and_refresh()
+
+    def _on_edit_rules(self) -> None:
+        """打开规则编辑器对话框。"""
+        from uniscan.gui.rule_editor import RuleEditorDialog
+
+        if not self._rules_paths:
+            QMessageBox.information(self, "提示", "未加载任何规则文件，请先加载规则。")
+            return
+        dialog = RuleEditorDialog(self._rules_paths, self)
+        dialog.rules_saved.connect(self._on_rules_saved)
+        dialog.exec_()
+
+    def _on_rules_saved(self, _path: str) -> None:
+        """规则文件保存后重新加载规则集。"""
         self._reload_and_refresh()
 
     def _reload_and_refresh(self) -> None:
@@ -1021,23 +1046,27 @@ class MainWindow(QMainWindow):
     def _populate_flat(self, results: list[ScanResult]) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in results:
-            file_item = QTreeWidgetItem([
-                str(sr.path),
-                "",
-                sr.max_severity.value,
-                str(len(sr.hits)),
-                f"{len(sr.hits)} 条命中",
-            ])
+            file_item = QTreeWidgetItem(
+                [
+                    str(sr.path),
+                    "",
+                    sr.max_severity.value,
+                    str(len(sr.hits)),
+                    f"{len(sr.hits)} 条命中",
+                ]
+            )
             file_item.setData(0, Qt.UserRole, sr)
             file_item.setTextAlignment(3, Qt.AlignCenter)
             for hit in sr.hits:
-                child = QTreeWidgetItem([
-                    "",
-                    hit.rule_name,
-                    hit.severity.value,
-                    "",
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        "",
+                        hit.rule_name,
+                        hit.severity.value,
+                        "",
+                        hit.detail,
+                    ]
+                )
                 file_item.addChild(child)
             self._result_tree.addTopLevelItem(file_item)
 
@@ -1051,22 +1080,26 @@ class MainWindow(QMainWindow):
         for rule_name in sorted(rule_map.keys()):
             entries = rule_map[rule_name]
             hit_count = len(entries)
-            top = QTreeWidgetItem([
-                "",
-                rule_name,
-                "",
-                str(hit_count),
-                f"{hit_count} 个文件",
-            ])
+            top = QTreeWidgetItem(
+                [
+                    "",
+                    rule_name,
+                    "",
+                    str(hit_count),
+                    f"{hit_count} 个文件",
+                ]
+            )
             top.setTextAlignment(3, Qt.AlignCenter)
             for sr, hit in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
-                    "",
-                    hit.severity.value,
-                    "",
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        hit.severity.value,
+                        "",
+                        hit.detail,
+                    ]
+                )
                 child.setData(0, Qt.UserRole, sr)
                 top.addChild(child)
             self._result_tree.addTopLevelItem(top)
@@ -1081,22 +1114,26 @@ class MainWindow(QMainWindow):
         for severity in sorted(severity_map.keys(), reverse=True):
             entries = severity_map[severity]
             file_count = len(entries)
-            top = QTreeWidgetItem([
-                "",
-                "",
-                severity,
-                str(file_count),
-                f"{file_count} 个文件",
-            ])
-            top.setTextAlignment(3, Qt.AlignCenter)
-            for sr in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
+            top = QTreeWidgetItem(
+                [
+                    "",
                     "",
                     severity,
-                    str(len(sr.hits)),
-                    f"{len(sr.hits)} 条命中",
-                ])
+                    str(file_count),
+                    f"{file_count} 个文件",
+                ]
+            )
+            top.setTextAlignment(3, Qt.AlignCenter)
+            for sr in entries:
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        severity,
+                        str(len(sr.hits)),
+                        f"{len(sr.hits)} 条命中",
+                    ]
+                )
                 child.setData(0, Qt.UserRole, sr)
                 child.setTextAlignment(3, Qt.AlignCenter)
                 top.addChild(child)
