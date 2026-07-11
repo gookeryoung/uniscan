@@ -35,9 +35,9 @@ class Config:
     """应用配置。"""
 
     # 窗口几何：[x, y, width, height]
-    window_geometry: list[int] | None = field(default_factory=lambda: [300, 300, 1200, 900])
+    window_geometry: list[int] | None = field(default_factory=lambda: [300, 300, 1200, 800])
     # 窗口状态："maximized" 或 "normal"
-    window_state: str | None = field(default_factory=lambda: "maximized")
+    window_state: str | None = field(default_factory=lambda: "normal")
     # 主分割器大小：[left_width, right_width]
     splitter_sizes: list[int] | None = field(default_factory=list)
     # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
