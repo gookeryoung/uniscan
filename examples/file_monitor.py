@@ -25,7 +25,6 @@ import signal
 import sys
 import threading
 from pathlib import Path
-from typing import List
 
 from fuscan.rules import load_ruleset
 from fuscan.watcher import FileEventType, FileMonitor, IncrementalScanner, MonitorConfig
@@ -40,7 +39,7 @@ class MonitorApp:
         self._watch_path = watch_path
         self._scanner = IncrementalScanner(load_ruleset(rules_path))
         self._stop_event = threading.Event()
-        self._pending: List[Path] = []
+        self._pending: list[Path] = []
         self._lock = threading.Lock()
 
         # 配置监控器

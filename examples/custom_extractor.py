@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Tuple
 
 from fuscan.extractors import Extractor, ExtractorError, default_registry
 from fuscan.rules import load_ruleset
@@ -33,7 +32,7 @@ class IniExtractor(Extractor):
     """
 
     @property
-    def supported_extensions(self) -> Tuple[str, ...]:
+    def supported_extensions(self) -> tuple[str, ...]:
         return ("ini", "cfg", "conf")
 
     def extract(self, path: Path) -> str:
