@@ -595,7 +595,7 @@ class Ui_MainWindow(object):
         self.main_stack.setCurrentIndex(1)
         self.target_stack.setCurrentIndex(1)
         self.detail_action_stack.setCurrentIndex(0)
-        self.detail_main_stack.setCurrentIndex(1)
+        self.detail_main_stack.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(MainWindow)

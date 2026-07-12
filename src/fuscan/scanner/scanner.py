@@ -391,6 +391,13 @@ class Scanner:
                 logger.warning("规则 %s 求值失败 %s", rule.name, entry.path, exc_info=True)
                 continue
             if result.matched:
-                hits.append(RuleHit(rule_name=rule.name, severity=rule.severity, detail=result.detail))
+                hits.append(
+                    RuleHit(
+                        rule_name=rule.name,
+                        severity=rule.severity,
+                        detail=result.detail,
+                        match_text=result.match_text,
+                    )
+                )
 
         return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)

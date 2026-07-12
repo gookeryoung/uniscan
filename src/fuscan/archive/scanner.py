@@ -131,7 +131,14 @@ class ArchiveScanner:
                 )
                 continue
             if result.matched:
-                hits.append(RuleHit(rule_name=rule.name, severity=rule.severity, detail=result.detail))
+                hits.append(
+                    RuleHit(
+                        rule_name=rule.name,
+                        severity=rule.severity,
+                        detail=result.detail,
+                        match_text=result.match_text,
+                    )
+                )
 
         return ScanResult(
             path=file_entry.path,

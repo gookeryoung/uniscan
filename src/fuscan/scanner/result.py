@@ -12,10 +12,15 @@ __all__ = ["MatchResult", "ProgressInfo", "RuleHit", "ScanReport", "ScanResult",
 
 @dataclass(frozen=True)
 class MatchResult:
-    """单次匹配求值结果。"""
+    """单次匹配求值结果。
+
+    ``match_text`` 存储匹配到的原始文本（regex 模式为 ``m.group(0)``，
+    其他模式为 ``pattern``），供 GUI 高亮定位使用，避免 ``repr`` 转义导致的失真。
+    """
 
     matched: bool
     detail: str = ""
+    match_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,11 +42,16 @@ class ProgressInfo:
 
 @dataclass(frozen=True)
 class RuleHit:
-    """规则命中记录：一条规则对一个文件的命中信息。"""
+    """规则命中记录：一条规则对一个文件的命中信息。
+
+    ``match_text`` 为匹配到的原始文本，供 GUI 高亮定位使用；
+    对于组合规则（and/or/not）无单一匹配文本时为空字符串。
+    """
 
     rule_name: str
     severity: Severity
     detail: str
+    match_text: str = ""
 
 
 @dataclass(frozen=True)

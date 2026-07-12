@@ -165,19 +165,24 @@ def _format_size(size: int) -> str:
 
 
 def _extract_keywords(hits: Sequence[RuleHit]) -> list[str]:
-    """从命中规则的 detail 字段中提取关键词。
+    """从命中规则中提取高亮关键词。
 
-    detail 形如 "包含 'password'" / "正则命中: 'AKIA...'"，
-    提取单引号内的模式用于内容高亮。
+    优先使用 ``RuleHit.match_text``（原始匹配文本，无 repr 转义）；
+    对于组合规则 ``match_text`` 为空时，回退到从 ``detail`` 中提取单引号包裹的内容。
     """
     keywords: list[str] = []
     seen: set[str] = set()
     for hit in hits:
-        for match in _KEYWORD_RE.finditer(hit.detail):
-            kw = match.group(1)
-            if kw and kw not in seen:
-                seen.add(kw)
-                keywords.append(kw)
+        kw = hit.match_text
+        if not kw:
+            # 组合规则无单一匹配文本，回退到 detail 解析
+            for match in _KEYWORD_RE.finditer(hit.detail):
+                kw = match.group(1)
+                if kw:
+                    break
+        if kw and kw not in seen:
+            seen.add(kw)
+            keywords.append(kw)
     return keywords
 
 
@@ -186,13 +191,21 @@ def _build_preview_html(content: str, keywords: Sequence[str]) -> str:
 
     先对内容做 html.escape 转义，再用单次正则替换插入高亮 span，
     避免多次 replace 破坏已插入的 HTML 标签。
+    关键词中的换行符规范化为 ``\\s+`` 以支持跨行高亮。
     """
     escaped = html.escape(content)
     if keywords:
-        # 按长度降序排列，优先匹配最长关键词
-        escaped_kws = sorted({html.escape(k) for k in keywords if k}, key=len, reverse=True)
-        if escaped_kws:
-            pattern = "|".join(re.escape(k) for k in escaped_kws)
+        kw_patterns: list[str] = []
+        for kw in sorted({k for k in keywords if k}, key=len, reverse=True):
+            escaped_kw = html.escape(kw)
+            if re.search(r"[\r\n]", escaped_kw):
+                # 包含换行符：分段转义，用 \s+ 连接以支持跨行高亮
+                parts = [p for p in re.split(r"[\r\n]+", escaped_kw) if p]
+                kw_patterns.append(r"\s+".join(re.escape(p) for p in parts))
+            else:
+                kw_patterns.append(re.escape(escaped_kw))
+        if kw_patterns:
+            pattern = "|".join(kw_patterns)
             regex = re.compile(pattern, re.IGNORECASE)
             escaped = regex.sub(
                 lambda m: f'<span style="{_HIGHLIGHT_STYLE}">{m.group(0)}</span>',
@@ -1197,20 +1210,35 @@ class MainWindow(QMainWindow):
         self._update_detail_nav_label()
 
     def _find_detail_hit_positions(self, keywords: Sequence[str]) -> None:
-        """在详情区预览文档中查找所有关键词出现位置，按位置排序后存储。"""
+        """在详情区预览文档中查找所有关键词出现位置，按位置排序后存储。
+
+        使用 Python :func:`re.finditer` 在 :meth:`toPlainText` 返回的纯文本上查找，
+        避免 :meth:`QTextDocument.find` 无法跨越段落边界的限制。
+        关键词中的换行符（\\r\\n/\\r/\\n）规范化为 ``\\s+`` 正则，支持跨行命中的定位。
+        """
         self._detail_hit_positions = []
         if not keywords:
             return
-        doc = self._detail_preview.document()
+        plain = self._detail_preview.toPlainText()
+        if not plain:
+            return
         seen: set[tuple[int, int]] = set()
         for kw in sorted(set(keywords), key=len, reverse=True):
-            cursor = doc.find(kw)
-            while not cursor.isNull():
-                pos = (cursor.selectionStart(), cursor.selectionEnd())
+            # 包含换行符时，将换行段替换为 \s+ 以支持跨段落查找
+            if re.search(r"[\r\n]", kw):
+                parts = [p for p in re.split(r"[\r\n]+", kw) if p]
+                pattern = r"\s+".join(re.escape(p) for p in parts)
+            else:
+                pattern = re.escape(kw)
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+            except re.error:
+                continue
+            for m in regex.finditer(plain):
+                pos = (m.start(), m.end())
                 if pos not in seen:
                     seen.add(pos)
                     self._detail_hit_positions.append(pos)
-                cursor = doc.find(kw, cursor)
         self._detail_hit_positions.sort()
 
     def _highlight_current_detail_hit(self) -> None:

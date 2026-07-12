@@ -338,3 +338,162 @@ class TestMatcherEdgeCases:
         ctx = _make_context(path)
         results = matcher.match_all(ctx)
         assert results == []
+
+
+class TestMatchText:
+    """``match_text`` 字段测试：确保原始匹配文本无 repr 转义地传递到 GUI 高亮层。
+
+    覆盖场景：
+    - regex/contains/equals/startswith/endswith 各模式均填充 ``match_text``
+    - 特殊字符（反斜杠、单引号、双引号、换行）原样保留
+    - AndMatcher 取首个子匹配文本；OrMatcher 透传命中分支的文本
+    """
+
+    def test_regex_match_text_is_raw_group0(self, tmp_path: Path) -> None:
+        """regex 模式 ``match_text`` 应为 ``m.group(0)`` 原始文本，而非 repr 转义。"""
+        path = tmp_path / "db.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.REGEX,
+            pattern=r"(?i)mongodb://\S+:\S+@",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="url=mongodb://user:pass123@host")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "mongodb://user:pass123@"
+
+    def test_regex_match_text_preserves_backslash(self, tmp_path: Path) -> None:
+        """密码含反斜杠时 ``match_text`` 应原样保留，不经过 repr 转义。"""
+        path = tmp_path / "db.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.REGEX,
+            pattern=r"(?i)mongodb://\S+:\S+@",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=r"url=mongodb://user:pass\123@host")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == r"mongodb://user:pass\123@"
+        assert "\\" in result.match_text
+
+    def test_regex_match_text_preserves_single_quote(self, tmp_path: Path) -> None:
+        """密码含单引号时 ``match_text`` 应原样保留。"""
+        path = tmp_path / "db.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.REGEX,
+            pattern=r"(?i)mongodb://\S+:\S+@",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="url=mongodb://user:pa'ss@host")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "mongodb://user:pa'ss@"
+        assert "'" in result.match_text
+
+    def test_regex_match_text_preserves_newline(self, tmp_path: Path) -> None:
+        """跨行 Bearer 令牌的 ``match_text`` 应保留换行符。"""
+        path = tmp_path / "auth.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.REGEX,
+            pattern=r"(?i)bearer\s+[A-Za-z0-9._\-]+",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="Authorization: Bearer\n  eyJhbGci.token")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert "\n" in result.match_text
+        assert result.match_text.startswith("Bearer")
+
+    def test_contains_match_text(self, tmp_path: Path) -> None:
+        """CONTAINS 模式 ``match_text`` 应为 pattern 本身。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password", case_sensitive=False)
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="the password here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "password"
+
+    def test_equals_match_text(self, tmp_path: Path) -> None:
+        """EQUALS 模式 ``match_text`` 应为 pattern 本身。"""
+        path = tmp_path / "secret.txt"
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="secret.txt", case_sensitive=False)
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "secret.txt"
+
+    def test_startswith_match_text(self, tmp_path: Path) -> None:
+        """STARTSWITH 模式 ``match_text`` 应为 pattern 本身。"""
+        path = tmp_path / "test_file.txt"
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.STARTSWITH, pattern="test_", case_sensitive=False)
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "test_"
+
+    def test_endswith_match_text(self, tmp_path: Path) -> None:
+        """ENDSWITH 模式 ``match_text`` 应为 pattern 本身。"""
+        path = tmp_path / "config.conf"
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.ENDSWITH, pattern=".conf", case_sensitive=False)
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == ".conf"
+
+    def test_not_matched_has_empty_match_text(self, tmp_path: Path) -> None:
+        """未命中时 ``match_text`` 应为空字符串。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing", case_sensitive=False)
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_text == ""
+
+    def test_and_matcher_uses_first_child_match_text(self, tmp_path: Path) -> None:
+        """AndMatcher 应取首个子匹配器的 ``match_text`` 作为高亮关键词。"""
+        path = tmp_path / "doc.conf"
+        path.write_text("", encoding="utf-8")
+        children = (
+            FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$")),
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
+        )
+        matcher = AndMatcher(children)
+        ctx = _make_context(path, content="db_password=x")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        # 第一个子匹配器是 FileNameMatcher，regex 模式 match_text 为 m.group(0)
+        assert result.match_text == ".conf"
+
+    def test_or_matcher_passes_through_match_text(self, tmp_path: Path) -> None:
+        """OrMatcher 应透传命中分支的 ``match_text``。"""
+        path = tmp_path / "x.txt"
+        children = (
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"AKIA\d+")),
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing")),
+        )
+        matcher = OrMatcher(children)
+        ctx = _make_context(path, content="key=AKIA12345")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == "AKIA12345"
+
+    def test_not_matcher_has_empty_match_text(self, tmp_path: Path) -> None:
+        """NotMatcher 命中时 ``match_text`` 应为空（无原始匹配文本）。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        child = PathMatcher(LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        matcher = NotMatcherImpl(child)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_text == ""

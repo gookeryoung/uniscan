@@ -112,13 +112,21 @@ class AndMatcher(Matcher):
     @override
     def matches(self, context: MatchContext) -> MatchResult:
         details: list[str] = []
+        match_texts: list[str] = []
         for child in self.children:
             result = child.matches(context)
             if not result.matched:
                 return MatchResult(matched=False)
             if result.detail:
                 details.append(result.detail)
-        return MatchResult(matched=True, detail=" AND ".join(details) if details else "全部命中")
+            if result.match_text:
+                match_texts.append(result.match_text)
+        # 取首个子匹配文本作为高亮关键词，避免组合规则无关键词可高亮
+        return MatchResult(
+            matched=True,
+            detail=" AND ".join(details) if details else "全部命中",
+            match_text=match_texts[0] if match_texts else "",
+        )
 
     @override
     def match_all(self, context: MatchContext) -> list[MatchResult]:
@@ -139,7 +147,11 @@ class OrMatcher(Matcher):
         for child in self.children:
             result = child.matches(context)
             if result.matched:
-                return MatchResult(matched=True, detail=result.detail or "任一命中")
+                return MatchResult(
+                    matched=True,
+                    detail=result.detail or "任一命中",
+                    match_text=result.match_text,
+                )
         return MatchResult(matched=False)
 
     @override
@@ -172,7 +184,7 @@ def _apply_leaf(text: str, spec: LeafMatch, compiled: Pattern[str] | None) -> Ma
         m = compiled.search(text)
         if m is None:
             return MatchResult(matched=False)
-        return MatchResult(matched=True, detail=f"正则命中: {m.group(0)!r}")
+        return MatchResult(matched=True, detail=f"正则命中: {m.group(0)!r}", match_text=m.group(0))
 
     pattern = spec.pattern
     target = text
@@ -183,22 +195,22 @@ def _apply_leaf(text: str, spec: LeafMatch, compiled: Pattern[str] | None) -> Ma
     if spec.mode == MatchMode.CONTAINS:
         idx = target.find(pattern)
         if idx >= 0:
-            return MatchResult(matched=True, detail=f"包含 {pattern!r}")
+            return MatchResult(matched=True, detail=f"包含 {pattern!r}", match_text=pattern)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.EQUALS:
         if target == pattern:
-            return MatchResult(matched=True, detail="完全相等")
+            return MatchResult(matched=True, detail="完全相等", match_text=pattern)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.STARTSWITH:
         if target.startswith(pattern):
-            return MatchResult(matched=True, detail=f"以 {pattern!r} 开头")
+            return MatchResult(matched=True, detail=f"以 {pattern!r} 开头", match_text=pattern)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.ENDSWITH:
         if target.endswith(pattern):
-            return MatchResult(matched=True, detail=f"以 {pattern!r} 结尾")
+            return MatchResult(matched=True, detail=f"以 {pattern!r} 结尾", match_text=pattern)
         return MatchResult(matched=False)
 
     return MatchResult(matched=False, detail=f"未知模式 {spec.mode.value}")

@@ -2664,6 +2664,188 @@ class TestHitDetailDialogNavigation:
         dialog.close()
 
 
+class TestMatchTextHighlighting:
+    """``match_text`` 字段驱动的关键词提取与跨行定位测试。
+
+    覆盖数据库连接串密码与 Bearer 令牌的详情定位修复：
+    - ``_extract_keywords`` 优先使用 ``match_text`` 而非从 detail 解析
+    - 特殊字符（反斜杠、单引号）的关键词正确定位
+    - 跨行 Bearer 令牌的换行规范化为 ``\\s+`` 后跨段落定位
+    """
+
+    def test_extract_keywords_prefers_match_text(self) -> None:
+        """``_extract_keywords`` 应优先使用 ``match_text`` 而非从 detail 解析。"""
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.CRITICAL, "正则命中: 'repr_escape'", match_text="raw_text"),)
+        kws = _extract_keywords(hits)
+        assert kws == ["raw_text"]
+
+    def test_extract_keywords_match_text_with_backslash(self) -> None:
+        """``match_text`` 含反斜杠时应原样使用，不经过 repr 转义。"""
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.WARNING, "正则命中: 'pass\\\\123'", match_text=r"pass\123"),)
+        kws = _extract_keywords(hits)
+        assert kws == [r"pass\123"]
+
+    def test_extract_keywords_match_text_with_single_quote(self) -> None:
+        """``match_text`` 含单引号时应原样使用。"""
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.WARNING, "正则命中", match_text="pa'ss"),)
+        kws = _extract_keywords(hits)
+        assert kws == ["pa'ss"]
+
+    def test_extract_keywords_match_text_with_newline(self) -> None:
+        """``match_text`` 含换行符时应原样保留，供跨行定位使用。"""
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.INFO, "正则命中", match_text="Bearer\n  eyJhbGci"),)
+        kws = _extract_keywords(hits)
+        assert len(kws) == 1
+        assert "\n" in kws[0]
+
+    def test_extract_keywords_falls_back_to_detail_when_match_text_empty(self) -> None:
+        """``match_text`` 为空时应回退到从 detail 中提取单引号内容。"""
+        from fuscan.gui.detail_dialog import _extract_keywords
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.CRITICAL, "包含 'password'", match_text=""),)
+        kws = _extract_keywords(hits)
+        assert kws == ["password"]
+
+    def test_dialog_positions_db_connection_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情对话框应能定位含反斜杠的数据库连接串密码。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = r"url=mongodb://user:pass\123@host"
+        path = tmp_path / "db.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text=r"mongodb://user:pass\123@"),),
+        )
+        dialog = HitDetailDialog(result)
+        assert len(dialog._hit_positions) >= 1
+        assert "1 /" in dialog._nav_label.text()
+        dialog.close()
+
+    def test_dialog_positions_db_connection_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情对话框应能定位含单引号的数据库连接串密码。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = "url=mongodb://user:pa'ss@host"
+        path = tmp_path / "db.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text="mongodb://user:pa'ss@"),),
+        )
+        dialog = HitDetailDialog(result)
+        assert len(dialog._hit_positions) >= 1
+        assert "1 /" in dialog._nav_label.text()
+        dialog.close()
+
+    def test_dialog_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情对话框应能定位跨行 Bearer 令牌（换行规范化为 \\s+）。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = "Authorization: Bearer\n  eyJhbGci.token"
+        path = tmp_path / "auth.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer\n  eyJhbGci"),),
+        )
+        dialog = HitDetailDialog(result)
+        assert len(dialog._hit_positions) >= 1
+        assert "1 /" in dialog._nav_label.text()
+        dialog.close()
+
+    def test_dialog_positions_single_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情对话框应能定位单行 Bearer 令牌。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = "Authorization: Bearer eyJhbGci.token"
+        path = tmp_path / "auth.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer eyJhbGci.token"),),
+        )
+        dialog = HitDetailDialog(result)
+        assert len(dialog._hit_positions) >= 1
+        assert "1 /" in dialog._nav_label.text()
+        dialog.close()
+
+    def test_main_window_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """主窗口详情区应能定位跨行 Bearer 令牌。"""
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = "Authorization: Bearer\n  eyJhbGci.token"
+        path = tmp_path / "auth.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer\n  eyJhbGci"),),
+        )
+        window = MainWindow()
+        window._detail_show_result(result)
+        assert len(window._detail_hit_positions) >= 1
+        assert "1 /" in window._detail_nav_label.text()
+        window.close()
+
+    def test_main_window_positions_db_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
+        """主窗口详情区应能定位含反斜杠的数据库连接串。"""
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = r"url=mongodb://user:pass\123@host"
+        path = tmp_path / "db.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text=r"mongodb://user:pass\123@"),),
+        )
+        window = MainWindow()
+        window._detail_show_result(result)
+        assert len(window._detail_hit_positions) >= 1
+        assert "1 /" in window._detail_nav_label.text()
+        window.close()
+
+    def test_main_window_positions_db_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
+        """主窗口详情区应能定位含单引号的数据库连接串。"""
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        content = "url=mongodb://user:pa'ss@host"
+        path = tmp_path / "db.txt"
+        path.write_text(content, encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=len(content),
+            hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text="mongodb://user:pa'ss@"),),
+        )
+        window = MainWindow()
+        window._detail_show_result(result)
+        assert len(window._detail_hit_positions) >= 1
+        assert "1 /" in window._detail_nav_label.text()
+        window.close()
+
+
 def _build_multi_hit_report(tmp_path: Path) -> ScanReport:
     """构造多规则、多文件命中的测试报告。"""
     from fuscan.rules.model import (
