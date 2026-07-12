@@ -17,7 +17,7 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(720, 927)
+        MainWindow.resize(1176, 742)
         MainWindow.setMinimumSize(QSize(720, 480))
         self.load_rules_action = QAction(MainWindow)
         self.load_rules_action.setObjectName(u"load_rules_action")
@@ -224,6 +224,11 @@ class Ui_MainWindow(object):
         self.scanning_layout.setContentsMargins(48, 48, 48, 48)
         self.scanning_title_label = QLabel(self.scanning_page)
         self.scanning_title_label.setObjectName(u"scanning_title_label")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.scanning_title_label.sizePolicy().hasHeightForWidth())
+        self.scanning_title_label.setSizePolicy(sizePolicy2)
         self.scanning_title_label.setMinimumSize(QSize(0, 40))
         self.scanning_title_label.setAlignment(Qt.AlignCenter)
 
@@ -243,25 +248,13 @@ class Ui_MainWindow(object):
 
         self.scanning_layout.addWidget(self.current_file_label)
 
-        self.stats_group = QGroupBox(self.scanning_page)
-        self.stats_group.setObjectName(u"stats_group")
-        self.stats_form_layout = QFormLayout(self.stats_group)
-        self.stats_form_layout.setObjectName(u"stats_form_layout")
-        self.stats_counts_label = QLabel(self.stats_group)
-        self.stats_counts_label.setObjectName(u"stats_counts_label")
-
-        self.stats_form_layout.setWidget(0, QFormLayout.LabelRole, self.stats_counts_label)
-
-        self.stats_time_label = QLabel(self.stats_group)
-        self.stats_time_label.setObjectName(u"stats_time_label")
-
-        self.stats_form_layout.setWidget(1, QFormLayout.LabelRole, self.stats_time_label)
-
-
-        self.scanning_layout.addWidget(self.stats_group)
-
         self.lists_splitter = QSplitter(self.scanning_page)
         self.lists_splitter.setObjectName(u"lists_splitter")
+        sizePolicy3 = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy3.setHorizontalStretch(0)
+        sizePolicy3.setVerticalStretch(0)
+        sizePolicy3.setHeightForWidth(self.lists_splitter.sizePolicy().hasHeightForWidth())
+        self.lists_splitter.setSizePolicy(sizePolicy3)
         self.lists_splitter.setOrientation(Qt.Horizontal)
         self.lists_splitter.setHandleWidth(6)
         self.skipped_dirs_group = QGroupBox(self.lists_splitter)
@@ -286,6 +279,23 @@ class Ui_MainWindow(object):
         self.lists_splitter.addWidget(self.matched_files_group)
 
         self.scanning_layout.addWidget(self.lists_splitter)
+
+        self.stats_group = QGroupBox(self.scanning_page)
+        self.stats_group.setObjectName(u"stats_group")
+        self.stats_form_layout = QFormLayout(self.stats_group)
+        self.stats_form_layout.setObjectName(u"stats_form_layout")
+        self.stats_counts_label = QLabel(self.stats_group)
+        self.stats_counts_label.setObjectName(u"stats_counts_label")
+
+        self.stats_form_layout.setWidget(0, QFormLayout.LabelRole, self.stats_counts_label)
+
+        self.stats_time_label = QLabel(self.stats_group)
+        self.stats_time_label.setObjectName(u"stats_time_label")
+
+        self.stats_form_layout.setWidget(1, QFormLayout.LabelRole, self.stats_time_label)
+
+
+        self.scanning_layout.addWidget(self.stats_group)
 
         self.scanning_btn_row = QHBoxLayout()
         self.scanning_btn_row.setSpacing(12)
@@ -313,10 +323,6 @@ class Ui_MainWindow(object):
 
         self.scanning_layout.addLayout(self.scanning_btn_row)
 
-        self.scanning_bottom_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-
-        self.scanning_layout.addItem(self.scanning_bottom_spacer)
-
         self.main_stack.addWidget(self.scanning_page)
         self.results_page = QWidget()
         self.results_page.setObjectName(u"results_page")
@@ -326,11 +332,11 @@ class Ui_MainWindow(object):
         self.results_page_layout.setContentsMargins(0, 4, 0, 0)
         self.results_top_bar = QFrame(self.results_page)
         self.results_top_bar.setObjectName(u"results_top_bar")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
-        sizePolicy2.setHorizontalStretch(0)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.results_top_bar.sizePolicy().hasHeightForWidth())
-        self.results_top_bar.setSizePolicy(sizePolicy2)
+        sizePolicy4 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        sizePolicy4.setHorizontalStretch(0)
+        sizePolicy4.setVerticalStretch(0)
+        sizePolicy4.setHeightForWidth(self.results_top_bar.sizePolicy().hasHeightForWidth())
+        self.results_top_bar.setSizePolicy(sizePolicy4)
         self.results_top_layout = QHBoxLayout(self.results_top_bar)
         self.results_top_layout.setSpacing(8)
         self.results_top_layout.setObjectName(u"results_top_layout")
@@ -364,11 +370,11 @@ class Ui_MainWindow(object):
         self.results_splitter.setOrientation(Qt.Horizontal)
         self.results_list_area = QWidget(self.results_splitter)
         self.results_list_area.setObjectName(u"results_list_area")
-        sizePolicy3 = QSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        sizePolicy3.setHorizontalStretch(0)
-        sizePolicy3.setVerticalStretch(0)
-        sizePolicy3.setHeightForWidth(self.results_list_area.sizePolicy().hasHeightForWidth())
-        self.results_list_area.setSizePolicy(sizePolicy3)
+        sizePolicy5 = QSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        sizePolicy5.setHorizontalStretch(0)
+        sizePolicy5.setVerticalStretch(0)
+        sizePolicy5.setHeightForWidth(self.results_list_area.sizePolicy().hasHeightForWidth())
+        self.results_list_area.setSizePolicy(sizePolicy5)
         self.results_list_layout = QVBoxLayout(self.results_list_area)
         self.results_list_layout.setSpacing(4)
         self.results_list_layout.setObjectName(u"results_list_layout")
@@ -409,8 +415,8 @@ class Ui_MainWindow(object):
         self.results_splitter.addWidget(self.results_list_area)
         self.detail_area = QWidget(self.results_splitter)
         self.detail_area.setObjectName(u"detail_area")
-        sizePolicy3.setHeightForWidth(self.detail_area.sizePolicy().hasHeightForWidth())
-        self.detail_area.setSizePolicy(sizePolicy3)
+        sizePolicy5.setHeightForWidth(self.detail_area.sizePolicy().hasHeightForWidth())
+        self.detail_area.setSizePolicy(sizePolicy5)
         self.detail_layout = QVBoxLayout(self.detail_area)
         self.detail_layout.setSpacing(4)
         self.detail_layout.setObjectName(u"detail_layout")
@@ -419,6 +425,11 @@ class Ui_MainWindow(object):
         self.detail_action_stack.setObjectName(u"detail_action_stack")
         self.detail_empty_action = QFrame()
         self.detail_empty_action.setObjectName(u"detail_empty_action")
+        sizePolicy6 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        sizePolicy6.setHorizontalStretch(0)
+        sizePolicy6.setVerticalStretch(0)
+        sizePolicy6.setHeightForWidth(self.detail_empty_action.sizePolicy().hasHeightForWidth())
+        self.detail_empty_action.setSizePolicy(sizePolicy6)
         self.detail_empty_action_layout = QHBoxLayout(self.detail_empty_action)
         self.detail_empty_action_layout.setSpacing(6)
         self.detail_empty_action_layout.setObjectName(u"detail_empty_action_layout")
@@ -480,6 +491,11 @@ class Ui_MainWindow(object):
         self.detail_empty_main_layout.setObjectName(u"detail_empty_main_layout")
         self.detail_empty_hint = QLabel(self.detail_empty_main)
         self.detail_empty_hint.setObjectName(u"detail_empty_hint")
+        sizePolicy7 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        sizePolicy7.setHorizontalStretch(0)
+        sizePolicy7.setVerticalStretch(0)
+        sizePolicy7.setHeightForWidth(self.detail_empty_hint.sizePolicy().hasHeightForWidth())
+        self.detail_empty_hint.setSizePolicy(sizePolicy7)
         self.detail_empty_hint.setAlignment(Qt.AlignCenter)
 
         self.detail_empty_main_layout.addWidget(self.detail_empty_hint)
@@ -487,6 +503,8 @@ class Ui_MainWindow(object):
         self.detail_main_stack.addWidget(self.detail_empty_main)
         self.detail_nonempty_main = QFrame()
         self.detail_nonempty_main.setObjectName(u"detail_nonempty_main")
+        sizePolicy7.setHeightForWidth(self.detail_nonempty_main.sizePolicy().hasHeightForWidth())
+        self.detail_nonempty_main.setSizePolicy(sizePolicy7)
         self.detail_nonempty_main_layout = QVBoxLayout(self.detail_nonempty_main)
         self.detail_nonempty_main_layout.setSpacing(6)
         self.detail_nonempty_main_layout.setObjectName(u"detail_nonempty_main_layout")
@@ -547,7 +565,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.central)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 720, 26))
+        self.menubar.setGeometry(QRect(0, 0, 1176, 26))
         self.file_menu = QMenu(self.menubar)
         self.file_menu.setObjectName(u"file_menu")
         self.scan_menu = QMenu(self.menubar)
@@ -574,10 +592,10 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
 
-        self.main_stack.setCurrentIndex(2)
+        self.main_stack.setCurrentIndex(1)
         self.target_stack.setCurrentIndex(1)
         self.detail_action_stack.setCurrentIndex(0)
-        self.detail_main_stack.setCurrentIndex(0)
+        self.detail_main_stack.setCurrentIndex(1)
 
 
         QMetaObject.connectSlotsByName(MainWindow)
@@ -653,11 +671,11 @@ class Ui_MainWindow(object):
         self.scan_btn.setText(QCoreApplication.translate("MainWindow", u"\u5f00\u59cb\u626b\u63cf", None))
         self.scanning_title_label.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u8fdb\u884c\u4e2d", None))
         self.current_file_label.setText("")
+        self.skipped_dirs_group.setTitle(QCoreApplication.translate("MainWindow", u"\u8df3\u8fc7\u7684\u6587\u4ef6\u5939", None))
+        self.matched_files_group.setTitle(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u7684\u6587\u4ef6", None))
         self.stats_group.setTitle(QCoreApplication.translate("MainWindow", u"\u7edf\u8ba1", None))
         self.stats_counts_label.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u626b\u63cf 0 | \u8df3\u8fc7 0 | \u547d\u4e2d 0 | \u9519\u8bef 0", None))
         self.stats_time_label.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u7528 0.0s | \u901f\u5ea6 0 \u6587\u4ef6/s", None))
-        self.skipped_dirs_group.setTitle(QCoreApplication.translate("MainWindow", u"\u8df3\u8fc7\u7684\u6587\u4ef6\u5939", None))
-        self.matched_files_group.setTitle(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u7684\u6587\u4ef6", None))
         self.pause_resume_btn.setText(QCoreApplication.translate("MainWindow", u"\u6682\u505c\u626b\u63cf", None))
         self.cancel_btn.setText(QCoreApplication.translate("MainWindow", u"\u53d6\u6d88\u626b\u63cf", None))
 #if QT_CONFIG(tooltip)
