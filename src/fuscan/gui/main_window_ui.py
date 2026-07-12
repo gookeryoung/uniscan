@@ -522,14 +522,16 @@ class Ui_MainWindow(object):
         self.detail_nonempty_main_layout.addWidget(self.detail_hits_title_label)
 
         self.detail_hits_table = QTableWidget(self.detail_nonempty_main)
-        if (self.detail_hits_table.columnCount() < 3):
-            self.detail_hits_table.setColumnCount(3)
+        if (self.detail_hits_table.columnCount() < 4):
+            self.detail_hits_table.setColumnCount(4)
         __qtablewidgetitem = QTableWidgetItem()
         self.detail_hits_table.setHorizontalHeaderItem(0, __qtablewidgetitem)
         __qtablewidgetitem1 = QTableWidgetItem()
         self.detail_hits_table.setHorizontalHeaderItem(1, __qtablewidgetitem1)
         __qtablewidgetitem2 = QTableWidgetItem()
         self.detail_hits_table.setHorizontalHeaderItem(2, __qtablewidgetitem2)
+        __qtablewidgetitem3 = QTableWidgetItem()
+        self.detail_hits_table.setHorizontalHeaderItem(3, __qtablewidgetitem3)
         self.detail_hits_table.setObjectName(u"detail_hits_table")
 
         self.detail_nonempty_main_layout.addWidget(self.detail_hits_table)
@@ -595,7 +597,7 @@ class Ui_MainWindow(object):
         self.main_stack.setCurrentIndex(0)
         self.target_stack.setCurrentIndex(2)
         self.detail_action_stack.setCurrentIndex(0)
-        self.detail_main_stack.setCurrentIndex(1)
+        self.detail_main_stack.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(MainWindow)
@@ -694,7 +696,8 @@ class Ui_MainWindow(object):
         self.group_mode_combo.setToolTip(QCoreApplication.translate("MainWindow", u"\u5206\u7ec4\u6a21\u5f0f", None))
 #endif // QT_CONFIG(tooltip)
         ___qtreewidgetitem1 = self.result_tree.headerItem()
-        ___qtreewidgetitem1.setText(4, QCoreApplication.translate("MainWindow", u"\u8be6\u60c5", None));
+        ___qtreewidgetitem1.setText(5, QCoreApplication.translate("MainWindow", u"\u8be6\u60c5", None));
+        ___qtreewidgetitem1.setText(4, QCoreApplication.translate("MainWindow", u"\u6761\u6570", None));
         ___qtreewidgetitem1.setText(3, QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u6570", None));
         ___qtreewidgetitem1.setText(2, QCoreApplication.translate("MainWindow", u"\u4e25\u91cd\u7b49\u7ea7", None));
         ___qtreewidgetitem1.setText(1, QCoreApplication.translate("MainWindow", u"\u89c4\u5219", None));
@@ -722,7 +725,9 @@ class Ui_MainWindow(object):
         ___qtablewidgetitem1 = self.detail_hits_table.horizontalHeaderItem(1)
         ___qtablewidgetitem1.setText(QCoreApplication.translate("MainWindow", u"\u4e25\u91cd\u7b49\u7ea7", None));
         ___qtablewidgetitem2 = self.detail_hits_table.horizontalHeaderItem(2)
-        ___qtablewidgetitem2.setText(QCoreApplication.translate("MainWindow", u"\u8be6\u60c5", None));
+        ___qtablewidgetitem2.setText(QCoreApplication.translate("MainWindow", u"\u6761\u6570", None));
+        ___qtablewidgetitem3 = self.detail_hits_table.horizontalHeaderItem(3)
+        ___qtablewidgetitem3.setText(QCoreApplication.translate("MainWindow", u"\u8be6\u60c5", None));
         self.detail_preview_title_label.setText(QCoreApplication.translate("MainWindow", u"\u5185\u5bb9\u9884\u89c8 (\u5173\u952e\u8bcd\u9ad8\u4eae):", None))
         self.note_edit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"\u5907\u6ce8/\u6279\u6ce8/\u5bfc\u51fa\u8bf4\u660e...", None))
         self.file_menu.setTitle(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6(&F)", None))

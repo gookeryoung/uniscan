@@ -66,6 +66,7 @@ class ScanWorker(QThread):
         self._cum_skipped = 0
         self._cum_matched = 0
         self._cum_errors = 0
+        self._cum_matches = 0
         self._start_time: float = 0.0
 
     def pause(self) -> None:
@@ -96,6 +97,7 @@ class ScanWorker(QThread):
                 matched=info.matched + self._cum_matched,
                 errors=info.errors + self._cum_errors,
                 elapsed=elapsed,
+                matches=info.matches + self._cum_matches,
                 # skipped_dirs/matched_files 不累计，仅反映最近一次 scan() 的快照
                 skipped_dirs=info.skipped_dirs,
                 matched_files=info.matched_files,
@@ -123,6 +125,7 @@ class ScanWorker(QThread):
             total_matched = 0
             total_skipped = 0
             total_errors = 0
+            total_matches = 0
 
             for root in self._roots:
                 if self._scanner is not None and self._scanner.is_cancelled:
@@ -134,12 +137,14 @@ class ScanWorker(QThread):
                 total_matched += report.stats.matched_files
                 total_skipped += report.stats.skipped_files
                 total_errors += report.stats.errors
+                total_matches += report.stats.total_matches
                 # 更新累计值，供下一个根路径的进度回调使用
                 self._cum_scanned = total_scanned
                 self._cum_total = total_files
                 self._cum_skipped = total_skipped
                 self._cum_matched = total_matched
                 self._cum_errors = total_errors
+                self._cum_matches = total_matches
 
             was_cancelled = self._scanner is not None and self._scanner.is_cancelled
             elapsed = time.monotonic() - self._start_time
@@ -153,6 +158,7 @@ class ScanWorker(QThread):
                     skipped_files=total_skipped,
                     errors=total_errors,
                     duration_seconds=elapsed,
+                    total_matches=total_matches,
                 ),
                 cancelled=was_cancelled,
             )

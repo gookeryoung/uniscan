@@ -81,6 +81,7 @@ class IncrementalScanner:
         matched = 0
         skipped = 0
         errors = 0
+        matches = 0
 
         for entry in self._walker.walk(root):
             total += 1
@@ -100,6 +101,7 @@ class IncrementalScanner:
                 scanned += 1
                 if result.has_hit:
                     matched += 1
+                    matches += result.total_match_count
                 errors += result.errors
                 results.append(result)
                 # 更新状态
@@ -117,6 +119,7 @@ class IncrementalScanner:
             skipped_files=skipped,
             errors=errors,
             duration_seconds=duration,
+            total_matches=matches,
         )
         return ScanReport(root=root, results=tuple(results), stats=stats)
 
@@ -129,6 +132,7 @@ class IncrementalScanner:
         scanned = 0
         matched = 0
         errors = 0
+        matches = 0
 
         for path in paths:
             if not path.exists() or path.is_dir():
@@ -141,6 +145,7 @@ class IncrementalScanner:
                 scanned += 1
                 if result.has_hit:
                     matched += 1
+                    matches += result.total_match_count
                 errors += result.errors
                 results.append(result)
                 self._file_states[str(path)] = entry.mtime
@@ -155,6 +160,7 @@ class IncrementalScanner:
             matched_files=matched,
             errors=errors,
             duration_seconds=duration,
+            total_matches=matches,
         )
         return ScanReport(root=Path(), results=tuple(results), stats=stats)
 
@@ -209,6 +215,14 @@ class IncrementalScanner:
                 logger.warning("规则 %s 求值失败 %s", rule.name, entry.path, exc_info=True)
                 continue
             if result.matched:
-                hits.append(RuleHit(rule_name=rule.name, severity=rule.severity, detail=result.detail))
+                hits.append(
+                    RuleHit(
+                        rule_name=rule.name,
+                        severity=rule.severity,
+                        detail=result.detail,
+                        match_text=result.match_text,
+                        match_count=result.match_count,
+                    )
+                )
 
         return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)

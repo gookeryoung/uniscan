@@ -113,6 +113,7 @@ class AndMatcher(Matcher):
     def matches(self, context: MatchContext) -> MatchResult:
         details: list[str] = []
         match_texts: list[str] = []
+        total_count = 0
         for child in self.children:
             result = child.matches(context)
             if not result.matched:
@@ -121,11 +122,13 @@ class AndMatcher(Matcher):
                 details.append(result.detail)
             if result.match_text:
                 match_texts.append(result.match_text)
+            total_count += result.match_count
         # 取首个子匹配文本作为高亮关键词，避免组合规则无关键词可高亮
         return MatchResult(
             matched=True,
             detail=" AND ".join(details) if details else "全部命中",
             match_text=match_texts[0] if match_texts else "",
+            match_count=total_count,
         )
 
     @override
@@ -151,6 +154,7 @@ class OrMatcher(Matcher):
                     matched=True,
                     detail=result.detail or "任一命中",
                     match_text=result.match_text,
+                    match_count=result.match_count,
                 )
         return MatchResult(matched=False)
 
@@ -173,18 +177,30 @@ class NotMatcherImpl(Matcher):
         result = self.child.matches(context)
         if result.matched:
             return MatchResult(matched=False, detail=f"NOT 子条件命中: {result.detail}")
-        return MatchResult(matched=True, detail="子条件未命中")
+        return MatchResult(matched=True, detail="子条件未命中", match_count=1)
 
 
 def _apply_leaf(text: str, spec: LeafMatch, compiled: Pattern[str] | None) -> MatchResult:
-    """对文本应用叶子匹配规格。"""
+    """对文本应用叶子匹配规格。
+
+    regex 模式用 ``finditer`` 收集所有匹配，``match_count`` 为匹配条数，
+    ``match_text`` 取首个匹配文本用于高亮定位；
+    contains 模式用 ``count`` 统计非重叠出现次数作为 ``match_count``；
+    equals/startswith/endswith 命中时 ``match_count`` 固定为 1。
+    """
     if spec.mode == MatchMode.REGEX:
         if compiled is None:
             return MatchResult(matched=False, detail="正则未编译")
-        m = compiled.search(text)
-        if m is None:
+        matches = list(compiled.finditer(text))
+        if not matches:
             return MatchResult(matched=False)
-        return MatchResult(matched=True, detail=f"正则命中: {m.group(0)!r}", match_text=m.group(0))
+        first = matches[0].group(0)
+        return MatchResult(
+            matched=True,
+            detail=f"正则命中: {first!r}",
+            match_text=first,
+            match_count=len(matches),
+        )
 
     pattern = spec.pattern
     target = text
@@ -193,24 +209,25 @@ def _apply_leaf(text: str, spec: LeafMatch, compiled: Pattern[str] | None) -> Ma
         target = text.lower()
 
     if spec.mode == MatchMode.CONTAINS:
-        idx = target.find(pattern)
-        if idx >= 0:
-            return MatchResult(matched=True, detail=f"包含 {pattern!r}", match_text=pattern)
+        # 空 pattern 的 count 会返回 len+1，语义上不应匹配
+        count = target.count(pattern) if pattern else 0
+        if count > 0:
+            return MatchResult(matched=True, detail=f"包含 {pattern!r}", match_text=pattern, match_count=count)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.EQUALS:
         if target == pattern:
-            return MatchResult(matched=True, detail="完全相等", match_text=pattern)
+            return MatchResult(matched=True, detail="完全相等", match_text=pattern, match_count=1)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.STARTSWITH:
         if target.startswith(pattern):
-            return MatchResult(matched=True, detail=f"以 {pattern!r} 开头", match_text=pattern)
+            return MatchResult(matched=True, detail=f"以 {pattern!r} 开头", match_text=pattern, match_count=1)
         return MatchResult(matched=False)
 
     if spec.mode == MatchMode.ENDSWITH:
         if target.endswith(pattern):
-            return MatchResult(matched=True, detail=f"以 {pattern!r} 结尾", match_text=pattern)
+            return MatchResult(matched=True, detail=f"以 {pattern!r} 结尾", match_text=pattern, match_count=1)
         return MatchResult(matched=False)
 
     return MatchResult(matched=False, detail=f"未知模式 {spec.mode.value}")

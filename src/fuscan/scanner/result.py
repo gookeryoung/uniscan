@@ -14,13 +14,16 @@ __all__ = ["MatchResult", "ProgressInfo", "RuleHit", "ScanReport", "ScanResult",
 class MatchResult:
     """单次匹配求值结果。
 
-    ``match_text`` 存储匹配到的原始文本（regex 模式为 ``m.group(0)``，
+    ``match_text`` 存储匹配到的原始文本（regex 模式为首个 ``m.group(0)``，
     其他模式为 ``pattern``），供 GUI 高亮定位使用，避免 ``repr`` 转义导致的失真。
+    ``match_count`` 为该次求值实际匹配到的文本条数（同一规则在同一文件中
+    可能匹配多处，如多处密码、多处密钥），用于区分"命中规则数"与"匹配条数"。
     """
 
     matched: bool
     detail: str = ""
     match_text: str = ""
+    match_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,8 @@ class ProgressInfo:
     matched: int = 0
     errors: int = 0
     elapsed: float = 0.0
+    # 匹配文本条数（同一规则在同一文件的多处匹配分别计数）
+    matches: int = 0
     # 跳过的目录路径（最近 500 条，避免无限增长）
     skipped_dirs: tuple[str, ...] = ()
     # 命中的 (文件路径, 规则名) 列表（最近 500 条）
@@ -46,12 +51,15 @@ class RuleHit:
 
     ``match_text`` 为匹配到的原始文本，供 GUI 高亮定位使用；
     对于组合规则（and/or/not）无单一匹配文本时为空字符串。
+    ``match_count`` 为该规则在该文件实际匹配到的文本条数（如多处密码各算 1 条），
+    用于区分"命中规则数"与"匹配条数"，避免两者不对等时产生歧义。
     """
 
     rule_name: str
     severity: Severity
     detail: str
     match_text: str = ""
+    match_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,11 @@ class ScanResult:
         order = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
         return max(self.hits, key=lambda h: order[h.severity]).severity
 
+    @property
+    def total_match_count(self) -> int:
+        """该文件所有命中规则的匹配文本条数之和。"""
+        return sum(h.match_count for h in self.hits)
+
 
 @dataclass(frozen=True)
 class ScanStats:
@@ -90,6 +103,8 @@ class ScanStats:
     skipped_files: int = 0
     errors: int = 0
     duration_seconds: float = 0.0
+    # 所有命中规则的匹配文本条数总和（区别于 matched_files 的命中文件数）
+    total_matches: int = 0
 
 
 @dataclass(frozen=True)

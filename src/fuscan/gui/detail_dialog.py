@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Sequence
 
+from PySide2.QtCore import Qt
 from PySide2.QtGui import QColor, QTextCharFormat, QTextCursor
 from PySide2.QtWidgets import (
     QDialog,
@@ -191,7 +192,7 @@ class HitDetailDialog(QDialog):
             f"<b>文件路径:</b> {html.escape(str(path))}<br>"
             f"<b>文件大小:</b> {_format_size(size)} ({size} 字节)<br>"
             f"<b>修改时间:</b> {html.escape(mtime_str)}<br>"
-            f"<b>命中规则数:</b> {len(self._result.hits)}"
+            f"<b>命中规则数:</b> {len(self._result.hits)} | <b>匹配条数:</b> {self._result.total_match_count}"
         )
         self._info_label.setText(info_html)
 
@@ -206,7 +207,10 @@ class HitDetailDialog(QDialog):
             sev_item.setText(sev_text)
             sev_item.setForeground(_SEVERITY_COLORS[hit.severity])
             self._hits_table.setItem(row, 1, sev_item)
-            self._hits_table.setItem(row, 2, QTableWidgetItem(hit.detail))
+            count_item = QTableWidgetItem(str(hit.match_count))
+            count_item.setTextAlignment(Qt.AlignCenter)
+            self._hits_table.setItem(row, 2, count_item)
+            self._hits_table.setItem(row, 3, QTableWidgetItem(hit.detail))
 
     def _populate_preview(self) -> None:
         """填充内容预览，命中关键词高亮并定位到首个命中。"""

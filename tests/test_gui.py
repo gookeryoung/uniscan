@@ -2899,9 +2899,9 @@ class TestResultFilterAndGroup:
         window.close()
 
     def test_column_count_includes_hit_count(self, qapp: QApplication) -> None:
-        """结果树应包含命中数列。"""
+        """结果树应包含命中数与条数列。"""
         window = MainWindow()
-        assert window._result_tree.columnCount() == 5
+        assert window._result_tree.columnCount() == 6
         window.close()
 
     def test_rule_filter_populated_after_scan(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3076,6 +3076,133 @@ class TestResultFilterAndGroup:
         # 重新填充应恢复选中的规则
         window._populate_results(report)
         assert window._rule_filter_combo.currentData() == "密钥内容"
+        window.close()
+
+
+def _build_multi_match_report(tmp_path: Path) -> ScanReport:
+    """构造单文件多处匹配的测试报告，用于验证条数列。"""
+    from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
+    from fuscan.scanner import Scanner
+
+    # key.txt 含 3 处 "key"（不含 "secret"），secret.txt 含 1 处 "secret"
+    (tmp_path / "key.txt").write_text("api_key=1\naccess_key=2\nuser_key=3", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("password secret", encoding="utf-8")
+
+    rs = RuleSet(
+        version="1.0",
+        rules=(
+            Rule(
+                name="密钥",
+                severity=Severity.CRITICAL,
+                match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="key"),
+            ),
+            Rule(
+                name="密码",
+                severity=Severity.WARNING,
+                match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="secret"),
+            ),
+        ),
+    )
+    scanner = Scanner(rs)
+    return scanner.scan(tmp_path)
+
+
+class TestMatchCountDisplay:
+    """条数列显示测试：验证结果树正确展示匹配条数（区别于命中规则数）。"""
+
+    def test_flat_file_item_shows_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """不分组模式下文件项的条数列应显示匹配条数之和。"""
+        window = MainWindow()
+        report = _build_multi_match_report(tmp_path)
+        window._populate_results(report)
+
+        # key.txt：1 条规则命中（密钥），匹配 3 处
+        key_item = None
+        for i in range(window._result_tree.topLevelItemCount()):
+            item = window._result_tree.topLevelItem(i)
+            if item.text(0).endswith("key.txt"):
+                key_item = item
+                break
+        assert key_item is not None
+        # 列 3=命中数（规则数），列 4=条数（匹配处数）
+        assert key_item.text(3) == "1"
+        assert key_item.text(4) == "3"
+        window.close()
+
+    def test_flat_child_item_shows_rule_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """不分组模式下子项（规则命中）的条数列应显示该规则的匹配条数。"""
+        window = MainWindow()
+        report = _build_multi_match_report(tmp_path)
+        window._populate_results(report)
+
+        # 找到 key.txt 顶层项，检查其子项
+        key_item = None
+        for i in range(window._result_tree.topLevelItemCount()):
+            item = window._result_tree.topLevelItem(i)
+            if item.text(0).endswith("key.txt"):
+                key_item = item
+                break
+        assert key_item is not None
+        assert key_item.childCount() == 1  # 仅"密钥"规则命中
+        child = key_item.child(0)
+        # 子项列 1=规则名，列 4=条数
+        assert child.text(1) == "密钥"
+        assert child.text(4) == "3"
+        window.close()
+
+    def test_group_by_rule_shows_match_sum(self, qapp: QApplication, tmp_path: Path) -> None:
+        """按规则分组时顶层项的条数列应为该规则所有文件匹配条数之和。"""
+        window = MainWindow()
+        report = _build_multi_match_report(tmp_path)
+        window._populate_results(report)
+
+        idx = window._group_mode_combo.findData("rule")
+        window._group_mode_combo.setCurrentIndex(idx)
+
+        # "密钥"规则在 key.txt 命中 3 处
+        rule_item = None
+        for i in range(window._result_tree.topLevelItemCount()):
+            item = window._result_tree.topLevelItem(i)
+            if item.text(1) == "密钥":
+                rule_item = item
+                break
+        assert rule_item is not None
+        assert rule_item.text(4) == "3"
+        window.close()
+
+    def test_detail_hits_table_shows_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情区命中规则表应显示条数列。"""
+        window = MainWindow()
+        report = _build_multi_match_report(tmp_path)
+        window._populate_results(report)
+
+        # 选中 key.txt 触发详情区更新
+        for i in range(window._result_tree.topLevelItemCount()):
+            item = window._result_tree.topLevelItem(i)
+            if item.text(0).endswith("key.txt"):
+                item.setSelected(True)
+                break
+
+        # 命中表列 2=条数
+        assert window._detail_hits_table.rowCount() == 1
+        assert window._detail_hits_table.item(0, 2).text() == "3"
+        window.close()
+
+    def test_detail_info_label_shows_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情区文件信息应显示匹配条数。"""
+        window = MainWindow()
+        report = _build_multi_match_report(tmp_path)
+        window._populate_results(report)
+
+        for i in range(window._result_tree.topLevelItemCount()):
+            item = window._result_tree.topLevelItem(i)
+            if item.text(0).endswith("key.txt"):
+                item.setSelected(True)
+                break
+
+        info_text = window._detail_info_label.text()
+        assert "匹配条数" in info_text
+        assert "3" in info_text
         window.close()
 
 

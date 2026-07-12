@@ -191,6 +191,45 @@ class TestScannerRules:
         assert Severity.WARNING in severities
         assert Severity.CRITICAL in severities
 
+    def test_total_matches_counts_multiple_occurrences(self, tmp_path: Path) -> None:
+        """扫描含多处匹配的文件，total_matches 应为匹配文本条数总和。"""
+        (tmp_path / "a.txt").write_text("password=abc\npassword=def\npassword=ghi", encoding="utf-8")
+        (tmp_path / "b.txt").write_text("password=x", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+        # 2 个文件命中，匹配条数 3 + 1 = 4
+        assert report.stats.matched_files == 2
+        assert report.stats.total_matches == 4
+        # 首个文件 3 处匹配
+        a_result = next(r for r in report.results if r.path.name == "a.txt")
+        assert a_result.total_match_count == 3
+        assert a_result.hits[0].match_count == 3
+
+    def test_total_matches_zero_when_no_hits(self, tmp_path: Path) -> None:
+        """无命中时 total_matches 应为 0。"""
+        (tmp_path / "a.txt").write_text("nothing here", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 0
+        assert report.stats.total_matches == 0
+
+    def test_progress_info_includes_matches(self, tmp_path: Path) -> None:
+        """ProgressInfo 应携带累计匹配条数。"""
+        (tmp_path / "a.txt").write_text("password=1\npassword=2", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        captured: list[ProgressInfo] = []
+
+        def on_progress(info: ProgressInfo) -> None:
+            captured.append(info)
+
+        scanner = Scanner(rs, on_progress=on_progress, progress_interval=0.0)
+        scanner.scan(tmp_path)
+        # 最终进度应反映 matches=2
+        last = captured[-1]
+        assert last.matches == 2
+
 
 class TestScanResult:
     def test_has_hit(self) -> None:
@@ -220,6 +259,37 @@ class TestScanResult:
     def test_max_severity_empty(self) -> None:
         result = ScanResult(path=Path("/x"), size=0, hits=())
         assert result.max_severity == Severity.INFO
+
+    def test_total_match_count_sums_hits(self) -> None:
+        """total_match_count 应为所有 hits 的 match_count 之和。"""
+        from fuscan.scanner.result import RuleHit
+
+        result = ScanResult(
+            path=Path("/x"),
+            size=0,
+            hits=(
+                RuleHit("r1", Severity.INFO, "d1", match_count=3),
+                RuleHit("r2", Severity.CRITICAL, "d2", match_count=5),
+                RuleHit("r3", Severity.WARNING, "d3", match_count=1),
+            ),
+        )
+        assert result.total_match_count == 9
+
+    def test_total_match_count_empty(self) -> None:
+        """无命中时 total_match_count 应为 0。"""
+        result = ScanResult(path=Path("/x"), size=0, hits=())
+        assert result.total_match_count == 0
+
+    def test_total_match_count_default_is_1(self) -> None:
+        """RuleHit 未指定 match_count 时默认为 1。"""
+        from fuscan.scanner.result import RuleHit
+
+        result = ScanResult(
+            path=Path("/x"),
+            size=0,
+            hits=(RuleHit("r1", Severity.INFO, "d1"), RuleHit("r2", Severity.WARNING, "d2")),
+        )
+        assert result.total_match_count == 2
 
 
 class TestScanReport:

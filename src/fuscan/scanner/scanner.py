@@ -105,6 +105,7 @@ class Scanner:
         self._base_scanned: int = 0
         self._base_matched: int = 0
         self._base_errors: int = 0
+        self._base_matches: int = 0
 
     def pause(self) -> None:
         """暂停扫描，阻塞扫描线程直到 resume。"""
@@ -177,25 +178,28 @@ class Scanner:
         scanned = 0
         matched = 0
         errors = 0
+        matches = 0
 
         if not self.is_cancelled:
             if self._max_workers and self._max_workers > 1:
-                scanned, matched, errors = self._scan_concurrent(entries, results)
+                scanned, matched, errors, matches = self._scan_concurrent(entries, results)
             else:
-                scanned, matched, errors = self._scan_sequential(entries, results)
+                scanned, matched, errors, matches = self._scan_sequential(entries, results)
 
         # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
         if self._scan_archives and self._archive_scanner is not None and not self.is_cancelled:
             self._base_scanned = scanned
             self._base_matched = matched
             self._base_errors = errors
-            d_scanned, d_matched, d_errors = self._scan_archive_phase(entries, results)
+            self._base_matches = matches
+            d_scanned, d_matched, d_errors, d_matches = self._scan_archive_phase(entries, results)
             scanned += d_scanned
             matched += d_matched
             errors += d_errors
+            matches += d_matches
 
         # 强制发送最终进度
-        self._emit_progress("", scanned, matched, errors, force=True)
+        self._emit_progress("", scanned, matched, errors, matches, force=True)
 
         duration = time.perf_counter() - self._progress_start
         stats = ScanStats(
@@ -205,6 +209,7 @@ class Scanner:
             skipped_files=skipped,
             errors=errors,
             duration_seconds=duration,
+            total_matches=matches,
         )
         return ScanReport(root=root, results=tuple(results), stats=stats, cancelled=self.is_cancelled)
 
@@ -214,10 +219,12 @@ class Scanner:
         scanned: int,
         matched: int,
         errors: int,
+        matches: int = 0,
         force: bool = False,
     ) -> None:
         """时间节流后调用 on_progress 回调。
 
+        :param matches: 累计匹配文本条数（区别于 matched 的命中文件数）。
         :param force: 为 True 时跳过节流，强制发送（如最终进度）。
         """
         if self._on_progress is None:
@@ -238,6 +245,7 @@ class Scanner:
                 matched=matched,
                 errors=errors,
                 elapsed=now - self._progress_start,
+                matches=matches,
                 skipped_dirs=recent_skipped,
                 matched_files=recent_matched,
             )
@@ -247,11 +255,12 @@ class Scanner:
         self,
         entries: list[FileEntry],
         results: list[ScanResult],
-    ) -> tuple[int, int, int]:
-        """单线程顺序扫描，返回 (scanned, matched, errors)。"""
+    ) -> tuple[int, int, int, int]:
+        """单线程顺序扫描，返回 (scanned, matched, errors, matches)。"""
         scanned = 0
         matched = 0
         errors = 0
+        matches = 0
         for entry in entries:
             if self._check_control():
                 break
@@ -260,6 +269,7 @@ class Scanner:
                 scanned += 1
                 if result.has_hit:
                     matched += 1
+                    matches += result.total_match_count
                     for hit in result.hits:
                         self._matched_files.append((str(entry.path), hit.rule_name))
                 errors += result.errors
@@ -268,15 +278,15 @@ class Scanner:
                 errors += 1
                 scanned += 1
                 logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
-            self._emit_progress(str(entry.path), scanned, matched, errors)
-        return scanned, matched, errors
+            self._emit_progress(str(entry.path), scanned, matched, errors, matches)
+        return scanned, matched, errors, matches
 
     def _scan_concurrent(
         self,
         entries: list[FileEntry],
         results: list[ScanResult],
-    ) -> tuple[int, int, int]:
-        """多线程并发扫描，返回 (scanned, matched, errors)。
+    ) -> tuple[int, int, int, int]:
+        """多线程并发扫描，返回 (scanned, matched, errors, matches)。
 
         每个文件的提取+匹配作为独立任务提交到线程池，
         通过 as_completed 收集结果。_scan_entry 无共享可变状态，线程安全。
@@ -284,6 +294,7 @@ class Scanner:
         scanned = 0
         matched = 0
         errors = 0
+        matches = 0
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
             future_to_entry = {pool.submit(self._scan_entry, entry): entry for entry in entries}
             for future in as_completed(future_to_entry):
@@ -297,6 +308,7 @@ class Scanner:
                     result = future.result()
                     if result.has_hit:
                         matched += 1
+                        matches += result.total_match_count
                         for hit in result.hits:
                             self._matched_files.append((str(entry.path), hit.rule_name))
                     errors += result.errors
@@ -304,15 +316,15 @@ class Scanner:
                 except Exception:
                     errors += 1
                     logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
-                self._emit_progress(str(entry.path), scanned, matched, errors)
-        return scanned, matched, errors
+                self._emit_progress(str(entry.path), scanned, matched, errors, matches)
+        return scanned, matched, errors, matches
 
     def _scan_archive_phase(
         self,
         entries: list[FileEntry],
         results: list[ScanResult],
-    ) -> tuple[int, int, int]:
-        """顺序扫描压缩包内条目，返回 (scanned, matched, errors) 增量。
+    ) -> tuple[int, int, int, int]:
+        """顺序扫描压缩包内条目，返回 (scanned, matched, errors, matches) 增量。
 
         压缩包扫描始终顺序执行以避免 ArchiveScanner 的线程安全问题。
         进度回调使用累计值（base + delta）。
@@ -322,6 +334,7 @@ class Scanner:
         scanned = 0
         matched = 0
         errors = 0
+        matches = 0
         for entry in entries:
             if self._check_control():
                 break
@@ -337,6 +350,7 @@ class Scanner:
                 scanned += 1
                 if ar.has_hit:
                     matched += 1
+                    matches += ar.total_match_count
                     for hit in ar.hits:
                         self._matched_files.append((str(ar.path), hit.rule_name))
                 errors += ar.errors
@@ -346,8 +360,9 @@ class Scanner:
                 self._base_scanned + scanned,
                 self._base_matched + matched,
                 self._base_errors + errors,
+                self._base_matches + matches,
             )
-        return scanned, matched, errors
+        return scanned, matched, errors, matches
 
     def scan_file(self, path: Path) -> ScanResult:
         """扫描单个文件。"""
@@ -397,6 +412,7 @@ class Scanner:
                         severity=rule.severity,
                         detail=result.detail,
                         match_text=result.match_text,
+                        match_count=result.match_count,
                     )
                 )
 

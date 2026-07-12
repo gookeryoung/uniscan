@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
         self._result_tree.setColumnWidth(1, 150)
         self._result_tree.setColumnWidth(2, 80)
         self._result_tree.setColumnWidth(3, 60)
+        self._result_tree.setColumnWidth(4, 60)
 
         # 详情区命中表
         self._detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -901,7 +902,7 @@ class MainWindow(QMainWindow):
         # 清空扫描中页的列表与统计面板，避免残留上次扫描数据
         self._skipped_dirs_list.clear()
         self._matched_files_list.clear()
-        self._stats_counts_label.setText("已扫描 0 | 跳过 0 | 命中 0 | 错误 0")
+        self._stats_counts_label.setText("已扫描 0 | 跳过 0 | 命中 0 | 条数 0 | 错误 0")
         self._stats_time_label.setText("已用 0.0s | 速度 0 文件/s")
         self._switch_stage(WorkflowStage.SCANNING)
 
@@ -944,7 +945,7 @@ class MainWindow(QMainWindow):
         stats = report.stats
         self._stats_label.setText(
             f"已取消: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
-            f"命中 {stats.matched_files} | 耗时 {stats.duration_seconds:.2f}s"
+            f"命中 {stats.matched_files} | 条数 {stats.total_matches} | 耗时 {stats.duration_seconds:.2f}s"
         )
         if len(report.hits) > 0:
             self._switch_stage(WorkflowStage.RESULTS)
@@ -981,7 +982,7 @@ class MainWindow(QMainWindow):
 
         # 统计面板：计数行 + 时间行（速度 = scanned / elapsed）
         self._stats_counts_label.setText(
-            f"已扫描 {info.scanned} | 跳过 {info.skipped} | 命中 {info.matched} | 错误 {info.errors}"
+            f"已扫描 {info.scanned} | 跳过 {info.skipped} | 命中 {info.matched} | 条数 {info.matches} | 错误 {info.errors}"
         )
         speed = info.scanned / info.elapsed if info.elapsed > 0 else 0.0
         self._stats_time_label.setText(f"已用 {info.elapsed:.1f}s | 速度 {speed:.0f} 文件/s")
@@ -989,7 +990,7 @@ class MainWindow(QMainWindow):
         # 状态栏（保留原汇总文本，便于后台查看）
         self._stats_label.setText(
             f"已扫描 {info.scanned} | 跳过 {info.skipped} | "
-            f"命中 {info.matched} | 错误 {info.errors} | "
+            f"命中 {info.matched} | 条数 {info.matches} | 错误 {info.errors} | "
             f"已用 {info.elapsed:.1f}s"
         )
 
@@ -1018,7 +1019,7 @@ class MainWindow(QMainWindow):
         self._stats_label.setText(
             f"完成: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
             f"跳过 {stats.skipped_files} | 命中 {stats.matched_files} | "
-            f"错误 {stats.errors} | 耗时 {stats.duration_seconds:.2f}s"
+            f"条数 {stats.total_matches} | 错误 {stats.errors} | 耗时 {stats.duration_seconds:.2f}s"
         )
         self._switch_stage(WorkflowStage.RESULTS)
 
@@ -1141,7 +1142,7 @@ class MainWindow(QMainWindow):
             f"<b>文件路径:</b> {html.escape(str(path))}<br>"
             f"<b>文件大小:</b> {_format_size(size)} ({size} 字节)<br>"
             f"<b>修改时间:</b> {html.escape(mtime_str)}<br>"
-            f"<b>命中规则数:</b> {len(result.hits)}"
+            f"<b>命中规则数:</b> {len(result.hits)} | <b>匹配条数:</b> {result.total_match_count}"
         )
         self._detail_info_label.setText(info_html)
 
@@ -1155,7 +1156,10 @@ class MainWindow(QMainWindow):
             sev_item = QTableWidgetItem("")
             _apply_severity_to_table_item(sev_item, hit.severity)
             self._detail_hits_table.setItem(row, 1, sev_item)
-            self._detail_hits_table.setItem(row, 2, QTableWidgetItem(hit.detail))
+            count_item = QTableWidgetItem(str(hit.match_count))
+            count_item.setTextAlignment(Qt.AlignCenter)
+            self._detail_hits_table.setItem(row, 2, count_item)
+            self._detail_hits_table.setItem(row, 3, QTableWidgetItem(hit.detail))
 
     def _populate_detail_preview(self, result: ScanResult) -> None:
         """填充详情区内容预览，命中关键词高亮并定位到首个命中。"""
@@ -1340,11 +1344,13 @@ class MainWindow(QMainWindow):
         if self._ruleset is None:
             return
         for rule in self._ruleset.rules:
-            item = QTreeWidgetItem([
-                rule.name,
-                "",
-                ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
-            ])
+            item = QTreeWidgetItem(
+                [
+                    rule.name,
+                    "",
+                    ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
+                ]
+            )
             _apply_severity_to_tree_item(item, 1, rule.severity)
             self._rules_tree.addTopLevelItem(item)
 
@@ -1496,29 +1502,37 @@ class MainWindow(QMainWindow):
     def _populate_flat(self, results: list[ScanResult]) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in results:
-            file_item = QTreeWidgetItem([
-                str(sr.path),
-                "",
-                "",
-                str(len(sr.hits)),
-                f"{len(sr.hits)} 条命中",
-            ])
+            file_item = QTreeWidgetItem(
+                [
+                    str(sr.path),
+                    "",
+                    "",
+                    str(len(sr.hits)),
+                    str(sr.total_match_count),
+                    f"{len(sr.hits)} 条规则 / {sr.total_match_count} 处匹配",
+                ]
+            )
             file_item.setData(0, Qt.UserRole, sr)
             _apply_severity_to_tree_item(file_item, 2, sr.max_severity)
             file_item.setTextAlignment(3, Qt.AlignCenter)
+            file_item.setTextAlignment(4, Qt.AlignCenter)
             # critical 整行背景高亮，区别于仅 severity 列着色
             if sr.max_severity == Severity.CRITICAL:
                 for col in range(file_item.columnCount()):
                     file_item.setBackground(col, _SEVERITY_BACKGROUNDS[Severity.CRITICAL])
             for hit in sr.hits:
-                child = QTreeWidgetItem([
-                    "",
-                    hit.rule_name,
-                    "",
-                    "",
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        "",
+                        hit.rule_name,
+                        "",
+                        "",
+                        str(hit.match_count),
+                        hit.detail,
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, hit.severity)
+                child.setTextAlignment(4, Qt.AlignCenter)
                 file_item.addChild(child)
             self._result_tree.addTopLevelItem(file_item)
 
@@ -1532,25 +1546,34 @@ class MainWindow(QMainWindow):
         for rule_name in sorted(rule_map.keys()):
             entries = rule_map[rule_name]
             hit_count = len(entries)
-            top = QTreeWidgetItem([
-                "",
-                rule_name,
-                "",
-                str(hit_count),
-                f"{hit_count} 个文件",
-            ])
+            match_sum = sum(h.match_count for _, h in entries)
+            top = QTreeWidgetItem(
+                [
+                    "",
+                    rule_name,
+                    "",
+                    str(hit_count),
+                    str(match_sum),
+                    f"{hit_count} 个文件 / {match_sum} 处匹配",
+                ]
+            )
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
+            top.setTextAlignment(4, Qt.AlignCenter)
             for sr, hit in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
-                    "",
-                    "",
-                    "",
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        "",
+                        "",
+                        str(hit.match_count),
+                        hit.detail,
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, hit.severity)
+                child.setTextAlignment(4, Qt.AlignCenter)
                 child.setData(0, Qt.UserRole, sr)
                 top.addChild(child)
             self._result_tree.addTopLevelItem(top)
@@ -1565,28 +1588,37 @@ class MainWindow(QMainWindow):
         for severity in sorted(severity_map.keys(), key=lambda s: _SEVERITY_RANK[s], reverse=True):
             entries = severity_map[severity]
             file_count = len(entries)
-            top = QTreeWidgetItem([
-                "",
-                "",
-                "",
-                str(file_count),
-                f"{file_count} 个文件",
-            ])
+            match_sum = sum(sr.total_match_count for sr in entries)
+            top = QTreeWidgetItem(
+                [
+                    "",
+                    "",
+                    "",
+                    str(file_count),
+                    str(match_sum),
+                    f"{file_count} 个文件 / {match_sum} 处匹配",
+                ]
+            )
             _apply_severity_to_tree_item(top, 2, severity)
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
+            top.setTextAlignment(4, Qt.AlignCenter)
             for sr in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
-                    "",
-                    "",
-                    str(len(sr.hits)),
-                    f"{len(sr.hits)} 条命中",
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        "",
+                        str(len(sr.hits)),
+                        str(sr.total_match_count),
+                        f"{len(sr.hits)} 条规则 / {sr.total_match_count} 处匹配",
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, sr.max_severity)
                 child.setData(0, Qt.UserRole, sr)
                 child.setTextAlignment(3, Qt.AlignCenter)
+                child.setTextAlignment(4, Qt.AlignCenter)
                 # critical 整行背景高亮，区别于仅 severity 列着色
                 if sr.max_severity == Severity.CRITICAL:
                     for col in range(child.columnCount()):

@@ -497,3 +497,146 @@ class TestMatchText:
         result = matcher.matches(ctx)
         assert result.matched is True
         assert result.match_text == ""
+
+
+class TestMatchCount:
+    """``match_count`` 字段测试：确保实际匹配文本条数正确传递。
+
+    区分"命中规则数"（一条规则对一个文件命中一次）与"匹配条数"
+    （同一规则在同一文件中匹配到多处文本，如多处密码）。
+    """
+
+    def test_regex_single_match_count_is_1(self, tmp_path: Path) -> None:
+        """regex 模式单次命中 match_count 应为 1。"""
+        path = tmp_path / "file.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"password=\w+")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="password=secret")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1
+
+    def test_regex_multiple_matches_count(self, tmp_path: Path) -> None:
+        """regex 模式多处命中 match_count 应为匹配条数。"""
+        path = tmp_path / "file.txt"
+        content = "mongodb://user:pass1@host\nmongodb://user:pass2@host\nmongodb://user:pass3@host"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"mongodb://user:\w+@")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3
+        # match_text 仍为首个匹配文本
+        assert result.match_text == "mongodb://user:pass1@"
+
+    def test_regex_no_match_count_is_default(self, tmp_path: Path) -> None:
+        """regex 模式未命中 match_count 应为默认值 1（matched=False 时无意义）。"""
+        path = tmp_path / "file.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"password=\w+")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_count == 1
+
+    def test_contains_multiple_occurrences_count(self, tmp_path: Path) -> None:
+        """contains 模式多处出现 match_count 应为非重叠出现次数。"""
+        path = tmp_path / "file.txt"
+        content = "password=abc\npassword=def\npassword=ghi"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3
+
+    def test_contains_case_insensitive_count(self, tmp_path: Path) -> None:
+        """contains 模式大小写不敏感时统计所有变体出现次数。"""
+        path = tmp_path / "file.txt"
+        content = "Password=abc\nPASSWORD=def\npassword=ghi"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="password",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3
+
+    def test_equals_match_count_is_1(self, tmp_path: Path) -> None:
+        """equals 模式命中时 match_count 固定为 1。"""
+        path = tmp_path / "secret.txt"
+        path.write_text("", encoding="utf-8")
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="secret.txt")
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1
+
+    def test_startswith_match_count_is_1(self, tmp_path: Path) -> None:
+        """startswith 模式命中时 match_count 固定为 1。"""
+        path = tmp_path / "test_file.txt"
+        path.write_text("", encoding="utf-8")
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.STARTSWITH, pattern="test_")
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1
+
+    def test_endswith_match_count_is_1(self, tmp_path: Path) -> None:
+        """endswith 模式命中时 match_count 固定为 1。"""
+        path = tmp_path / "config.conf"
+        path.write_text("", encoding="utf-8")
+        spec = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.ENDSWITH, pattern=".conf")
+        matcher = FileNameMatcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1
+
+    def test_and_matcher_sums_child_counts(self, tmp_path: Path) -> None:
+        """AndMatcher 的 match_count 应为所有子匹配器 match_count 之和。"""
+        path = tmp_path / "test_file.conf"
+        content = "password=abc\npassword=def"
+        # 子1：内容包含 password（2 次），子2：文件名以 test_ 开头（1 次）
+        children = (
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
+            FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.STARTSWITH, pattern="test_")),
+        )
+        matcher = AndMatcher(children)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3  # 2 + 1
+
+    def test_or_matcher_uses_first_matched_count(self, tmp_path: Path) -> None:
+        """OrMatcher 的 match_count 应为首个命中分支的 match_count。"""
+        path = tmp_path / "file.txt"
+        content = "password=abc\npassword=def\npassword=ghi"
+        # 子1：内容包含 password（3 次），子2：内容包含 secret（0 次）
+        children = (
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
+            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="secret")),
+        )
+        matcher = OrMatcher(children)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3
+
+    def test_not_matcher_count_is_1(self, tmp_path: Path) -> None:
+        """NotMatcher 命中时 match_count 固定为 1。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        child = PathMatcher(LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        matcher = NotMatcherImpl(child)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1

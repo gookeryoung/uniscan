@@ -57,6 +57,11 @@
      </column>
      <column>
       <property name="text">
+       <string>条数</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
        <string>详情</string>
       </property>
      </column>

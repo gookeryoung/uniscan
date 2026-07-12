@@ -278,7 +278,8 @@ def _format_text(report: ScanReport) -> str:
     lines.append(f"扫描路径: {report.root}")
     lines.append(
         f"统计: 总计 {report.stats.total_files} | 已扫描 {report.stats.scanned_files} | "
-        f"命中 {report.stats.matched_files} | 跳过 {report.stats.skipped_files} | "
+        f"命中 {report.stats.matched_files} | 条数 {report.stats.total_matches} | "
+        f"跳过 {report.stats.skipped_files} | "
         f"错误 {report.stats.errors} | 耗时 {report.stats.duration_seconds:.2f}s"
     )
     lines.append("")
@@ -293,9 +294,9 @@ def _format_text(report: ScanReport) -> str:
             rel = result.path.relative_to(report.root)
         except ValueError:
             rel = result.path
-        lines.append(f"  {rel}")
+        lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
         for hit in result.hits:
-            lines.append(f"    [{hit.severity.value}] {hit.rule_name}: {hit.detail}")
+            lines.append(f"    [{hit.severity.value}] {hit.rule_name} (条数 {hit.match_count}): {hit.detail}")
     return "\n".join(lines)
 
 
@@ -309,6 +310,7 @@ def _format_json(report: ScanReport) -> str:
                 "path": str(result.path),
                 "size": result.size,
                 "max_severity": result.max_severity.value,
+                "match_count": result.total_match_count,
                 "rules": [asdict(hit) for hit in result.hits],
             }
             for result in report.hits
@@ -321,10 +323,19 @@ def _format_csv(report: ScanReport) -> str:
     """渲染 CSV 格式报告。"""
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["path", "size", "severity", "rule", "detail"])
+    writer.writerow(["path", "size", "severity", "rule", "match_count", "detail"])
     for result in report.hits:
         for hit in result.hits:
-            writer.writerow([str(result.path), result.size, hit.severity.value, hit.rule_name, hit.detail])
+            writer.writerow(
+                [
+                    str(result.path),
+                    result.size,
+                    hit.severity.value,
+                    hit.rule_name,
+                    hit.match_count,
+                    hit.detail,
+                ]
+            )
     return buf.getvalue()
 
 

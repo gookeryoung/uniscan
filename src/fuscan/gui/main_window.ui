@@ -828,6 +828,11 @@
               </column>
               <column>
                <property name="text">
+                <string>条数</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
                 <string>详情</string>
                </property>
               </column>
@@ -991,9 +996,9 @@
             </item>
             <item>
              <widget class="QStackedWidget" name="detail_main_stack">
-              <property name="currentIndex">
-               <number>1</number>
-              </property>
+             <property name="currentIndex">
+              <number>0</number>
+             </property>
               <widget class="QFrame" name="detail_empty_main">
                <layout class="QVBoxLayout" name="detail_empty_main_layout">
                 <item>
@@ -1065,6 +1070,11 @@
                   <column>
                    <property name="text">
                     <string>严重等级</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>条数</string>
                    </property>
                   </column>
                   <column>

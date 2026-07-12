@@ -172,8 +172,37 @@ class TestScanCommand:
         assert rc == 0
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
-        assert lines[0] == "path,size,severity,rule,detail"
+        assert lines[0] == "path,size,severity,rule,match_count,detail"
         assert len(lines) >= 3  # 表头 + 2 条命中
+
+    def test_scan_text_output_includes_match_count(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """文本报告统计行应包含条数。"""
+        rc = main(["scan", str(scan_root), "-r", str(rules_file)])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "条数" in out
+
+    def test_scan_json_output_includes_match_count(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """JSON 报告 stats 应包含 total_matches，hits 应包含 match_count。"""
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "-o", "json"])
+        assert rc == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "total_matches" in data["stats"]
+        for hit in data["hits"]:
+            assert "match_count" in hit
+            for rule in hit["rules"]:
+                assert "match_count" in rule
 
     def test_scan_output_to_file(
         self,
