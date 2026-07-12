@@ -62,7 +62,7 @@ from fuscan.gui.detail_dialog import HitDetailDialog
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.worker import ScanWorker
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
-from fuscan.rules.model import RuleSet
+from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport, list_drives
 from fuscan.scanner.result import RuleHit, ScanResult
 
@@ -83,6 +83,45 @@ _PREVIEW_STYLE = (
 
 # 关键词高亮 span 样式
 _HIGHLIGHT_STYLE = "background-color: yellow; color: black;"
+
+# 严重等级 → 中文标签
+_SEVERITY_LABELS: dict[Severity, str] = {
+    Severity.CRITICAL: "严重",
+    Severity.WARNING: "警告",
+    Severity.INFO: "一般",
+}
+
+# 严重等级 → 前景色（QColor）
+_SEVERITY_COLORS: dict[Severity, QColor] = {
+    Severity.CRITICAL: QColor("#d73a49"),
+    Severity.WARNING: QColor("#f0883e"),
+    Severity.INFO: QColor("#0366d6"),
+}
+
+# 严重等级 → 排序权重（CRITICAL 优先）
+_SEVERITY_RANK: dict[Severity, int] = {
+    Severity.INFO: 0,
+    Severity.WARNING: 1,
+    Severity.CRITICAL: 2,
+}
+
+
+def _severity_text(severity: Severity) -> str:
+    """返回严重等级的中文标签。"""
+    return _SEVERITY_LABELS.get(severity, severity.value)
+
+
+def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: Severity) -> None:
+    """为 QTreeWidgetItem 的指定列设置中文标签和颜色。"""
+    item.setText(column, _severity_text(severity))
+    item.setForeground(column, _SEVERITY_COLORS[severity])
+
+
+def _apply_severity_to_table_item(item: QTableWidgetItem, severity: Severity) -> None:
+    """为 QTableWidgetItem 设置中文标签和颜色。"""
+    item.setText(_severity_text(severity))
+    item.setForeground(_SEVERITY_COLORS[severity])
+
 
 # 图标路径（assets/icons 目录下）
 _ICONS_DIR = Path(__file__).parent.parent / "assets" / "icons"
@@ -1030,7 +1069,9 @@ class MainWindow(QMainWindow):
         self._detail_hits_table.setRowCount(len(hits))
         for row, hit in enumerate(hits):
             self._detail_hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
-            self._detail_hits_table.setItem(row, 1, QTableWidgetItem(hit.severity.value))
+            sev_item = QTableWidgetItem("")
+            _apply_severity_to_table_item(sev_item, hit.severity)
+            self._detail_hits_table.setItem(row, 1, sev_item)
             self._detail_hits_table.setItem(row, 2, QTableWidgetItem(hit.detail))
 
     def _populate_detail_preview(self, result: ScanResult) -> None:
@@ -1194,10 +1235,11 @@ class MainWindow(QMainWindow):
             item = QTreeWidgetItem(
                 [
                     rule.name,
-                    rule.severity.value,
+                    "",
                     ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
                 ]
             )
+            _apply_severity_to_tree_item(item, 1, rule.severity)
             self._rules_tree.addTopLevelItem(item)
 
     def _refresh_rules_file_list(self) -> None:
@@ -1352,23 +1394,25 @@ class MainWindow(QMainWindow):
                 [
                     str(sr.path),
                     "",
-                    sr.max_severity.value,
+                    "",
                     str(len(sr.hits)),
                     f"{len(sr.hits)} 条命中",
                 ]
             )
             file_item.setData(0, Qt.UserRole, sr)
+            _apply_severity_to_tree_item(file_item, 2, sr.max_severity)
             file_item.setTextAlignment(3, Qt.AlignCenter)
             for hit in sr.hits:
                 child = QTreeWidgetItem(
                     [
                         "",
                         hit.rule_name,
-                        hit.severity.value,
+                        "",
                         "",
                         hit.detail,
                     ]
                 )
+                _apply_severity_to_tree_item(child, 2, hit.severity)
                 file_item.addChild(child)
             self._result_tree.addTopLevelItem(file_item)
 
@@ -1397,45 +1441,48 @@ class MainWindow(QMainWindow):
                     [
                         str(sr.path),
                         "",
-                        hit.severity.value,
+                        "",
                         "",
                         hit.detail,
                     ]
                 )
+                _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setData(0, Qt.UserRole, sr)
                 top.addChild(child)
             self._result_tree.addTopLevelItem(top)
 
     def _populate_grouped_by_severity(self, results: list[ScanResult]) -> None:
         """按严重等级分组：等级为顶层项，文件为子项。"""
-        severity_map: dict[str, list[ScanResult]] = {}
+        severity_map: dict[Severity, list[ScanResult]] = {}
         for sr in results:
-            sev = sr.max_severity.value
+            sev = sr.max_severity
             severity_map.setdefault(sev, []).append(sr)
 
-        for severity in sorted(severity_map.keys(), reverse=True):
+        for severity in sorted(severity_map.keys(), key=lambda s: _SEVERITY_RANK[s], reverse=True):
             entries = severity_map[severity]
             file_count = len(entries)
             top = QTreeWidgetItem(
                 [
                     "",
                     "",
-                    severity,
+                    "",
                     str(file_count),
                     f"{file_count} 个文件",
                 ]
             )
+            _apply_severity_to_tree_item(top, 2, severity)
             top.setTextAlignment(3, Qt.AlignCenter)
             for sr in entries:
                 child = QTreeWidgetItem(
                     [
                         str(sr.path),
                         "",
-                        severity,
+                        "",
                         str(len(sr.hits)),
                         f"{len(sr.hits)} 条命中",
                     ]
                 )
+                _apply_severity_to_tree_item(child, 2, sr.max_severity)
                 child.setData(0, Qt.UserRole, sr)
                 child.setTextAlignment(3, Qt.AlignCenter)
                 top.addChild(child)

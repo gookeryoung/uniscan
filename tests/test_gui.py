@@ -23,7 +23,7 @@ try:
     from PySide2.QtWidgets import QApplication, QMenu
 
     from fuscan.gui.detail_dialog import HitDetailDialog
-    from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage
+    from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
     from fuscan.gui.worker import ScanWorker
     from fuscan.rules import load_ruleset
     from fuscan.rules.model import (
@@ -1331,6 +1331,93 @@ class TestWorkflowStage:
         assert not window._load_rules_action.isEnabled()
         assert not window._edit_rules_action.isEnabled()
         window.close()
+
+
+class TestSeverityDisplay:
+    """严重等级颜色区分测试。"""
+
+    def test_severity_text_chinese_labels(self) -> None:
+        """_severity_text 应返回中文标签。"""
+        assert _severity_text(Severity.CRITICAL) == "严重"
+        assert _severity_text(Severity.WARNING) == "警告"
+        assert _severity_text(Severity.INFO) == "一般"
+
+    def test_result_tree_flat_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
+        """result_tree 不分组模式下严重等级列应显示中文标签和颜色。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        window = MainWindow()
+        window._last_report = report
+        window._switch_stage(WorkflowStage.RESULTS)
+        window._refresh_result_tree()
+
+        top_item = window._result_tree.topLevelItem(0)
+        assert top_item is not None
+        assert top_item.text(2) == "警告"
+        assert top_item.foreground(2).color().name() == "#f0883e"
+
+        child = top_item.child(0)
+        assert child is not None
+        assert child.text(2) == "警告"
+        assert child.foreground(2).color().name() == "#f0883e"
+        window.close()
+
+    def test_detail_hits_table_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
+        """detail_hits_table 严重等级列应显示中文标签和颜色。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        window = MainWindow()
+        window._last_report = report
+        window._switch_stage(WorkflowStage.RESULTS)
+        window._refresh_result_tree()
+
+        top_item = window._result_tree.topLevelItem(0)
+        top_item.setSelected(True)
+        qapp.processEvents()
+
+        item = window._detail_hits_table.item(0, 1)
+        assert item is not None
+        assert item.text() == "警告"
+        assert item.foreground().color().name() == "#f0883e"
+        window.close()
+
+    def test_rules_tree_shows_severity_colors(self, qapp: QApplication) -> None:
+        """rules_tree 严重等级列应显示中文标签和颜色。"""
+        window = MainWindow()
+        window._ruleset = _build_ruleset()
+        window._refresh_rules_tree()
+
+        item = window._rules_tree.topLevelItem(0)
+        assert item is not None
+        sev_text = item.text(1)
+        assert sev_text in ("严重", "警告", "一般")
+        color_name = item.foreground(1).color().name()
+        assert color_name in ("#d73a49", "#f0883e", "#0366d6")
+        window.close()
+
+    def test_detail_dialog_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
+        """HitDetailDialog 的 hits_table 严重等级列应显示中文标签和颜色。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+        result = report.results[0]
+
+        dialog = HitDetailDialog(result, None)
+        item = dialog._hits_table.item(0, 1)
+        assert item is not None
+        assert item.text() == "警告"
+        assert item.foreground().color().name() == "#f0883e"
+        dialog.close()
 
 
 class TestScanWorkerControl:
@@ -2667,8 +2754,8 @@ class TestResultFilterAndGroup:
         top_count = window._result_tree.topLevelItemCount()
         assert top_count == 2  # warning + critical
         severities = {window._result_tree.topLevelItem(i).text(2) for i in range(top_count)}
-        assert "warning" in severities
-        assert "critical" in severities
+        assert "警告" in severities
+        assert "严重" in severities
         window.close()
 
     def test_group_by_rule_children_have_user_data(self, qapp: QApplication, tmp_path: Path) -> None:

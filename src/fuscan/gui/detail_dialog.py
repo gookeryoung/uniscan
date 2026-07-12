@@ -23,11 +23,26 @@ from PySide2.QtWidgets import (
 
 from fuscan.extractors import extract_content
 from fuscan.gui.detail_dialog_ui import Ui_HitDetailDialog
+from fuscan.rules.model import Severity
 from fuscan.scanner.result import RuleHit, ScanResult
 
 __all__ = ["HitDetailDialog"]
 
 logger = logging.getLogger(__name__)
+
+# 严重等级 → 中文标签
+_SEVERITY_LABELS: dict[Severity, str] = {
+    Severity.CRITICAL: "严重",
+    Severity.WARNING: "警告",
+    Severity.INFO: "一般",
+}
+
+# 严重等级 → 前景色（QColor）
+_SEVERITY_COLORS: dict[Severity, QColor] = {
+    Severity.CRITICAL: QColor("#d73a49"),
+    Severity.WARNING: QColor("#f0883e"),
+    Severity.INFO: QColor("#0366d6"),
+}
 
 # 内容预览最大字符数，避免大文件阻塞 UI
 _PREVIEW_MAX_CHARS = 100 * 1024
@@ -173,7 +188,11 @@ class HitDetailDialog(QDialog):
         self._hits_table.setRowCount(len(hits))
         for row, hit in enumerate(hits):
             self._hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
-            self._hits_table.setItem(row, 1, QTableWidgetItem(hit.severity.value))
+            sev_item = QTableWidgetItem("")
+            sev_text = _SEVERITY_LABELS.get(hit.severity, hit.severity.value)
+            sev_item.setText(sev_text)
+            sev_item.setForeground(_SEVERITY_COLORS[hit.severity])
+            self._hits_table.setItem(row, 1, sev_item)
             self._hits_table.setItem(row, 2, QTableWidgetItem(hit.detail))
 
     def _populate_preview(self) -> None:
