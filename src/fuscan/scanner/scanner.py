@@ -413,6 +413,7 @@ class Scanner:
                         detail=result.detail,
                         match_text=result.match_text,
                         match_count=result.match_count,
+                        target=result.target,
                     )
                 )
 

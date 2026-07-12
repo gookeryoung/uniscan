@@ -222,9 +222,13 @@ def _build_keyword_to_rule_map(hits: Sequence[RuleHit]) -> dict[str, int]:
     优先使用 ``RuleHit.match_text`` 作为关键词；为空时回退到从 ``detail``
     中提取单引号包裹的内容。同一关键词被多条规则命中时，仅归属到首条规则，
     避免同一位置被重复计数。
+    ``target=="filename"`` 的规则跳过（文件名匹配不应在内容预览中搜索高亮，
+    否则可能产生误导性的高亮位置）。
     """
     keyword_to_rule: dict[str, int] = {}
     for rule_idx, hit in enumerate(hits):
+        if hit.target == "filename":
+            continue
         kw = hit.match_text
         if not kw:
             for match in _KEYWORD_RE.finditer(hit.detail):
@@ -1155,9 +1159,9 @@ class MainWindow(QMainWindow):
         self._detail_current_result = result
         self._detail_action_stack.setCurrentIndex(1)
         self._detail_main_stack.setCurrentIndex(1)
-        self._populate_detail_file_info(result)
-        # 先填充预览以计算高亮位置，再填充命中表（位置数列依赖位置数据）
+        # 先填充预览以计算高亮位置，再填充文件信息和命中表（均依赖位置数据）
         self._populate_detail_preview(result)
+        self._populate_detail_file_info(result)
         self._populate_detail_hits_table(result)
         # 强制刷新当前详情页，避免 Qt 渲染时序导致 stack 未生效
         self._detail_main_stack.currentWidget().update()
@@ -1177,6 +1181,7 @@ class MainWindow(QMainWindow):
             f"<b>文件大小:</b> {_format_size(size)} ({size} 字节)<br>"
             f"<b>修改时间:</b> {html.escape(mtime_str)}<br>"
             f"<b>命中规则数:</b> {len(result.hits)} | <b>匹配条数:</b> {result.total_match_count}"
+            f" | <b>可切换位置:</b> {len(self._detail_hit_positions)}"
         )
         self._detail_info_label.setText(info_html)
 
@@ -1197,11 +1202,18 @@ class MainWindow(QMainWindow):
             count_item = QTableWidgetItem(str(hit.match_count))
             count_item.setTextAlignment(Qt.AlignCenter)
             self._detail_hits_table.setItem(row, 2, count_item)
-            pos_item = QTableWidgetItem(str(position_counts.get(row, 0)))
+            if hit.target == "filename":
+                pos_item = QTableWidgetItem("-")
+                pos_item.setToolTip("仅匹配文件名，无内容高亮位置")
+            else:
+                pos_item = QTableWidgetItem(str(position_counts.get(row, 0)))
+                pos_item.setToolTip("该规则在预览中可高亮跳转的位置数")
             pos_item.setTextAlignment(Qt.AlignCenter)
-            pos_item.setToolTip("该规则在预览中可高亮跳转的位置数")
             self._detail_hits_table.setItem(row, 3, pos_item)
-            self._detail_hits_table.setItem(row, 4, QTableWidgetItem(hit.detail))
+            detail_text = hit.detail
+            if hit.target == "filename":
+                detail_text = f"{detail_text}（仅文件名）"
+            self._detail_hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
 
     def _populate_detail_preview(self, result: ScanResult) -> None:
         """填充详情区内容预览，命中关键词高亮并定位到首个命中。"""
@@ -1293,6 +1305,10 @@ class MainWindow(QMainWindow):
             self._detail_preview.setExtraSelections([])
             return
         start, end, _ = self._detail_hit_positions[self._detail_current_hit_index]
+        doc_length = len(self._detail_preview.toPlainText())
+        if start >= doc_length or end > doc_length:
+            self._detail_preview.setExtraSelections([])
+            return
         sel = QTextEdit.ExtraSelection()
         cursor = self._detail_preview.textCursor()
         cursor.setPosition(start)
@@ -1308,6 +1324,9 @@ class MainWindow(QMainWindow):
         if self._detail_current_hit_index < 0 or self._detail_current_hit_index >= len(self._detail_hit_positions):
             return
         start, _, _ = self._detail_hit_positions[self._detail_current_hit_index]
+        doc_length = len(self._detail_preview.toPlainText())
+        if start >= doc_length:
+            return
         cursor = self._detail_preview.textCursor()
         cursor.setPosition(start)
         self._detail_preview.setTextCursor(cursor)

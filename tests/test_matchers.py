@@ -640,3 +640,86 @@ class TestMatchCount:
         result = matcher.matches(ctx)
         assert result.matched is True
         assert result.match_count == 1
+
+
+class TestMatchTarget:
+    """``target`` 字段测试：确保叶子匹配器设置正确的匹配目标类型。
+
+    GUI 根据 ``target=="filename"`` 判断是否在内容预览中搜索高亮位置——
+    文件名匹配不应在内容中搜索高亮，否则可能产生误导。
+    """
+
+    def test_filename_matcher_sets_target(self, tmp_path: Path) -> None:
+        """FileNameMatcher 命中时 target 应为 'filename'。"""
+        path = tmp_path / "password.txt"
+        path.write_text("content", encoding="utf-8")
+        matcher = FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password"))
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.target == "filename"
+
+    def test_content_matcher_sets_target(self, tmp_path: Path) -> None:
+        """ContentMatcher 命中时 target 应为 'content'。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("password=123", encoding="utf-8")
+        matcher = ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"))
+        ctx = _make_context(path, "password=123")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.target == "content"
+
+    def test_path_matcher_sets_target(self, tmp_path: Path) -> None:
+        """PathMatcher 命中时 target 应为 'path'。"""
+        path = tmp_path / "data" / "backup.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        matcher = PathMatcher(LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.target == "path"
+
+    def test_not_matched_has_empty_target(self, tmp_path: Path) -> None:
+        """未命中时 target 应为空字符串。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("hello", encoding="utf-8")
+        matcher = ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing"))
+        ctx = _make_context(path, "hello")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.target == ""
+
+    def test_or_matcher_passes_through_target(self, tmp_path: Path) -> None:
+        """OrMatcher 应透传命中分支的 target。"""
+        path = tmp_path / "password.txt"
+        path.write_text("nothing here", encoding="utf-8")
+        filename_child = FileNameMatcher(
+            LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password")
+        )
+        content_child = ContentMatcher(
+            LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing")
+        )
+        matcher = OrMatcher((filename_child, content_child))
+        ctx = _make_context(path, "nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.target == "filename"
+
+    def test_and_matcher_has_empty_target(self, tmp_path: Path) -> None:
+        """AndMatcher 为组合规则，target 应为空字符串。"""
+        path = tmp_path / "password.txt"
+        path.write_text("password=123", encoding="utf-8")
+        filename_child = FileNameMatcher(
+            LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password")
+        )
+        content_child = ContentMatcher(
+            LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")
+        )
+        matcher = AndMatcher((filename_child, content_child))
+        ctx = _make_context(path, "password=123")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.target == ""

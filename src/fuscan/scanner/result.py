@@ -18,12 +18,15 @@ class MatchResult:
     其他模式为 ``pattern``），供 GUI 高亮定位使用，避免 ``repr`` 转义导致的失真。
     ``match_count`` 为该次求值实际匹配到的文本条数（同一规则在同一文件中
     可能匹配多处，如多处密码、多处密钥），用于区分"命中规则数"与"匹配条数"。
+    ``target`` 为匹配目标类型（"filename"/"content"/"path"），叶子匹配器设置，
+    组合规则为空字符串。GUI 根据 ``target`` 判断是否在内容预览中搜索高亮位置。
     """
 
     matched: bool
     detail: str = ""
     match_text: str = ""
     match_count: int = 1
+    target: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,9 @@ class RuleHit:
     对于组合规则（and/or/not）无单一匹配文本时为空字符串。
     ``match_count`` 为该规则在该文件实际匹配到的文本条数（如多处密码各算 1 条），
     用于区分"命中规则数"与"匹配条数"，避免两者不对等时产生歧义。
+    ``target`` 为匹配目标类型（"filename"/"content"/"path"），叶子匹配器设置，
+    组合规则为空字符串。GUI 据 ``target=="filename"`` 判断是否在内容预览中
+    搜索高亮位置——文件名匹配不应在内容中搜索高亮，否则可能产生误导。
     """
 
     rule_name: str
@@ -60,6 +66,7 @@ class RuleHit:
     detail: str
     match_text: str = ""
     match_count: int = 1
+    target: str = ""
 
 
 @dataclass(frozen=True)

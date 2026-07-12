@@ -69,7 +69,16 @@ class LeafMatcher(Matcher):
     @override
     def matches(self, context: MatchContext) -> MatchResult:
         text = self._extract_text(context)
-        return _apply_leaf(text, self.spec, self._compiled)
+        result = _apply_leaf(text, self.spec, self._compiled)
+        if result.matched and not result.target:
+            return MatchResult(
+                matched=result.matched,
+                detail=result.detail,
+                match_text=result.match_text,
+                match_count=result.match_count,
+                target=self.spec.target.value,
+            )
+        return result
 
     @abstractmethod
     def _extract_text(self, context: MatchContext) -> str:
@@ -155,6 +164,7 @@ class OrMatcher(Matcher):
                     detail=result.detail or "任一命中",
                     match_text=result.match_text,
                     match_count=result.match_count,
+                    target=result.target,
                 )
         return MatchResult(matched=False)
 

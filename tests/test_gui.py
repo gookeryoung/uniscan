@@ -2728,6 +2728,49 @@ class TestHitDetailDialogNavigation:
         assert dialog._current_hit_index == -1
         dialog.close()
 
+    def test_dialog_filename_match_shows_dash(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框中文件名匹配规则的位置数列应显示'-'。"""
+        report = _build_filename_match_report(tmp_path)
+        dialog = HitDetailDialog(report.hits[0])
+        assert dialog._hits_table.item(0, 3).text() == "-"
+        assert dialog._hits_table.item(1, 3).text() == "1"
+        dialog.close()
+
+    def test_dialog_filename_match_detail_label(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框中文件名匹配规则的详情应追加'（仅文件名）'。"""
+        report = _build_filename_match_report(tmp_path)
+        dialog = HitDetailDialog(report.hits[0])
+        assert "（仅文件名）" in dialog._hits_table.item(0, 4).text()
+        assert "（仅文件名）" not in dialog._hits_table.item(1, 4).text()
+        dialog.close()
+
+    def test_dialog_info_label_shows_switchable_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框信息标签应显示'可切换位置'字段。"""
+        report = _build_multi_rule_report(tmp_path)
+        dialog = HitDetailDialog(report.hits[0])
+        info_text = dialog._info_label.text()
+        assert "可切换位置" in info_text
+        dialog.close()
+
+    def test_dialog_highlight_skips_out_of_range(self, qapp: QApplication) -> None:
+        """对话框高亮位置超出文档长度时应跳过高亮，不调用 setPosition 越界。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        path = Path("/nonexistent.txt")
+        result = ScanResult(
+            path=path,
+            size=0,
+            hits=(RuleHit("r", Severity.WARNING, "包含 'keyword'"),),
+        )
+        dialog = HitDetailDialog(result)
+        dialog._preview.setPlainText("short")
+        dialog._hit_positions = [(0, 3, 0), (100, 200, 0)]
+        dialog._current_hit_index = 1
+        dialog._highlight_current_hit()
+        dialog._scroll_to_current_hit()
+        dialog.close()
+
 
 class TestMatchTextHighlighting:
     """``match_text`` 字段驱动的关键词提取与跨行定位测试。
@@ -3195,6 +3238,36 @@ def _build_multi_rule_report(tmp_path: Path) -> ScanReport:
                 name="令牌",
                 severity=Severity.WARNING,
                 match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+            ),
+        ),
+    )
+    scanner = Scanner(rs)
+    return scanner.scan(tmp_path)
+
+
+def _build_filename_match_report(tmp_path: Path) -> ScanReport:
+    """构造含文件名匹配和内容匹配的报告，用于测试文件名匹配的高亮跳过。
+
+    secret_config.txt 内容 ``password=abc\ntoken=xyz``：
+    - 规则"文件名"匹配 FILENAME（target="filename"，match_text="secret"）
+    - 规则"密码"匹配 CONTENT（target="content"，match_text="password"）
+    """
+    from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
+    from fuscan.scanner import Scanner
+
+    (tmp_path / "secret_config.txt").write_text("password=abc\ntoken=xyz", encoding="utf-8")
+    rs = RuleSet(
+        version="1.0",
+        rules=(
+            Rule(
+                name="文件名",
+                severity=Severity.INFO,
+                match=LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="secret"),
+            ),
+            Rule(
+                name="密码",
+                severity=Severity.CRITICAL,
+                match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
             ),
         ),
     )
@@ -4021,6 +4094,68 @@ class TestDetailArea:
         window._detail_current_hit_index = -1
         window._on_detail_hits_row_clicked(0, 0)
         assert window._detail_current_hit_index == -1
+        window.close()
+
+    def test_filename_match_position_count_shows_dash(self, qapp: QApplication, tmp_path: Path) -> None:
+        """文件名匹配规则的位置数列应显示'-'而非数字。"""
+        report = _build_filename_match_report(tmp_path)
+        window = MainWindow()
+        window._detail_show_result(report.hits[0])
+        # 规则0(文件名): target="filename" → 位置数列显示"-"
+        assert window._detail_hits_table.item(0, 3).text() == "-"
+        # 规则1(密码): target="content" → 位置数列显示"1"（password在预览中出现1次）
+        assert window._detail_hits_table.item(1, 3).text() == "1"
+        window.close()
+
+    def test_filename_match_detail_shows_filename_label(self, qapp: QApplication, tmp_path: Path) -> None:
+        """文件名匹配规则的详情列应追加'（仅文件名）'提示。"""
+        report = _build_filename_match_report(tmp_path)
+        window = MainWindow()
+        window._detail_show_result(report.hits[0])
+        detail_text = window._detail_hits_table.item(0, 4).text()
+        assert "（仅文件名）" in detail_text
+        # 内容匹配规则不应有此标记
+        content_detail = window._detail_hits_table.item(1, 4).text()
+        assert "（仅文件名）" not in content_detail
+        window.close()
+
+    def test_filename_match_skips_content_highlight(self, qapp: QApplication, tmp_path: Path) -> None:
+        """文件名匹配规则的关键词不应在内容预览中搜索高亮位置。"""
+        report = _build_filename_match_report(tmp_path)
+        window = MainWindow()
+        window._detail_show_result(report.hits[0])
+        # 文件名"secret_config.txt"含"secret"，但内容"password=abc\ntoken=xyz"不含"secret"
+        # 若错误搜索内容，"secret"不在内容中，不会产生位置；但若文件名恰好也在内容中则会产生误导
+        # 此处验证：所有高亮位置都不归属到规则0(文件名)
+        for _, _, rule_idx in window._detail_hit_positions:
+            assert rule_idx != 0, "文件名匹配规则不应有内容高亮位置"
+        window.close()
+
+    def test_detail_info_label_shows_switchable_count(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情信息标签应显示'可切换位置'字段。"""
+        report = _build_multi_rule_report(tmp_path)
+        window = MainWindow()
+        window._detail_show_result(report.hits[0])
+        info_text = window._detail_info_label.text()
+        assert "可切换位置" in info_text
+        # multi_rule.txt: password×2 + token×1 = 3个位置
+        assert "3" in info_text
+        window.close()
+
+    def test_highlight_skips_out_of_range_position(self, qapp: QApplication) -> None:
+        """高亮位置超出文档长度时应跳过高亮，不调用 setPosition 越界。"""
+        window = MainWindow()
+        window._detail_preview.setPlainText("short")
+        # 设置一个超出文档长度的位置
+        window._detail_hit_positions = [(0, 3, 0), (100, 200, 0)]
+        window._detail_current_hit_index = 1
+        # 不应抛出异常
+        window._highlight_current_detail_hit()
+        window._scroll_to_current_detail_hit()
+        # 第一个位置（在范围内）应正常高亮
+        window._detail_current_hit_index = 0
+        window._highlight_current_detail_hit()
+        window._scroll_to_current_detail_hit()
         window.close()
 
     def test_rules_file_list_context_menu_no_selection(self, qapp: QApplication) -> None:
