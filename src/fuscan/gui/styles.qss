@@ -74,6 +74,14 @@ QWidget#setup_page, QWidget#scanning_page, QWidget#results_page {
     background: #f6f8fa;
 }
 
+/* ========== 配置页操作条 ========== */
+
+QFrame#setup_action_bar {
+    background: transparent;
+    border: none;
+    border-top: 1px solid #e1e4e8;
+}
+
 /* ========== 卡片容器 ========== */
 
 QFrame#detail_empty_action, QFrame#detail_nonempty_action {
@@ -178,23 +186,23 @@ QPushButton[drive!=""]:checked:hover {
 /* ========== 主操作按钮 ========== */
 
 QPushButton#scan_btn {
-    background: #2ea44f;
+    background: #0366d6;
     color: #ffffff;
     border: none;
     border-radius: 6px;
     font-size: 14px;
     font-weight: bold;
-    padding: 8px 24px;
-    min-width: 120px;
-    min-height: 36px;
+    padding: 8px 32px;
+    min-width: 180px;
+    min-height: 44px;
 }
 
 QPushButton#scan_btn:hover {
-    background: #2c974b;
+    background: #0256c1;
 }
 
 QPushButton#scan_btn:pressed {
-    background: #27873f;
+    background: #024aa0;
 }
 
 QPushButton#scan_btn:disabled {
@@ -204,7 +212,7 @@ QPushButton#scan_btn:disabled {
 
 /* ========== 次要按钮 ========== */
 
-QPushButton#export_btn, QPushButton#rescan_btn, QPushButton#view_results_btn {
+QPushButton#export_btn, QPushButton#rescan_btn {
     background: #0366d6;
     color: #ffffff;
     border: none;
@@ -215,13 +223,38 @@ QPushButton#export_btn, QPushButton#rescan_btn, QPushButton#view_results_btn {
     min-height: 32px;
 }
 
-QPushButton#export_btn:hover, QPushButton#rescan_btn:hover, QPushButton#view_results_btn:hover {
+QPushButton#export_btn:hover, QPushButton#rescan_btn:hover {
     background: #0256c1;
 }
 
-QPushButton#export_btn:disabled, QPushButton#rescan_btn:disabled, QPushButton#view_results_btn:disabled {
+QPushButton#export_btn:disabled, QPushButton#rescan_btn:disabled {
     background: #e1e4e8;
     color: #ffffff;
+}
+
+/* ========== 查看结果按钮（配置页次操作，轮廓样式区分主次） ========== */
+
+QPushButton#view_results_btn {
+    background: #ffffff;
+    color: #0366d6;
+    border: 1px solid #0366d6;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 6px 16px;
+    min-height: 36px;
+}
+
+QPushButton#view_results_btn:hover {
+    background: #f1f8ff;
+    border-color: #0256c1;
+    color: #0256c1;
+}
+
+QPushButton#view_results_btn:disabled {
+    background: #f6f8fa;
+    color: #959da5;
+    border-color: #e1e4e8;
 }
 
 /* ========== 扫描中页按钮 ========== */

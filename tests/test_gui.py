@@ -1333,6 +1333,48 @@ class TestWorkflowStage:
         window.close()
 
 
+class TestSetupActionBar:
+    """配置页操作条（setup_action_bar）结构与样式测试。"""
+
+    def test_scan_btn_height_reduced_to_44(self, qapp: QApplication) -> None:
+        """scan_btn 最小高度应为 44（与扫描中页按钮一致）。"""
+        window = MainWindow()
+        assert window._scan_btn.minimumHeight() == 44
+        window.close()
+
+    def test_scan_btn_minimum_width_180(self, qapp: QApplication) -> None:
+        """scan_btn 最小宽度应为 180。"""
+        window = MainWindow()
+        assert window._scan_btn.minimumWidth() >= 180
+        window.close()
+
+    def test_setup_action_bar_exists(self, qapp: QApplication) -> None:
+        """配置页应包含 setup_action_bar 容器。"""
+        window = MainWindow()
+        assert hasattr(window._ui, "setup_action_bar")
+        assert window._ui.setup_action_bar is not None
+        window.close()
+
+    def test_scan_btn_qss_uses_primary_blue(self) -> None:
+        """QSS 中 scan_btn 应使用 PRIMARY 蓝 #0366d6，不应保留绿色 #2ea44f。"""
+        from fuscan.gui.app import _QSS_PATH
+
+        qss = _QSS_PATH.read_text(encoding="utf-8")
+        scan_btn_section = qss[qss.find("QPushButton#scan_btn") :]
+        assert "#0366d6" in scan_btn_section
+        assert "#2ea44f" not in qss
+
+    def test_view_results_btn_qss_is_outline(self) -> None:
+        """view_results_btn 应为轮廓样式（白底蓝边），与 scan_btn 主次区分。"""
+        from fuscan.gui.app import _QSS_PATH
+
+        qss = _QSS_PATH.read_text(encoding="utf-8")
+        assert "QPushButton#view_results_btn" in qss
+        view_results_section = qss[qss.find("QPushButton#view_results_btn") :]
+        assert "background: #ffffff" in view_results_section[:200]
+        assert "border: 1px solid #0366d6" in view_results_section[:200]
+
+
 class TestSeverityDisplay:
     """严重等级颜色区分测试。"""
 

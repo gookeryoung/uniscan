@@ -187,29 +187,33 @@ class Ui_MainWindow(object):
 
         self.setup_layout.addWidget(self.rules_group)
 
-        self.setup_btn_row = QHBoxLayout()
+        self.setup_action_bar = QFrame(self.setup_page)
+        self.setup_action_bar.setObjectName(u"setup_action_bar")
+        self.setup_action_bar.setFrameShape(QFrame.NoFrame)
+        self.setup_btn_row = QHBoxLayout(self.setup_action_bar)
         self.setup_btn_row.setSpacing(8)
         self.setup_btn_row.setObjectName(u"setup_btn_row")
-        self.setup_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.setup_btn_row.addItem(self.setup_btn_spacer)
-
-        self.view_results_btn = QPushButton(self.setup_page)
+        self.setup_btn_row.setContentsMargins(0, 12, 0, 0)
+        self.view_results_btn = QPushButton(self.setup_action_bar)
         self.view_results_btn.setObjectName(u"view_results_btn")
         self.view_results_btn.setVisible(False)
 
         self.setup_btn_row.addWidget(self.view_results_btn)
 
-        self.scan_btn = QPushButton(self.setup_page)
+        self.setup_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.setup_btn_row.addItem(self.setup_btn_spacer)
+
+        self.scan_btn = QPushButton(self.setup_action_bar)
         self.scan_btn.setObjectName(u"scan_btn")
         self.scan_btn.setEnabled(False)
-        self.scan_btn.setMinimumSize(QSize(0, 60))
+        self.scan_btn.setMinimumSize(QSize(180, 44))
         self.scan_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.setup_btn_row.addWidget(self.scan_btn)
 
 
-        self.setup_layout.addLayout(self.setup_btn_row)
+        self.setup_layout.addWidget(self.setup_action_bar)
 
         self.main_stack.addWidget(self.setup_page)
         self.scanning_page = QWidget()
