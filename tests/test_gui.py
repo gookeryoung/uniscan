@@ -19,8 +19,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytestmark = pytest.mark.gui
 
 try:
-    from PySide2.QtCore import Qt
-    from PySide2.QtWidgets import QApplication, QMenu
+    try:
+        from PySide2.QtCore import Qt
+        from PySide2.QtWidgets import QApplication, QMenu
+    except ImportError:  # pragma: no cover
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QMenu
 
     from fuscan.gui.detail_dialog import HitDetailDialog
     from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
@@ -36,12 +40,12 @@ try:
     )
     from fuscan.scanner import ScanReport
 
-    PYSIDE2_AVAILABLE = True
+    PYSIDE_AVAILABLE = True
 except ImportError:
-    PYSIDE2_AVAILABLE = False
+    PYSIDE_AVAILABLE = False
 
-if not PYSIDE2_AVAILABLE:
-    pytest.skip("PySide2 未安装，跳过 GUI 测试", allow_module_level=True)
+if not PYSIDE_AVAILABLE:
+    pytest.skip("PySide 未安装，跳过 GUI 测试", allow_module_level=True)
 
 
 @pytest.fixture(scope="module")
@@ -852,7 +856,10 @@ class TestConfigPersistence:
 class TestScanWorker:
     def test_worker_runs_scan(self, qapp: QApplication, tmp_path: Path) -> None:
         """ScanWorker 应在后台完成扫描。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -867,7 +874,7 @@ class TestScanWorker:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)  # 超时保护
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -877,7 +884,10 @@ class TestScanWorker:
 
     def test_worker_handles_invalid_path(self, qapp: QApplication, tmp_path: Path) -> None:
         """无效路径应正常完成（Scanner 返回空报告）。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path / "nonexistent"])
@@ -891,7 +901,7 @@ class TestScanWorker:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -997,7 +1007,10 @@ class TestScanControlIntegration:
 
     def test_scan_completes_through_main_window(self, qapp: QApplication, tmp_path: Path) -> None:
         """通过 MainWindow 启动扫描应完成并填充结果树。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         (tmp_path / "normal.txt").write_text("y", encoding="utf-8")
@@ -1017,7 +1030,7 @@ class TestScanControlIntegration:
         loop = QEventLoop()
         QTimer.singleShot(10000, loop.quit)
         window._worker.finished.connect(loop.quit) if window._worker is not None else None
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         if window._worker is not None:
             window._worker.wait(2000)
@@ -1467,7 +1480,10 @@ class TestScanWorkerControl:
 
     def test_worker_cancel_emits_cancelled_signal(self, qapp: QApplication, tmp_path: Path) -> None:
         """取消扫描应发射 cancelled 信号并携带部分结果。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         # 300 个文件确保遍历阶段触发进度回调（每 200 个文件一次）
         for i in range(300):
@@ -1492,7 +1508,7 @@ class TestScanWorkerControl:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -1503,7 +1519,10 @@ class TestScanWorkerControl:
 
     def test_worker_pause_resume_delegates_to_scanner(self, qapp: QApplication, tmp_path: Path) -> None:
         """pause/resume 应委托给 Scanner，扫描仍正常完成。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -1521,7 +1540,7 @@ class TestScanWorkerControl:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -1795,7 +1814,10 @@ class TestScanWorkerMultiRoot:
 
     def test_worker_scans_multiple_roots(self, qapp: QApplication, tmp_path: Path) -> None:
         """ScanWorker 应依次扫描多个根路径并合并结果。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         (tmp_path / "dir_a").mkdir()
         (tmp_path / "dir_a" / "secret.txt").write_text("x", encoding="utf-8")
@@ -1812,7 +1834,7 @@ class TestScanWorkerMultiRoot:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -1824,7 +1846,10 @@ class TestScanWorkerMultiRoot:
 
     def test_worker_merges_empty_and_nonempty(self, qapp: QApplication, tmp_path: Path) -> None:
         """有效路径与无效路径混合时应正常合并。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -1841,7 +1866,7 @@ class TestScanWorkerMultiRoot:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert len(results) == 1
@@ -1854,7 +1879,10 @@ class TestScanWorkerProgress:
 
     def test_progress_info_emitted(self, qapp: QApplication, tmp_path: Path) -> None:
         """扫描过程中应 emit progress_info 信号。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         for i in range(5):
             (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
@@ -1869,7 +1897,7 @@ class TestScanWorkerProgress:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -1884,7 +1912,10 @@ class TestScanWorkerProgress:
 
     def test_progress_info_cumulative_multi_root(self, qapp: QApplication, tmp_path: Path) -> None:
         """多根路径扫描时 progress_info 应累加前序根路径的统计。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         dir_a = tmp_path / "dir_a"
         dir_a.mkdir()
@@ -1905,7 +1936,7 @@ class TestScanWorkerProgress:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert not worker.isRunning()
@@ -1917,7 +1948,10 @@ class TestScanWorkerProgress:
 
     def test_progress_info_fields_type(self, qapp: QApplication, tmp_path: Path) -> None:
         """progress_info 携带 ProgressInfo 对象且字段类型正确。"""
-        from PySide2.QtCore import QEventLoop, QTimer
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer
 
         from fuscan.scanner.result import ProgressInfo
 
@@ -1933,7 +1967,7 @@ class TestScanWorkerProgress:
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
         QTimer.singleShot(10000, loop.quit)
-        loop.exec_()
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
         assert len(progress_infos) >= 1
@@ -2536,7 +2570,10 @@ class TestHitDetailDialog:
 
     def test_double_click_no_data_does_nothing(self, qapp: QApplication) -> None:
         """无双击数据时不弹对话框。"""
-        from PySide2.QtWidgets import QTreeWidgetItem
+        try:
+            from PySide2.QtWidgets import QTreeWidgetItem
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QTreeWidgetItem
 
         window = MainWindow()
         # 创建一个没有 UserRole 数据的项
@@ -4014,7 +4051,10 @@ class TestDetailArea:
 
     def test_shortcuts_created(self, qapp: QApplication) -> None:
         """_setup_shortcuts 应创建 F3/Shift+F3/Delete 三个快捷键。"""
-        from PySide2.QtGui import QKeySequence
+        try:
+            from PySide2.QtGui import QKeySequence
+        except ImportError:  # pragma: no cover
+            from PySide6.QtGui import QKeySequence
 
         window = MainWindow()
         assert window._shortcut_next.key().toString() == QKeySequence("F3").toString()
@@ -4560,7 +4600,10 @@ class TestExportAndMenu:
 
     def test_history_item_double_clicked(self, qapp: QApplication, tmp_path: Path) -> None:
         """双击历史项应设置扫描路径。"""
-        from PySide2.QtWidgets import QListWidgetItem
+        try:
+            from PySide2.QtWidgets import QListWidgetItem
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QListWidgetItem
 
         scan_dir = tmp_path / "scan_target"
         scan_dir.mkdir()
@@ -4574,7 +4617,10 @@ class TestExportAndMenu:
 
     def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
         """closeEvent 应保存配置。"""
-        from PySide2.QtGui import QCloseEvent
+        try:
+            from PySide2.QtGui import QCloseEvent
+        except ImportError:  # pragma: no cover
+            from PySide6.QtGui import QCloseEvent
 
         window = MainWindow()
         window.closeEvent(QCloseEvent())
@@ -4669,7 +4715,10 @@ class TestSettingsDialog:
 
     def test_settings_action_in_file_menu(self, qapp: QApplication) -> None:
         """设置 action 应存在于文件菜单（而非帮助菜单）。"""
-        from PySide2.QtWidgets import QDialog
+        try:
+            from PySide2.QtWidgets import QDialog
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QDialog
 
         window = MainWindow()
         # settings_action 应存在并连接到 _on_settings

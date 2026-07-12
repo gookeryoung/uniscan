@@ -11,16 +11,28 @@ import logging
 import re
 from typing import Sequence
 
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QColor, QTextCharFormat, QTextCursor
-from PySide2.QtWidgets import (
-    QDialog,
-    QHeaderView,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
-    QWidget,
-)
+try:
+    from PySide2.QtCore import Qt
+    from PySide2.QtGui import QColor, QTextCharFormat, QTextCursor
+    from PySide2.QtWidgets import (
+        QDialog,
+        QHeaderView,
+        QTableWidget,
+        QTableWidgetItem,
+        QTextEdit,
+        QWidget,
+    )
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
+    from PySide6.QtWidgets import (
+        QDialog,
+        QHeaderView,
+        QTableWidget,
+        QTableWidgetItem,
+        QTextEdit,
+        QWidget,
+    )
 
 from fuscan.extractors import extract_content
 from fuscan.gui.detail_dialog_ui import Ui_HitDetailDialog

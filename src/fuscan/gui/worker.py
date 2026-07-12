@@ -11,7 +11,10 @@ import logging
 import time
 from pathlib import Path
 
-from PySide2.QtCore import QObject, QThread, Signal
+try:
+    from PySide2.QtCore import QObject, QThread, Signal
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import QObject, QThread, Signal
 
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport

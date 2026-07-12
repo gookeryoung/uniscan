@@ -10,12 +10,21 @@ import logging
 from pathlib import Path
 
 import yaml
-from PySide2.QtCore import Signal
-from PySide2.QtWidgets import (
-    QDialog,
-    QMessageBox,
-    QWidget,
-)
+
+try:
+    from PySide2.QtCore import Signal
+    from PySide2.QtWidgets import (
+        QDialog,
+        QMessageBox,
+        QWidget,
+    )
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import Signal
+    from PySide6.QtWidgets import (
+        QDialog,
+        QMessageBox,
+        QWidget,
+    )
 
 from fuscan.gui.rule_editor_ui import Ui_RuleEditorDialog
 from fuscan.rules import RuleError, load_ruleset

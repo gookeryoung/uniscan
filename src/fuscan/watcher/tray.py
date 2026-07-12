@@ -22,9 +22,14 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide2.QtCore import QObject, QTimer, Signal
-from PySide2.QtGui import QIcon
-from PySide2.QtWidgets import QAction, QApplication, QMenu, QSystemTrayIcon
+try:
+    from PySide2.QtCore import QObject, QTimer, Signal
+    from PySide2.QtGui import QIcon
+    from PySide2.QtWidgets import QAction, QApplication, QMenu, QSystemTrayIcon
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import QObject, QTimer, Signal
+    from PySide6.QtGui import QAction, QIcon
+    from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
@@ -126,7 +131,7 @@ class TrayApp(QObject):
         if self._watch_paths:
             self.start_monitoring()
 
-        return app.exec_()
+        return app.exec()
 
     def _init_tray(self) -> None:
         """初始化系统托盘。"""

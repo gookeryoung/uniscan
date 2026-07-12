@@ -19,7 +19,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytestmark = pytest.mark.gui
 
 try:
-    from PySide2.QtWidgets import QApplication
+    try:
+        from PySide2.QtWidgets import QApplication
+    except ImportError:  # pragma: no cover
+        from PySide6.QtWidgets import QApplication
 
     from fuscan.rules.model import (
         LeafMatch,
@@ -33,12 +36,12 @@ try:
     from fuscan.watcher.monitor import FileEvent, FileEventType
     from fuscan.watcher.tray import TrayApp
 
-    PYSIDE2_AVAILABLE = True
+    PYSIDE_AVAILABLE = True
 except ImportError:
-    PYSIDE2_AVAILABLE = False
+    PYSIDE_AVAILABLE = False
 
-if not PYSIDE2_AVAILABLE:
-    pytest.skip("PySide2 未安装，跳过托盘测试", allow_module_level=True)
+if not PYSIDE_AVAILABLE:
+    pytest.skip("PySide 未安装，跳过托盘测试", allow_module_level=True)
 
 
 @pytest.fixture(scope="module")

@@ -230,11 +230,14 @@ def _cmd_gui(_args: argparse.Namespace) -> int:
 def _cmd_tray(args: argparse.Namespace) -> int:
     """执行 tray 子命令：启动托盘驻守。"""
     try:
-        from PySide2.QtWidgets import QApplication
+        try:
+            from PySide2.QtWidgets import QApplication
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QApplication
 
         from fuscan.watcher.tray import TrayApp
     except ImportError as exc:
-        print(f"托盘启动失败（PySide2 未安装）: {exc}", file=sys.stderr)
+        print(f"托盘启动失败（PySide 未安装）: {exc}", file=sys.stderr)
         return 3
 
     ruleset = _load_ruleset_from_args(args)

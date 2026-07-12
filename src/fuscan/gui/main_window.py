@@ -30,30 +30,62 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from PySide2.QtCore import QPoint, QSize, Qt
-from PySide2.QtGui import QColor, QIcon, QKeySequence, QTextCharFormat, QTextCursor
-from PySide2.QtWidgets import (
-    QAbstractButton,
-    QAction,
-    QApplication,
-    QButtonGroup,
-    QDialog,
-    QFileDialog,
-    QHeaderView,
-    QInputDialog,
-    QLabel,
-    QListWidgetItem,
-    QMainWindow,
-    QMenu,
-    QMessageBox,
-    QPushButton,
-    QShortcut,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
-    QTreeWidgetItem,
-    QWidget,
-)
+try:
+    from PySide2.QtCore import QPoint, QSize, Qt
+    from PySide2.QtGui import QColor, QIcon, QKeySequence, QTextCharFormat, QTextCursor
+    from PySide2.QtWidgets import (
+        QAbstractButton,
+        QAction,
+        QApplication,
+        QButtonGroup,
+        QDialog,
+        QFileDialog,
+        QHeaderView,
+        QInputDialog,
+        QLabel,
+        QListWidgetItem,
+        QMainWindow,
+        QMenu,
+        QMessageBox,
+        QPushButton,
+        QShortcut,
+        QTableWidget,
+        QTableWidgetItem,
+        QTextEdit,
+        QTreeWidgetItem,
+        QWidget,
+    )
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import QPoint, QSize, Qt
+    from PySide6.QtGui import (
+        QAction,
+        QColor,
+        QIcon,
+        QKeySequence,
+        QShortcut,
+        QTextCharFormat,
+        QTextCursor,
+    )
+    from PySide6.QtWidgets import (
+        QAbstractButton,
+        QApplication,
+        QButtonGroup,
+        QDialog,
+        QFileDialog,
+        QHeaderView,
+        QInputDialog,
+        QLabel,
+        QListWidgetItem,
+        QMainWindow,
+        QMenu,
+        QMessageBox,
+        QPushButton,
+        QTableWidget,
+        QTableWidgetItem,
+        QTextEdit,
+        QTreeWidgetItem,
+        QWidget,
+    )
 
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MAX_HISTORY, Config, load_config, save_config
@@ -1119,7 +1151,7 @@ class MainWindow(QMainWindow):
         from fuscan.gui.settings_dialog import SettingsDialog
 
         dialog = SettingsDialog(self._config, self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             self._save_config()
             self._set_use_builtin(self._config.use_builtin)
             self._refresh_drive_buttons()
@@ -1388,7 +1420,7 @@ class MainWindow(QMainWindow):
         if self._detail_current_result is None:
             return
         dialog = HitDetailDialog(self._detail_current_result, self)
-        dialog.exec_()
+        dialog.exec()
 
     def _on_copy_path(self) -> None:
         """复制文件路径到剪贴板。"""
@@ -1488,7 +1520,7 @@ class MainWindow(QMainWindow):
             return
         dialog = RuleEditorDialog(self._rules_paths, self)
         dialog.rules_saved.connect(self._on_rules_saved)
-        dialog.exec_()
+        dialog.exec()
 
     def _on_rules_saved(self, _path: str) -> None:
         """规则文件保存后重新加载规则集。"""
@@ -1720,7 +1752,7 @@ class MainWindow(QMainWindow):
         if result is None:
             return
         dialog = HitDetailDialog(result, self)
-        dialog.exec_()
+        dialog.exec()
 
     def _update_scan_button(self) -> None:
         """更新扫描按钮状态（委托给 _update_stage_actions 统一管理）。"""

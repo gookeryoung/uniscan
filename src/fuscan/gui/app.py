@@ -10,8 +10,12 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from PySide2.QtCore import Qt
-from PySide2.QtWidgets import QApplication
+try:
+    from PySide2.QtCore import Qt
+    from PySide2.QtWidgets import QApplication
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
 
 from fuscan.gui.main_window import MainWindow
 
