@@ -17,7 +17,7 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1330, 927)
+        MainWindow.resize(720, 927)
         MainWindow.setMinimumSize(QSize(720, 480))
         self.load_rules_action = QAction(MainWindow)
         self.load_rules_action.setObjectName(u"load_rules_action")
@@ -156,6 +156,7 @@ class Ui_MainWindow(object):
 
         self.edit_rule_btn = QPushButton(self.rules_group)
         self.edit_rule_btn.setObjectName(u"edit_rule_btn")
+        self.edit_rule_btn.setMinimumSize(QSize(0, 40))
 
         self.rules_btn_row.addWidget(self.edit_rule_btn)
 
@@ -223,15 +224,15 @@ class Ui_MainWindow(object):
 
         self.scanning_title_label = QLabel(self.scanning_page)
         self.scanning_title_label.setObjectName(u"scanning_title_label")
-        self.scanning_title_label.setAlignment(Qt.AlignCenter)
         self.scanning_title_label.setMinimumSize(QSize(0, 40))
+        self.scanning_title_label.setAlignment(Qt.AlignCenter)
 
         self.scanning_layout.addWidget(self.scanning_title_label)
 
         self.progress = QProgressBar(self.scanning_page)
         self.progress.setObjectName(u"progress")
-        self.progress.setValue(0)
         self.progress.setMinimumSize(QSize(0, 30))
+        self.progress.setValue(0)
 
         self.scanning_layout.addWidget(self.progress)
 
@@ -491,7 +492,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.central)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 1330, 26))
+        self.menubar.setGeometry(QRect(0, 0, 720, 26))
         self.file_menu = QMenu(self.menubar)
         self.file_menu.setObjectName(u"file_menu")
         self.scan_menu = QMenu(self.menubar)
