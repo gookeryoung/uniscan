@@ -8,19 +8,6 @@
 #   - critical  = 机密/绝密数据（需严格控制）
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-  - .venv
-  - venv
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - tmp
-  - swp
-
 rules:
   # 公开数据：版权声明/许可协议
   - name: 公开版权声明文档

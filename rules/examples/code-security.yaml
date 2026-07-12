@@ -3,23 +3,6 @@
 # 适用：代码评审前检查、CI 门禁
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .venv
-  - venv
-  - dist
-  - build
-  - target
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - class
-  - lock
-
 rules:
   # Python eval/exec 危险函数
   - name: Python 危险函数 eval

@@ -53,11 +53,13 @@ class TrayApp(QObject):
     scan_completed = Signal(object)
     file_hit = Signal(str, int)
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         ruleset: RuleSet,
         watch_paths: list[Path] | None = None,
         state_file: Path | None = None,
+        ignore_dirs: list[str] | None = None,
+        ignore_extensions: list[str] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -65,16 +67,22 @@ class TrayApp(QObject):
         self._watch_paths = watch_paths or []
         self._state_file = state_file
 
-        ignore_dirs = list(default_ignore_dirs())
-        ignore_dirs.extend(ruleset.ignore_dirs)
+        config_ignore_dirs = ignore_dirs or []
+        config_ignore_exts = ignore_extensions or []
+        all_ignore_dirs = list(default_ignore_dirs())
+        all_ignore_dirs.extend(config_ignore_dirs)
 
         self._monitor_config = MonitorConfig(
             watch_paths=list(self._watch_paths),
-            ignore_dirs=ignore_dirs,
-            ignore_extensions=list(ruleset.ignore_extensions),
+            ignore_dirs=all_ignore_dirs,
+            ignore_extensions=list(config_ignore_exts),
         )
         self._monitor: FileMonitor | None = None
-        self._scanner = IncrementalScanner(ruleset=ruleset)
+        self._scanner = IncrementalScanner(
+            ruleset=ruleset,
+            ignore_dirs=tuple(config_ignore_dirs),
+            ignore_extensions=tuple(config_ignore_exts),
+        )
 
         self._tray: QSystemTrayIcon | None = None
         self._tray_menu: QMenu | None = None
@@ -224,7 +232,12 @@ class TrayApp(QObject):
         # 全量扫描在后台线程执行，避免阻塞 UI
         from fuscan.gui.worker import ScanWorker
 
-        self._scan_worker = ScanWorker(ruleset=self._ruleset, roots=[self._watch_paths[0]])
+        self._scan_worker = ScanWorker(
+            ruleset=self._ruleset,
+            roots=[self._watch_paths[0]],
+            ignore_dirs=tuple(self._monitor_config.ignore_dirs),
+            ignore_extensions=tuple(self._monitor_config.ignore_extensions),
+        )
         self._scan_worker.finished_report.connect(self._handle_scan_result)
         self._scan_worker.start()
 

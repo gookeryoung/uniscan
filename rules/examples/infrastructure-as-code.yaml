@@ -3,18 +3,6 @@
 # 适用：基础设施部署前检查、云资源安全审计、配置漂移检测
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .terraform
-  - node_modules
-  - __pycache__
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - tfstate
-  - tfstate.backup
-
 rules:
   # Terraform AWS S3 存储桶公开访问
   - name: S3 存储桶公开访问

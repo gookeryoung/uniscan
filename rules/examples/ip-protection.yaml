@@ -3,22 +3,6 @@
 # 适用：代码外发审查、开源前合规检查、商业机密保护
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .svn
-  - node_modules
-  - __pycache__
-  - .venv
-  - venv
-  - vendor
-  - third_party
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - min.js
-  - min.css
-
 rules:
   # 源代码文件缺少版权头
   - name: 源码缺少版权头

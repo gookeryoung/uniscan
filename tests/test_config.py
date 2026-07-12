@@ -13,7 +13,7 @@ class TestConfig:
     def test_default_config(self) -> None:
         """默认配置字段值。"""
         config = Config()
-        assert config.window_geometry == [300, 300, 1200, 800]
+        assert config.window_geometry == [300, 300, 720, 960]
         assert config.window_state == "normal"
         assert config.splitter_sizes == []
         assert config.scan_paths == []
@@ -22,12 +22,28 @@ class TestConfig:
         assert config.scan_mode == "folder"
         assert config.last_drive is None
 
+    def test_default_ignore_dirs(self) -> None:
+        """默认 ignore_dirs 应包含常见开发/构建目录。"""
+        config = Config()
+        assert ".git" in config.ignore_dirs
+        assert "node_modules" in config.ignore_dirs
+        assert "__pycache__" in config.ignore_dirs
+        assert len(config.ignore_dirs) >= 20
+
+    def test_default_ignore_extensions(self) -> None:
+        """默认 ignore_extensions 应包含常见二进制/临时文件扩展名。"""
+        config = Config()
+        assert "pyc" in config.ignore_extensions
+        assert "exe" in config.ignore_extensions
+        assert "zip" in config.ignore_extensions
+        assert len(config.ignore_extensions) >= 25
+
 
 class TestLoadConfig:
     def test_load_nonexistent_returns_default(self, tmp_path: Path) -> None:
         """文件不存在时返回默认配置。"""
         config = load_config(tmp_path / "missing.yaml")
-        assert config.window_geometry == [300, 300, 1200, 800]
+        assert config.window_geometry == [300, 300, 720, 960]
         assert config.scan_paths == []
         assert config.use_builtin is True
 
@@ -88,7 +104,7 @@ class TestLoadConfig:
         )
         config = load_config(config_file)
         # None 值被过滤，使用默认值
-        assert config.window_geometry == [300, 300, 1200, 800]
+        assert config.window_geometry == [300, 300, 720, 960]
         assert config.use_builtin is False
         assert config.scan_paths == []
 
@@ -113,6 +129,8 @@ class TestSaveConfig:
             scan_paths=["/a", "/b", "/c"],
             rules_paths=["/rules/r1.yaml", "/rules/r2.yaml"],
             use_builtin=False,
+            ignore_dirs=["custom_dir", ".git"],
+            ignore_extensions=["pyc", "custom_ext"],
         )
         save_config(original, config_file)
         assert config_file.exists()
@@ -124,6 +142,8 @@ class TestSaveConfig:
         assert loaded.scan_paths == ["/a", "/b", "/c"]
         assert loaded.rules_paths == ["/rules/r1.yaml", "/rules/r2.yaml"]
         assert loaded.use_builtin is False
+        assert loaded.ignore_dirs == ["custom_dir", ".git"]
+        assert loaded.ignore_extensions == ["pyc", "custom_ext"]
 
     def test_save_creates_parent_dir(self, tmp_path: Path) -> None:
         """保存时自动创建父目录。"""

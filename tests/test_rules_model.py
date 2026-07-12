@@ -71,8 +71,7 @@ class TestRuleSet:
         rs = RuleSet(version="1.0")
         assert rs.version == "1.0"
         assert rs.rules == ()
-        assert rs.ignore_dirs == ()
-        assert rs.ignore_extensions == ()
+        assert rs.ignore_paths == ()
 
     def test_ruleset_with_data(self) -> None:
         match = LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="x")
@@ -80,12 +79,10 @@ class TestRuleSet:
         rs = RuleSet(
             version="2.0",
             rules=(rule,),
-            ignore_dirs=("node_modules",),
-            ignore_extensions=("pyc",),
+            ignore_paths=("*/vendor/*",),
         )
         assert len(rs.rules) == 1
-        assert rs.ignore_dirs == ("node_modules",)
-        assert rs.ignore_extensions == ("pyc",)
+        assert rs.ignore_paths == ("*/vendor/*",)
 
 
 class TestEnums:

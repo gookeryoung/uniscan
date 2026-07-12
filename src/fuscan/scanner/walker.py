@@ -92,7 +92,7 @@ class FileWalker:
         if self._max_depth is not None and depth > self._max_depth:
             return
         try:
-            entries = sorted(os.scandir(directory), key=lambda e: e.name)
+            entries = list(os.scandir(directory))
         except OSError:
             return
 
@@ -139,5 +139,8 @@ class FileWalker:
         return False
 
     def _is_ignored_file(self, name: str) -> bool:
-        suffix = Path(name).suffix.lower().lstrip(".")
+        dot = name.rfind(".")
+        if dot < 0:
+            return False
+        suffix = name[dot + 1 :].lower()
         return suffix in self._ignore_extensions

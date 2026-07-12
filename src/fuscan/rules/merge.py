@@ -3,8 +3,11 @@
 合并语义：
 
 - ``rules``：后一个规则集中同名规则覆盖前一个，未被覆盖的保留
-- ``ignore_dirs`` / ``ignore_extensions`` / ``ignore_paths``：取并集（去重保序）
+- ``ignore_paths``：取并集（去重保序）
 - ``version``：采用最后一个规则集的版本号
+
+``ignore_dirs`` 和 ``ignore_extensions`` 已迁移至全局 :class:`~fuscan.config.Config`，
+不再在规则集合并中处理。
 """
 
 from __future__ import annotations
@@ -30,8 +33,6 @@ def merge_rulesets(base: RuleSet, override: RuleSet) -> RuleSet:
     return RuleSet(
         version=override.version,
         rules=tuple(merged_rules),
-        ignore_dirs=_union(base.ignore_dirs, override.ignore_dirs),
-        ignore_extensions=_union(base.ignore_extensions, override.ignore_extensions),
         ignore_paths=_union(base.ignore_paths, override.ignore_paths),
     )
 

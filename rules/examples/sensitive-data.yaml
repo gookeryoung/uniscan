@@ -3,23 +3,6 @@
 # 适用：金融、医疗、政府等行业的合规扫描
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .venv
-  - venv
-  - dist
-  - build
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - class
-  - lock
-  - sum
-
 rules:
   # 中国大陆身份证号（18 位，最后一位可能是 X）
   - name: 身份证号泄露

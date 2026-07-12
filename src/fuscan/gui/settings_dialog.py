@@ -17,6 +17,7 @@ from PySide2.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QPlainTextEdit,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -40,7 +41,7 @@ class SettingsDialog(QDialog):
     def _setup_ui(self) -> None:
         """构建 UI：QTabWidget + 两个页面 + 按钮组。"""
         self.setWindowTitle("设置")
-        self.setMinimumSize(500, 380)
+        self.setMinimumSize(500, 460)
 
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(12)
@@ -100,9 +101,25 @@ class SettingsDialog(QDialog):
         self._scan_archives_check.setToolTip("扫描压缩文件内的文件内容")
         options_layout.addWidget(self._scan_archives_check)
 
+        ignore_group = QGroupBox("忽略项")
+        ignore_layout = QFormLayout(ignore_group)
+        ignore_layout.setSpacing(8)
+
+        self._ignore_dirs_edit = QPlainTextEdit(ignore_group)
+        self._ignore_dirs_edit.setPlaceholderText("一行一个目录名（大小写不敏感）\n如：.git\n    node_modules")
+        self._ignore_dirs_edit.setMaximumHeight(80)
+
+        self._ignore_extensions_edit = QPlainTextEdit(ignore_group)
+        self._ignore_extensions_edit.setPlaceholderText("一行一个扩展名（不含点）\n如：pyc\n    exe")
+        self._ignore_extensions_edit.setMaximumHeight(80)
+
+        ignore_layout.addRow("忽略目录:", self._ignore_dirs_edit)
+        ignore_layout.addRow("忽略扩展名:", self._ignore_extensions_edit)
+
         layout.addWidget(workers_group)
         layout.addWidget(depth_group)
         layout.addWidget(options_group)
+        layout.addWidget(ignore_group)
         layout.addStretch()
 
         return page
@@ -143,6 +160,8 @@ class SettingsDialog(QDialog):
         self._scan_archives_check.setChecked(self._config.scan_archives)
         self._include_network_check.setChecked(self._config.include_network_drives)
         self._use_builtin_check.setChecked(self._config.use_builtin)
+        self._ignore_dirs_edit.setPlainText("\n".join(self._config.ignore_dirs))
+        self._ignore_extensions_edit.setPlainText("\n".join(self._config.ignore_extensions))
 
     def _save_config(self) -> None:
         """将控件值保存到配置。"""
@@ -152,6 +171,12 @@ class SettingsDialog(QDialog):
         self._config.scan_archives = self._scan_archives_check.isChecked()
         self._config.include_network_drives = self._include_network_check.isChecked()
         self._config.use_builtin = self._use_builtin_check.isChecked()
+        self._config.ignore_dirs = [
+            line.strip() for line in self._ignore_dirs_edit.toPlainText().splitlines() if line.strip()
+        ]
+        self._config.ignore_extensions = [
+            line.strip() for line in self._ignore_extensions_edit.toPlainText().splitlines() if line.strip()
+        ]
 
     def _on_accept(self) -> None:
         """确定按钮：保存配置并关闭对话框。"""

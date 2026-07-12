@@ -115,14 +115,13 @@ class Rule:
 
 @dataclass(frozen=True)
 class RuleSet:
-    """规则集合：版本、全局忽略项、规则列表。
+    """规则集合：版本、忽略路径、规则列表。
 
-    ``ignore_dirs`` 按目录名匹配（任意层级），``ignore_paths`` 按相对路径
-    glob 通配符匹配（如 ``*/vendor/*``），两者均可跳过目录及其子目录。
+    ``ignore_paths`` 按相对路径 glob 通配符匹配（如 ``*/vendor/*``），
+    可跳过目录及其子目录。``ignore_dirs`` 和 ``ignore_extensions`` 已迁移至
+    全局 :class:`~fuscan.config.Config`，规则文件中这两个字段被静默忽略。
     """
 
     version: str
     rules: tuple[Rule, ...] = field(default_factory=tuple)
-    ignore_dirs: tuple[str, ...] = field(default_factory=tuple)
-    ignore_extensions: tuple[str, ...] = field(default_factory=tuple)
     ignore_paths: tuple[str, ...] = field(default_factory=tuple)

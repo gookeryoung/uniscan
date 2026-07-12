@@ -31,11 +31,6 @@ class TestBuiltinRuleset:
         # 应包含 vendor、cache 等常见忽略路径
         assert any("vendor" in p for p in rs.ignore_paths)
 
-    def test_builtin_ruleset_has_ignore_dirs(self) -> None:
-        """内置规则集应包含 ignore_dirs 配置。"""
-        rs = load_builtin_ruleset()
-        assert ".git" in rs.ignore_dirs
-
 
 class TestLoadWithBuiltin:
     def test_load_with_builtin_no_user_path(self) -> None:
@@ -43,7 +38,7 @@ class TestLoadWithBuiltin:
         rs = load_with_builtin(None)
         builtin = load_builtin_ruleset()
         assert rs.rules == builtin.rules
-        assert rs.ignore_dirs == builtin.ignore_dirs
+        assert rs.ignore_paths == builtin.ignore_paths
 
     def test_load_with_builtin_merges_user_rules(self, tmp_path: Path) -> None:
         """用户规则应合并到内置规则之上。"""
@@ -93,22 +88,6 @@ rules:
         assert len(rs.rules) == len(builtin.rules)
         overridden_rule = next(r for r in rs.rules if r.name == builtin_rule_name)
         assert overridden_rule.match.pattern == "overridden"
-
-    def test_load_with_builtin_unions_ignore_dirs(self, tmp_path: Path) -> None:
-        """用户与内置的 ignore_dirs 取并集。"""
-        user_yaml = tmp_path / "user.yaml"
-        user_yaml.write_text(
-            'version: "1.0"\nignore_dirs:\n  - my_custom_dir\nrules: []\n',
-            encoding="utf-8",
-        )
-
-        rs = load_with_builtin([user_yaml])
-        builtin = load_builtin_ruleset()
-        assert "my_custom_dir" in rs.ignore_dirs
-        # 内置的 .git 也应保留
-        assert ".git" in rs.ignore_dirs
-        # 总数应大于内置
-        assert len(rs.ignore_dirs) > len(builtin.ignore_dirs)
 
     def test_load_with_builtin_unions_ignore_paths(self, tmp_path: Path) -> None:
         """用户与内置的 ignore_paths 取并集。"""

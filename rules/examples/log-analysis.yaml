@@ -3,17 +3,6 @@
 # 适用：运维巡检、故障排查、安全日志分析
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - log.gz
-  - log.bz2
-
 rules:
   # ERROR 级别日志
   - name: ERROR 级别日志

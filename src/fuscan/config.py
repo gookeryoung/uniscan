@@ -35,7 +35,7 @@ class Config:
     """应用配置。"""
 
     # 窗口几何：[x, y, width, height]
-    window_geometry: list[int] | None = field(default_factory=lambda: [300, 300, 1200, 800])
+    window_geometry: list[int] | None = field(default_factory=lambda: [300, 300, 720, 960])
     # 窗口状态："maximized" 或 "normal"
     window_state: str | None = field(default_factory=lambda: "normal")
     # 主分割器大小：[left_width, right_width]
@@ -58,6 +58,69 @@ class Config:
     max_workers: int = 8
     # 最大扫描深度（None 表示无限制）
     max_depth: int | None = None
+    # 忽略目录名（按目录名匹配任意层级，大小写不敏感）
+    ignore_dirs: list[str] = field(
+        default_factory=lambda: [
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".venv",
+            "venv",
+            "env",
+            "dist",
+            "build",
+            "target",
+            "out",
+            ".idea",
+            ".vscode",
+            ".cache",
+            ".gradle",
+            ".tox",
+            ".eggs",
+            ".sass-cache",
+        ]
+    )
+    # 忽略扩展名（不含点，大小写不敏感）
+    ignore_extensions: list[str] = field(
+        default_factory=lambda: [
+            "pyc",
+            "pyo",
+            "pyd",
+            "so",
+            "dll",
+            "exe",
+            "bin",
+            "obj",
+            "o",
+            "a",
+            "lib",
+            "class",
+            "jar",
+            "war",
+            "png",
+            "jpg",
+            "jpeg",
+            "gif",
+            "bmp",
+            "ico",
+            "svg",
+            "mp3",
+            "mp4",
+            "avi",
+            "mov",
+            "zip",
+            "rar",
+            "7z",
+            "tar",
+            "gz",
+            "bz2",
+        ]
+    )
 
 
 def load_config(path: Path | None = None) -> Config:

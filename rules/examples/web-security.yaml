@@ -3,22 +3,6 @@
 # 适用：Web 应用上线前检查、前端代码审计、安全扫描 CI 集成
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-  - dist
-  - build
-  - .venv
-  - venv
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - min.js
-  - min.css
-  - map
-
 rules:
   # innerHTML 赋值（XSS 风险）
   - name: innerHTML XSS 风险

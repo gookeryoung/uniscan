@@ -170,7 +170,8 @@ class TestParseRuleset:
         assert rs.version == "1.0"
         assert rs.rules == ()
 
-    def test_parse_ruleset_with_ignores(self) -> None:
+    def test_parse_ruleset_with_deprecated_ignores(self) -> None:
+        """ignore_dirs/ignore_extensions 已弃用，解析时静默忽略不存入 RuleSet。"""
         rs = parse_ruleset(
             {
                 "version": "1.0",
@@ -179,8 +180,9 @@ class TestParseRuleset:
                 "rules": [],
             }
         )
-        assert rs.ignore_dirs == (".git", "node_modules")
-        assert rs.ignore_extensions == ("pyc", "pyo")
+        assert rs.ignore_paths == ()
+        assert not hasattr(rs, "ignore_dirs")
+        assert not hasattr(rs, "ignore_extensions")
 
     def test_parse_ruleset_with_ignore_paths(self) -> None:
         rs = parse_ruleset(
@@ -211,10 +213,6 @@ class TestParseRuleset:
     def test_parse_ruleset_rules_wrong_type_raises(self) -> None:
         with pytest.raises(RuleParseError, match="rules"):
             parse_ruleset({"version": "1.0", "rules": "not-a-list"})
-
-    def test_parse_ruleset_ignore_dirs_wrong_type_raises(self) -> None:
-        with pytest.raises(RuleParseError, match="ignore_dirs"):
-            parse_ruleset({"version": "1.0", "ignore_dirs": ".git"})
 
 
 class TestLoadRuleset:
@@ -262,5 +260,3 @@ rules:
         rs = load_ruleset(path)
         assert rs.version == "1.0"
         assert len(rs.rules) == 5
-        assert ".git" in rs.ignore_dirs
-        assert "pyc" in rs.ignore_extensions

@@ -30,6 +30,7 @@ from typing import Sequence
 
 from fuscan import __version__
 from fuscan.builtin import load_with_builtin
+from fuscan.config import load_config
 from fuscan.rules import RuleError, RuleSet, load_ruleset, merge_multiple_rulesets
 from fuscan.scanner import Scanner, ScanReport
 
@@ -176,10 +177,14 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if ruleset is None:
         return 1
 
-    if args.ignore_dir:
-        ruleset = _merge_ignore_dirs(ruleset, args.ignore_dir)
-
-    scanner = Scanner(ruleset, max_depth=args.max_depth)
+    config = load_config()
+    ignore_dirs = _merge_ignore_dirs(config.ignore_dirs, args.ignore_dir)
+    scanner = Scanner(
+        ruleset,
+        max_depth=args.max_depth,
+        ignore_dirs=ignore_dirs,
+        ignore_extensions=tuple(config.ignore_extensions),
+    )
     rules_desc = f"规则: {args.rules}" if args.rules else "内置通用规则"
     logger.info("开始扫描 %s（%s，规则数: %d）", scan_path, rules_desc, len(ruleset.rules))
     report = scanner.scan(scan_path)
@@ -202,8 +207,6 @@ def _cmd_rules(args: argparse.Namespace) -> int:
     print(f"规则文件校验通过: {rules_path}")
     print(f"  版本: {ruleset.version}")
     print(f"  规则数: {len(ruleset.rules)}")
-    print(f"  忽略目录: {', '.join(ruleset.ignore_dirs) or '(无)'}")
-    print(f"  忽略扩展名: {', '.join(ruleset.ignore_extensions) or '(无)'}")
     print(f"  忽略路径: {', '.join(ruleset.ignore_paths) or '(无)'}")
     print("  规则列表:")
     for i, rule in enumerate(ruleset.rules, 1):
@@ -238,22 +241,26 @@ def _cmd_tray(args: argparse.Namespace) -> int:
     if ruleset is None:
         return 1
 
+    config = load_config()
     watch_paths = [Path(w) for w in args.watch]
     state_file: Path | None = args.state
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    tray = TrayApp(ruleset=ruleset, watch_paths=watch_paths, state_file=state_file)
+    tray = TrayApp(
+        ruleset=ruleset,
+        watch_paths=watch_paths,
+        state_file=state_file,
+        ignore_dirs=config.ignore_dirs,
+        ignore_extensions=config.ignore_extensions,
+    )
     return tray.start(show_window=False)
 
 
-def _merge_ignore_dirs(ruleset: RuleSet, extra_dirs: list[str]) -> RuleSet:
-    """合并额外忽略目录到规则集。"""
-    from dataclasses import replace
-
-    merged = tuple(dict.fromkeys((*ruleset.ignore_dirs, *extra_dirs)))
-    return replace(ruleset, ignore_dirs=merged)
+def _merge_ignore_dirs(base_dirs: list[str], extra_dirs: list[str]) -> tuple[str, ...]:
+    """合并全局忽略目录与命令行额外忽略目录（去重保序）。"""
+    return tuple(dict.fromkeys((*base_dirs, *extra_dirs)))
 
 
 def _format_report(report: ScanReport, fmt: str) -> str:

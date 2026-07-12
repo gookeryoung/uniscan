@@ -20,8 +20,6 @@ def rules_file(tmp_path: Path) -> Path:
     """创建测试用规则文件。"""
     content = """
 version: "1.0"
-ignore_dirs:
-  - .git
 rules:
   - name: 敏感文件名
     severity: warning

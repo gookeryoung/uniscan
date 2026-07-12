@@ -7,6 +7,7 @@ YAML 结构示例见 ``rules/example.yaml``。
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -27,6 +28,8 @@ from fuscan.rules.model import (
 )
 
 __all__ = ["load_ruleset", "parse_match", "parse_rule", "parse_ruleset"]
+
+logger = logging.getLogger(__name__)
 
 
 _LEAF_TYPES = {"filename", "content", "path"}
@@ -145,11 +148,13 @@ def parse_ruleset(data: Any) -> RuleSet:
 
     version = str(data.get("version", "1.0"))
 
+    # ignore_dirs / ignore_extensions 已迁移至全局 Config，规则文件中这两个字段被静默忽略
     ignore_dirs_raw = data.get("ignore_dirs", [])
-    ignore_dirs = _as_str_tuple(ignore_dirs_raw, field="ignore_dirs")
-
+    if ignore_dirs_raw:
+        logger.debug("规则文件中 ignore_dirs 已弃用，请改用全局配置")
     ignore_ext_raw = data.get("ignore_extensions", [])
-    ignore_extensions = _as_str_tuple(ignore_ext_raw, field="ignore_extensions", strip_dot=True)
+    if ignore_ext_raw:
+        logger.debug("规则文件中 ignore_extensions 已弃用，请改用全局配置")
 
     ignore_paths_raw = data.get("ignore_paths", [])
     ignore_paths = _as_str_tuple(ignore_paths_raw, field="ignore_paths")
@@ -162,8 +167,6 @@ def parse_ruleset(data: Any) -> RuleSet:
     return RuleSet(
         version=version,
         rules=rules,
-        ignore_dirs=ignore_dirs,
-        ignore_extensions=ignore_extensions,
         ignore_paths=ignore_paths,
     )
 

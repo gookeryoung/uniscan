@@ -46,6 +46,8 @@ class ScanWorker(QThread):
         max_depth: int | None = None,
         scan_archives: bool = False,
         max_workers: int | None = None,
+        ignore_dirs: tuple[str, ...] = (),
+        ignore_extensions: tuple[str, ...] = (),
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -54,6 +56,8 @@ class ScanWorker(QThread):
         self._max_depth = max_depth
         self._scan_archives = scan_archives
         self._max_workers = max_workers
+        self._ignore_dirs = ignore_dirs
+        self._ignore_extensions = ignore_extensions
         self._scanner: Scanner | None = None
         self._cancel_requested: bool = False
         # 多根路径累计统计
@@ -105,6 +109,8 @@ class ScanWorker(QThread):
                 scan_archives=self._scan_archives,
                 max_workers=self._max_workers,
                 on_progress=self._on_progress,
+                ignore_dirs=self._ignore_dirs,
+                ignore_extensions=self._ignore_extensions,
             )
             if self._cancel_requested:
                 self._scanner.cancel()

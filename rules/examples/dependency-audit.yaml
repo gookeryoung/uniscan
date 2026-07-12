@@ -3,18 +3,6 @@
 # 适用：CI 流水线依赖检查、供应链安全审计、上线前依赖审查
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-  - .venv
-  - venv
-  - site-packages
-
-ignore_extensions:
-  - pyc
-  - pyo
-
 rules:
   # Python requirements 中已知风险包
   - name: Python 风险依赖包

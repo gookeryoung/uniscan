@@ -3,18 +3,6 @@
 # 适用：GDPR、等保、PCI-DSS 等合规要求的自检
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .venv
-  - venv
-
-ignore_extensions:
-  - pyc
-  - pyo
-
 rules:
   # 配置文件中明文存储密码字段
   - name: 配置文件明文密码

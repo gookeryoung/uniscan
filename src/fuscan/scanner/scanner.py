@@ -62,13 +62,18 @@ class Scanner:
         max_workers: int | None = None,
         on_progress: Callable[[ProgressInfo], None] | None = None,
         progress_interval: float = 0.15,
+        ignore_dirs: tuple[str, ...] = (),
+        ignore_extensions: tuple[str, ...] = (),
     ) -> None:
         self.ruleset = ruleset
         self._content_provider: ContentProvider = content_provider or default_extract_content
         self._compiled: list[tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
+        # 预计算规则集扩展名并集，避免 _should_scan 对每个文件重算
+        self._has_unrestricted_rule: bool = any(not rule.file_extensions for rule in ruleset.rules)
+        self._all_extensions: frozenset[str] = frozenset(ext for rule in ruleset.rules for ext in rule.file_extensions)
         self._walker = FileWalker(
-            ignore_dirs=ruleset.ignore_dirs,
-            ignore_extensions=ruleset.ignore_extensions,
+            ignore_dirs=ignore_dirs,
+            ignore_extensions=ignore_extensions,
             ignore_paths=ruleset.ignore_paths,
             max_depth=max_depth,
             follow_symlinks=follow_symlinks,
@@ -345,10 +350,9 @@ class Scanner:
         """
         if entry.is_dir:
             return False
-        if any(not rule.file_extensions for rule in self.ruleset.rules):
+        if self._has_unrestricted_rule:
             return True
-        all_extensions = {ext for rule in self.ruleset.rules for ext in rule.file_extensions}
-        return entry.extension in all_extensions
+        return entry.extension in self._all_extensions
 
     def _scan_entry(self, entry: FileEntry) -> ScanResult:
         """对单个文件应用所有规则，返回扫描结果。"""

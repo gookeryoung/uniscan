@@ -3,18 +3,6 @@
 # 适用：DevOps 流水线门禁、容器镜像构建前检查、基础设施配置审计
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-  - .venv
-  - venv
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - lock
-
 rules:
   # Dockerfile 中使用 latest 标签（不可复现构建）
   - name: Dockerfile 使用 latest 标签

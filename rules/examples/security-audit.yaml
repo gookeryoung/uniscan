@@ -3,22 +3,6 @@
 # 适用：上线前安全检查、CI/CD 集成、代码审计
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .venv
-  - venv
-  - vendor
-  - third_party
-
-ignore_extensions:
-  - pyc
-  - pyo
-  - min.js
-  - min.css
-
 rules:
   # AWS Access Key ID（AKIA 开头 + 16 位字母数字）
   - name: AWS Access Key 泄露

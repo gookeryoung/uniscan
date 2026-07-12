@@ -24,7 +24,7 @@ from fuscan.scanner.result import ProgressInfo
 
 
 def _build_ruleset(*rules: Rule) -> RuleSet:
-    return RuleSet(version="1.0", rules=tuple(rules), ignore_dirs=(".git",), ignore_extensions=("pyc",))
+    return RuleSet(version="1.0", rules=tuple(rules))
 
 
 def _filename_rule(name: str, pattern: str, severity: Severity = Severity.WARNING) -> Rule:
@@ -77,7 +77,7 @@ class TestScannerBasic:
         (tmp_path / ".git" / "password.txt").write_text("", encoding="utf-8")
         (tmp_path / "password.txt").write_text("", encoding="utf-8")
         rs = _build_ruleset(_filename_rule("r", "password"))
-        scanner = Scanner(rs)
+        scanner = Scanner(rs, ignore_dirs=(".git",))
         report = scanner.scan(tmp_path)
         assert report.stats.total_files == 1  # .git 内被忽略
         assert report.stats.matched_files == 1
@@ -86,7 +86,7 @@ class TestScannerBasic:
         (tmp_path / "password.pyc").write_text("", encoding="utf-8")
         (tmp_path / "password.txt").write_text("", encoding="utf-8")
         rs = _build_ruleset(_filename_rule("r", "password"))
-        scanner = Scanner(rs)
+        scanner = Scanner(rs, ignore_extensions=("pyc",))
         report = scanner.scan(tmp_path)
         assert report.stats.total_files == 1  # pyc 被忽略
         assert report.stats.matched_files == 1

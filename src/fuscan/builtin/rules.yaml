@@ -2,67 +2,8 @@
 #
 # 此文件随软件分发，提供通用的过滤与识别规则。
 # 用户规则文件中同名规则会覆盖此处对应的规则；
-# ignore_dirs / ignore_extensions / ignore_paths 取并集。
+# ignore_paths 取并集。
 version: "1.0"
-
-# 常见开发/构建目录，按目录名匹配（任意层级）
-ignore_dirs:
-  - .git
-  - .svn
-  - .hg
-  - node_modules
-  - __pycache__
-  - .mypy_cache
-  - .pytest_cache
-  - .ruff_cache
-  - .venv
-  - venv
-  - env
-  - dist
-  - build
-  - target
-  - out
-  - .idea
-  - .vscode
-  - .cache
-  - .gradle
-  - .tox
-  - .eggs
-  - .sass-cache
-
-# 常见二进制/临时文件扩展名
-ignore_extensions:
-  - pyc
-  - pyo
-  - pyd
-  - so
-  - dll
-  - exe
-  - bin
-  - obj
-  - o
-  - a
-  - lib
-  - class
-  - jar
-  - war
-  - png
-  - jpg
-  - jpeg
-  - gif
-  - bmp
-  - ico
-  - svg
-  - mp3
-  - mp4
-  - avi
-  - mov
-  - zip
-  - rar
-  - 7z
-  - tar
-  - gz
-  - bz2
 
 # 路径级 glob 过滤（相对扫描根目录，大小写不敏感）
 ignore_paths:

@@ -3,17 +3,6 @@
 # 适用：面向欧盟/中国市场的应用合规检查、隐私影响评估（PIA）、数据处理审计
 version: "1.0"
 
-ignore_dirs:
-  - .git
-  - node_modules
-  - __pycache__
-  - .venv
-  - venv
-
-ignore_extensions:
-  - pyc
-  - pyo
-
 rules:
   # 个人身份信息（PII）- 姓名 + 联系方式组合
   - name: PII 姓名与联系方式组合

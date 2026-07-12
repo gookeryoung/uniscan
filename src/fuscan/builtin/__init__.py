@@ -41,7 +41,7 @@ def load_with_builtin(user_paths: Sequence[Path] | None = None) -> RuleSet:
     """加载内置规则并与一个或多个用户规则按顺序合并。
 
     内置规则作为基础，用户规则按列表顺序依次合并覆盖（后面的覆盖前面的同名规则）。
-    ignore_dirs / ignore_extensions / ignore_paths 取并集。
+    ignore_paths 取并集。
     若 ``user_paths`` 为 None 或空，仅返回内置规则集。
 
     :param user_paths: 用户规则文件路径列表（按优先级从低到高排列）

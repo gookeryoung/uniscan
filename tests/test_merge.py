@@ -24,8 +24,6 @@ def _make_rule(name: str, pattern: str = "x", severity: Severity = Severity.INFO
 
 def _make_ruleset(
     rules: tuple[Rule, ...] = (),
-    ignore_dirs: tuple[str, ...] = (),
-    ignore_extensions: tuple[str, ...] = (),
     ignore_paths: tuple[str, ...] = (),
     version: str = "1.0",
 ) -> RuleSet:
@@ -33,8 +31,6 @@ def _make_ruleset(
     return RuleSet(
         version=version,
         rules=rules,
-        ignore_dirs=ignore_dirs,
-        ignore_extensions=ignore_extensions,
         ignore_paths=ignore_paths,
     )
 
@@ -77,22 +73,6 @@ class TestMergeRulesets:
         merged = merge_rulesets(base, override)
         assert merged.version == "2.0"
 
-    def test_merge_ignore_dirs_union(self) -> None:
-        """ignore_dirs 取并集。"""
-        base = _make_ruleset(ignore_dirs=(".git", "node_modules"))
-        override = _make_ruleset(ignore_dirs=("node_modules", ".cache"))
-
-        merged = merge_rulesets(base, override)
-        assert set(merged.ignore_dirs) == {".git", "node_modules", ".cache"}
-
-    def test_merge_ignore_extensions_union(self) -> None:
-        """ignore_extensions 取并集。"""
-        base = _make_ruleset(ignore_extensions=("pyc", "pyo"))
-        override = _make_ruleset(ignore_extensions=("pyc", "log"))
-
-        merged = merge_rulesets(base, override)
-        assert set(merged.ignore_extensions) == {"pyc", "pyo", "log"}
-
     def test_merge_ignore_paths_union(self) -> None:
         """ignore_paths 取并集。"""
         base = _make_ruleset(ignore_paths=("*/vendor/*", "*/.cache/*"))
@@ -101,31 +81,23 @@ class TestMergeRulesets:
         merged = merge_rulesets(base, override)
         assert set(merged.ignore_paths) == {"*/vendor/*", "*/.cache/*", "*/third_party/*"}
 
-    def test_merge_ignore_dirs_dedup_preserves_order(self) -> None:
-        """并集去重并保持插入顺序（base 优先）。"""
-        base = _make_ruleset(ignore_dirs=(".git", "node_modules"))
-        override = _make_ruleset(ignore_dirs=("node_modules", ".cache"))
-
-        merged = merge_rulesets(base, override)
-        assert merged.ignore_dirs == (".git", "node_modules", ".cache")
-
     def test_merge_empty_base(self) -> None:
         """base 为空时结果等于 override。"""
         base = _make_ruleset()
-        override = _make_ruleset(rules=(_make_rule("r1"),), ignore_dirs=(".git",))
+        override = _make_ruleset(rules=(_make_rule("r1"),), ignore_paths=("*/vendor/*",))
 
         merged = merge_rulesets(base, override)
         assert len(merged.rules) == 1
-        assert merged.ignore_dirs == (".git",)
+        assert merged.ignore_paths == ("*/vendor/*",)
 
     def test_merge_empty_override(self) -> None:
         """override 为空时结果等于 base。"""
-        base = _make_ruleset(rules=(_make_rule("r1"),), ignore_dirs=(".git",))
+        base = _make_ruleset(rules=(_make_rule("r1"),), ignore_paths=("*/vendor/*",))
         override = _make_ruleset()
 
         merged = merge_rulesets(base, override)
         assert len(merged.rules) == 1
-        assert merged.ignore_dirs == (".git",)
+        assert merged.ignore_paths == ("*/vendor/*",)
 
     def test_merge_both_empty(self) -> None:
         """两者都为空时结果也为空。"""
@@ -134,19 +106,16 @@ class TestMergeRulesets:
 
         merged = merge_rulesets(base, override)
         assert merged.rules == ()
-        assert merged.ignore_dirs == ()
         assert merged.ignore_paths == ()
 
     def test_merge_mixed_scenario(self) -> None:
         """综合场景：部分覆盖 + 部分新增 + 并集。"""
         base = _make_ruleset(
             rules=(_make_rule("base1"), _make_rule("shared"), _make_rule("base2")),
-            ignore_dirs=(".git",),
             ignore_paths=("*/vendor/*",),
         )
         override = _make_ruleset(
             rules=(_make_rule("shared", pattern="new"), _make_rule("user1")),
-            ignore_dirs=("node_modules", ".git"),
             ignore_paths=("*/.cache/*",),
         )
 
@@ -161,8 +130,6 @@ class TestMergeRulesets:
         # shared 的 pattern 应为 override 版本
         shared_rule = next(r for r in merged.rules if r.name == "shared")
         assert shared_rule.match.pattern == "new"
-        # ignore_dirs 并集
-        assert set(merged.ignore_dirs) == {".git", "node_modules"}
         # ignore_paths 并集
         assert set(merged.ignore_paths) == {"*/vendor/*", "*/.cache/*"}
 
@@ -174,18 +141,18 @@ class TestMergeMultipleRulesets:
         """无参数时返回空规则集。"""
         merged = merge_multiple_rulesets()
         assert merged.rules == ()
-        assert merged.ignore_dirs == ()
+        assert merged.ignore_paths == ()
 
     def test_single_arg_returns_equal(self) -> None:
         """单个参数时返回的规则集内容应与输入一致。"""
         rs = _make_ruleset(
             rules=(_make_rule("r1"),),
-            ignore_dirs=(".git",),
+            ignore_paths=("*/vendor/*",),
         )
         merged = merge_multiple_rulesets(rs)
         assert len(merged.rules) == 1
         assert merged.rules[0].name == "r1"
-        assert merged.ignore_dirs == (".git",)
+        assert merged.ignore_paths == ("*/vendor/*",)
 
     def test_two_args_last_overrides(self) -> None:
         """两个参数时后者覆盖前者同名规则。"""
@@ -215,14 +182,13 @@ class TestMergeMultipleRulesets:
         names = {r.name for r in merged.rules}
         assert names == {"r1", "r2", "r3"}
 
-    def test_ignore_lists_union_across_all(self) -> None:
-        """ignore_dirs / ignore_paths 跨所有规则集取并集。"""
-        rs1 = _make_ruleset(ignore_dirs=(".git",), ignore_paths=("*/a/*",))
-        rs2 = _make_ruleset(ignore_dirs=("node_modules",), ignore_paths=("*/b/*",))
-        rs3 = _make_ruleset(ignore_dirs=(".cache",), ignore_paths=("*/a/*",))
+    def test_ignore_paths_union_across_all(self) -> None:
+        """ignore_paths 跨所有规则集取并集。"""
+        rs1 = _make_ruleset(ignore_paths=("*/a/*",))
+        rs2 = _make_ruleset(ignore_paths=("*/b/*",))
+        rs3 = _make_ruleset(ignore_paths=("*/a/*",))
 
         merged = merge_multiple_rulesets(rs1, rs2, rs3)
-        assert set(merged.ignore_dirs) == {".git", "node_modules", ".cache"}
         assert set(merged.ignore_paths) == {"*/a/*", "*/b/*"}
 
     def test_version_uses_last(self) -> None:

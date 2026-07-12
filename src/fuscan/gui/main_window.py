@@ -856,6 +856,8 @@ class MainWindow(QMainWindow):
             scan_archives=self._config.scan_archives,
             max_workers=self._config.max_workers,
             max_depth=self._config.max_depth,
+            ignore_dirs=tuple(self._config.ignore_dirs),
+            ignore_extensions=tuple(self._config.ignore_extensions),
         )
         self._worker.progress_info.connect(self._on_scan_progress)
         self._worker.finished_report.connect(self._on_scan_finished)

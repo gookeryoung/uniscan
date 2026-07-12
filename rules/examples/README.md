@@ -56,12 +56,8 @@ fuscan tray -r rules/examples/security-audit.yaml -w /path/to/watch
 
 ```yaml
 version: "1.0"           # 规则版本号
-ignore_dirs:             # 全局忽略目录名（匹配路径任一部分）
-  - .git
-  - node_modules
-ignore_extensions:       # 全局忽略扩展名（不含点）
-  - pyc
-  - pyo
+ignore_paths:            # 可选，路径级 glob 过滤（相对扫描根目录）
+  - "*/vendor/*"
 rules:                   # 规则列表
   - name: 规则名称         # 必填，唯一标识
     description: 描述     # 可选，说明规则意图
@@ -225,23 +221,12 @@ match:
   case_sensitive: false  # 同时匹配 Password/PASSWORD
 ```
 
-### 6. 合理使用 ignore_dirs
+### 6. 全局忽略项配置
 
-全局忽略 VCS、构建产物、依赖目录，避免无效扫描：
+忽略目录名（如 `.git`、`node_modules`）和忽略扩展名（如 `pyc`、`exe`）已迁移至全局配置，
+请在 GUI 的「设置 → 扫描设置 → 忽略项」中维护，或通过 CLI `--ignore-dir` 临时追加。
 
-```yaml
-ignore_dirs:
-  - .git
-  - .svn
-  - __pycache__
-  - node_modules
-  - .venv
-  - venv
-  - dist
-  - build
-  - target
-  - vendor
-```
+规则文件中仅保留 `ignore_paths`（路径级 glob 过滤，如 `*/vendor/*`）用于项目特定的路径排除。
 
 ## 更多资源
 
