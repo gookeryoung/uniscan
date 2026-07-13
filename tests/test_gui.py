@@ -1345,6 +1345,47 @@ class TestWorkflowStage:
         assert not window._edit_rules_action.isEnabled()
         window.close()
 
+    def test_switch_stage_syncs_sidebar(self, qapp: QApplication) -> None:
+        """_switch_stage 应同步侧边栏选中项。"""
+        window = MainWindow()
+        window._switch_stage(WorkflowStage.SCANNING)
+        assert window._sidebar.currentRow() == 1
+        window._switch_stage(WorkflowStage.RESULTS)
+        assert window._sidebar.currentRow() == 2
+        window._switch_stage(WorkflowStage.SETUP)
+        assert window._sidebar.currentRow() == 0
+        window.close()
+
+    def test_on_header_tab_changed_switches_tab_stack(self, qapp: QApplication) -> None:
+        """_on_header_tab_changed 应切换 tab_stack 页面。"""
+        window = MainWindow()
+        window.show()
+        qapp.processEvents()
+        window._on_header_tab_changed(1)
+        assert window._tab_stack.currentIndex() == 1
+        assert not window._sidebar.isVisible()
+        window._on_header_tab_changed(2)
+        assert window._tab_stack.currentIndex() == 2
+        assert not window._sidebar.isVisible()
+        window._on_header_tab_changed(0)
+        assert window._tab_stack.currentIndex() == 0
+        assert window._sidebar.isVisible()
+        window.close()
+
+    def test_on_sidebar_stage_changed_switches_main_stack(self, qapp: QApplication) -> None:
+        """_on_sidebar_stage_changed 应映射 row 到 WorkflowStage 并切换 main_stack。"""
+        window = MainWindow()
+        window._on_sidebar_stage_changed(1)
+        assert window._main_stack.currentIndex() == 1
+        assert window._workflow_stage == WorkflowStage.SCANNING
+        window._on_sidebar_stage_changed(2)
+        assert window._main_stack.currentIndex() == 2
+        assert window._workflow_stage == WorkflowStage.RESULTS
+        window._on_sidebar_stage_changed(0)
+        assert window._main_stack.currentIndex() == 0
+        assert window._workflow_stage == WorkflowStage.SETUP
+        window.close()
+
 
 class TestSetupActionBar:
     """配置页操作条（setup_action_bar）结构与样式测试。"""
@@ -1370,18 +1411,18 @@ class TestSetupActionBar:
 
     def test_scan_btn_qss_uses_primary_blue(self) -> None:
         """QSS 中 scan_btn 应使用 PRIMARY 蓝 #0366d6，不应保留绿色 #2ea44f。"""
-        from fuscan.gui.app import _QSS_PATH
+        from fuscan.gui.app import load_stylesheet
 
-        qss = _QSS_PATH.read_text(encoding="utf-8")
+        qss = load_stylesheet()
         scan_btn_section = qss[qss.find("QPushButton#scan_btn") :]
         assert "#0366d6" in scan_btn_section
         assert "#2ea44f" not in qss
 
     def test_view_results_btn_qss_is_outline(self) -> None:
         """view_results_btn 应为轮廓样式（白底蓝边），与 scan_btn 主次区分。"""
-        from fuscan.gui.app import _QSS_PATH
+        from fuscan.gui.app import load_stylesheet
 
-        qss = _QSS_PATH.read_text(encoding="utf-8")
+        qss = load_stylesheet()
         assert "QPushButton#view_results_btn" in qss
         view_results_section = qss[qss.find("QPushButton#view_results_btn") :]
         assert "background: #ffffff" in view_results_section[:200]

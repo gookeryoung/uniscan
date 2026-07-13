@@ -1,0 +1,147 @@
+"""GUI 设计令牌集中定义。
+
+按 rule-12-gui-pyside-standards.md 要求，所有 QSS 与代码须引用令牌常量，
+禁止散落硬编码颜色/尺寸。QSS 文件通过 ``string.Template`` 引用 ``QSS_TOKENS`` 字典。
+
+色值沿用现有 GitHub Desktop 风格（非 rule-12 表格中的 ``#0887A0`` 系列），
+仅做集中化管理，便于后续主题切换。
+"""
+
+from __future__ import annotations
+
+__all__ = [
+    "COLOR_ACCENT",
+    "COLOR_BG_APP",
+    "COLOR_BG_CARD",
+    "COLOR_BG_HOVER",
+    "COLOR_BG_SELECTED",
+    "COLOR_BORDER",
+    "COLOR_BORDER_MUTED",
+    "COLOR_DANGER",
+    "COLOR_DANGER_DARK",
+    "COLOR_INFO",
+    "COLOR_PRIMARY",
+    "COLOR_PRIMARY_DARK",
+    "COLOR_PRIMARY_DARKER",
+    "COLOR_TEXT_MUTED",
+    "COLOR_TEXT_ON_PRIMARY",
+    "COLOR_TEXT_PRIMARY",
+    "COLOR_TEXT_SECONDARY",
+    "COLOR_WARNING",
+    "CONTROL_HEIGHT",
+    "CONTROL_HEIGHT_LG",
+    "FONT_FAMILY",
+    "FONT_SIZE_BODY",
+    "FONT_SIZE_CAPTION",
+    "FONT_SIZE_HEADING",
+    "FONT_SIZE_SMALL",
+    "FONT_SIZE_TITLE",
+    "HEADER_HEIGHT",
+    "QSS_TOKENS",
+    "RADIUS_LG",
+    "RADIUS_MD",
+    "RADIUS_SM",
+    "SIDEBAR_WIDTH",
+    "SPACING_LG",
+    "SPACING_MD",
+    "SPACING_SM",
+    "SPACING_XL",
+    "SPACING_XS",
+    "STATUSBAR_HEIGHT",
+]
+
+# ----------------------------- 色彩令牌 -----------------------------
+
+COLOR_PRIMARY = "#0366d6"
+COLOR_PRIMARY_DARK = "#0256c1"
+COLOR_PRIMARY_DARKER = "#024aa0"
+COLOR_ACCENT = "#58a6ff"
+
+COLOR_DANGER = "#d73a49"
+COLOR_DANGER_DARK = "#c52332"
+COLOR_WARNING = "#f0883e"
+COLOR_INFO = "#0366d6"
+
+COLOR_TEXT_PRIMARY = "#24292e"
+COLOR_TEXT_SECONDARY = "#586069"
+COLOR_TEXT_MUTED = "#959da5"
+COLOR_TEXT_ON_PRIMARY = "#ffffff"
+
+COLOR_BG_APP = "#f6f8fa"
+COLOR_BG_CARD = "#ffffff"
+COLOR_BG_HOVER = "#f6f8fa"
+COLOR_BG_SELECTED = "#f1f8ff"
+
+COLOR_BORDER = "#e1e4e8"
+COLOR_BORDER_MUTED = "#d0d7de"
+
+# ----------------------------- 排版令牌 -----------------------------
+
+FONT_FAMILY = '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif'
+FONT_SIZE_CAPTION = "11px"
+FONT_SIZE_SMALL = "12px"
+FONT_SIZE_BODY = "13px"
+FONT_SIZE_HEADING = "15px"
+FONT_SIZE_TITLE = "18px"
+
+# ----------------------------- 间距令牌（8px 基准网格） -----------------------------
+
+SPACING_XS = "4px"
+SPACING_SM = "8px"
+SPACING_MD = "16px"
+SPACING_LG = "24px"
+SPACING_XL = "32px"
+
+# ----------------------------- 圆角与尺寸令牌 -----------------------------
+
+RADIUS_SM = "4px"
+RADIUS_MD = "6px"
+RADIUS_LG = "8px"
+
+HEADER_HEIGHT = "40px"
+SIDEBAR_WIDTH = "220px"
+STATUSBAR_HEIGHT = "28px"
+CONTROL_HEIGHT = "32px"
+CONTROL_HEIGHT_LG = "44px"
+
+# ----------------------------- QSS 令牌字典 -----------------------------
+
+QSS_TOKENS: dict[str, str] = {
+    "COLOR_PRIMARY": COLOR_PRIMARY,
+    "COLOR_PRIMARY_DARK": COLOR_PRIMARY_DARK,
+    "COLOR_PRIMARY_DARKER": COLOR_PRIMARY_DARKER,
+    "COLOR_ACCENT": COLOR_ACCENT,
+    "COLOR_DANGER": COLOR_DANGER,
+    "COLOR_DANGER_DARK": COLOR_DANGER_DARK,
+    "COLOR_WARNING": COLOR_WARNING,
+    "COLOR_INFO": COLOR_INFO,
+    "COLOR_TEXT_PRIMARY": COLOR_TEXT_PRIMARY,
+    "COLOR_TEXT_SECONDARY": COLOR_TEXT_SECONDARY,
+    "COLOR_TEXT_MUTED": COLOR_TEXT_MUTED,
+    "COLOR_TEXT_ON_PRIMARY": COLOR_TEXT_ON_PRIMARY,
+    "COLOR_BG_APP": COLOR_BG_APP,
+    "COLOR_BG_CARD": COLOR_BG_CARD,
+    "COLOR_BG_HOVER": COLOR_BG_HOVER,
+    "COLOR_BG_SELECTED": COLOR_BG_SELECTED,
+    "COLOR_BORDER": COLOR_BORDER,
+    "COLOR_BORDER_MUTED": COLOR_BORDER_MUTED,
+    "FONT_FAMILY": FONT_FAMILY,
+    "FONT_SIZE_CAPTION": FONT_SIZE_CAPTION,
+    "FONT_SIZE_SMALL": FONT_SIZE_SMALL,
+    "FONT_SIZE_BODY": FONT_SIZE_BODY,
+    "FONT_SIZE_HEADING": FONT_SIZE_HEADING,
+    "FONT_SIZE_TITLE": FONT_SIZE_TITLE,
+    "SPACING_XS": SPACING_XS,
+    "SPACING_SM": SPACING_SM,
+    "SPACING_MD": SPACING_MD,
+    "SPACING_LG": SPACING_LG,
+    "SPACING_XL": SPACING_XL,
+    "RADIUS_SM": RADIUS_SM,
+    "RADIUS_MD": RADIUS_MD,
+    "RADIUS_LG": RADIUS_LG,
+    "HEADER_HEIGHT": HEADER_HEIGHT,
+    "SIDEBAR_WIDTH": SIDEBAR_WIDTH,
+    "STATUSBAR_HEIGHT": STATUSBAR_HEIGHT,
+    "CONTROL_HEIGHT": CONTROL_HEIGHT,
+    "CONTROL_HEIGHT_LG": CONTROL_HEIGHT_LG,
+}

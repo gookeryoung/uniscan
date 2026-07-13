@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from string import Template
 from typing import Sequence
 
 try:
@@ -17,14 +18,30 @@ except ImportError:  # pragma: no cover
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
 
+from fuscan import theme
 from fuscan.gui.main_window import MainWindow
 
-__all__ = ["launch"]
+__all__ = ["launch", "load_stylesheet"]
 
 logger = logging.getLogger(__name__)
 
 # QSS 样式表路径（与本模块同目录）
 _QSS_PATH = Path(__file__).parent / "styles.qss"
+
+
+def load_stylesheet() -> str:
+    """加载 QSS 并替换设计令牌占位符。
+
+    读取 ``styles.qss`` 原文，用 :data:`fuscan.theme.QSS_TOKENS` 通过
+    :class:`string.Template.substitute` 替换 ``${TOKEN}`` 占位符，
+    返回可直接传给 :meth:`QApplication.setStyleSheet` 的最终样式表。
+
+    :raises OSError: QSS 文件读取失败
+    :raises KeyError: QSS 中存在未在 ``QSS_TOKENS`` 定义的占位符
+    :return: 替换令牌后的完整 QSS 样式表
+    """
+    qss_text = _QSS_PATH.read_text(encoding="utf-8")
+    return Template(qss_text).substitute(theme.QSS_TOKENS)
 
 
 def _configure_high_dpi() -> None:
@@ -51,11 +68,11 @@ def launch(argv: Sequence[str] | None = None) -> int:
     app = QApplication.instance() or QApplication(args)
     app.setApplicationName("fuscan")
 
-    # 加载 GitHub Desktop 风格样式表
+    # 加载 QSS 样式表并替换设计令牌占位符
     try:
-        app.setStyleSheet(_QSS_PATH.read_text(encoding="utf-8"))
-    except OSError:
-        logger.warning("加载样式表失败: %s", _QSS_PATH, exc_info=True)
+        app.setStyleSheet(load_stylesheet())
+    except (OSError, KeyError) as exc:
+        logger.warning("加载样式表失败: %s", exc, exc_info=True)
 
     window = MainWindow()
     window.show()

@@ -87,6 +87,7 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
+from fuscan import theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MAX_HISTORY, Config, load_config, save_config
 from fuscan.extractors import extract_content
@@ -126,11 +127,11 @@ _SEVERITY_LABELS: dict[Severity, str] = {
     Severity.INFO: "一般",
 }
 
-# 严重等级 → 前景色（QColor）
+# 严重等级 → 前景色（QColor，色值集中定义在 fuscan.theme）
 _SEVERITY_COLORS: dict[Severity, QColor] = {
-    Severity.CRITICAL: QColor("#d73a49"),
-    Severity.WARNING: QColor("#f0883e"),
-    Severity.INFO: QColor("#0366d6"),
+    Severity.CRITICAL: QColor(theme.COLOR_DANGER),
+    Severity.WARNING: QColor(theme.COLOR_WARNING),
+    Severity.INFO: QColor(theme.COLOR_INFO),
 }
 
 # 严重等级 → 背景色（浅色，用于整行高亮）
@@ -345,6 +346,15 @@ class MainWindow(QMainWindow):
     def _bind_widgets(self) -> None:
         """将 Ui_MainWindow 的部件绑定到本类私有属性，保持业务逻辑兼容。"""
         ui = self._ui
+        # 头部栏与 Tab 切换（rule-12 HeaderBar）
+        self._tab_stack = ui.tab_stack
+        self._sidebar = ui.sidebar
+        self._tab_scan_btn = ui.tab_scan_btn
+        self._tab_rules_btn = ui.tab_rules_btn
+        self._tab_history_btn = ui.tab_history_btn
+        self._settings_btn = ui.settings_btn
+        self._about_btn = ui.about_btn
+        self._sidebar_splitter = ui.sidebar_splitter
         # 主堆叠区与阶段页面
         self._main_stack = ui.main_stack
         self._scan_btn = ui.scan_btn
@@ -429,19 +439,24 @@ class MainWindow(QMainWindow):
 
         # layout 伸缩因子（.ui 不支持 stretch vector）
         ui = self._ui
-        # 配置页：target_group / rules_group / setup_btn_row
-        ui.setup_layout.setStretch(0, 0)
-        ui.setup_layout.setStretch(1, 1)
-        ui.setup_layout.setStretch(2, 0)
-        # target_group 内：scan_mode_layout / history_label / history_list
+        # 配置页：target_group / setup_action_bar（rules_group 已移至 rules_tab）
+        ui.setup_layout.setStretch(0, 1)
+        ui.setup_layout.setStretch(1, 0)
+        # target_group 内：scan_mode_layout（history 已移至 history_tab）
         ui.target_group_layout.setStretch(0, 0)
-        ui.target_group_layout.setStretch(1, 0)
-        ui.target_group_layout.setStretch(2, 1)
         # rules_group 内：rules_btn_row / rules_file_label / rules_file_list / rules_tree
         ui.rules_group_layout.setStretch(0, 0)
         ui.rules_group_layout.setStretch(1, 0)
         ui.rules_group_layout.setStretch(2, 0)
         ui.rules_group_layout.setStretch(3, 1)
+        # rules_tab_layout: rules_group 占满
+        ui.rules_tab_layout.setStretch(0, 1)
+        # history_tab_layout: history_label(0) / history_list(1)
+        ui.history_tab_layout.setStretch(0, 0)
+        ui.history_tab_layout.setStretch(1, 1)
+        # sidebar_splitter: sidebar(0) / main_stack(1) 初始比例 220:1060
+        self._sidebar_splitter.setStretchFactor(0, 0)
+        self._sidebar_splitter.setStretchFactor(1, 1)
         # filter_layout: path_filter_input / rule_filter_combo / group_mode_combo
         ui.filter_layout.setStretch(0, 2)
         ui.filter_layout.setStretch(1, 1)
@@ -502,6 +517,32 @@ class MainWindow(QMainWindow):
         self._cancel_btn.setIcon(self._icon_stop)
         self._pause_resume_btn.setIcon(self._icon_pause)
 
+        # 头部栏按钮图标（rule-12 HeaderBar）
+        self._tab_scan_btn.setIcon(self._icon_scan)
+        self._tab_rules_btn.setIcon(self._icon_load_list)
+        self._tab_history_btn.setIcon(self._icon_history)
+        self._settings_btn.setIcon(self._icon_settings)
+        self._about_btn.setIcon(self._icon_about)
+
+        # 头部 Tab 按钮互斥组（id 0=扫描 / 1=规则 / 2=历史）
+        self._header_button_group = QButtonGroup(self)
+        self._header_button_group.setExclusive(True)
+        self._header_button_group.addButton(self._tab_scan_btn, 0)
+        self._header_button_group.addButton(self._tab_rules_btn, 1)
+        self._header_button_group.addButton(self._tab_history_btn, 2)
+
+        # 侧边栏阶段项（配置 / 扫描中 / 结果）
+        self._sidebar.blockSignals(True)
+        self._sidebar.clear()
+        self._sidebar.addItem(QListWidgetItem(self._icon_folder, "配置"))
+        self._sidebar.addItem(QListWidgetItem(self._icon_scan, "扫描中"))
+        self._sidebar.addItem(QListWidgetItem(self._icon_history, "结果"))
+        self._sidebar.setCurrentRow(0)
+        self._sidebar.blockSignals(False)
+
+        # 侧边栏分隔器初始尺寸（220:剩余）
+        self._sidebar_splitter.setSizes([220, 1060])
+
         # 初始化盘符按钮组（平铺选择，替代下拉）
         self._drive_button_group = QButtonGroup(self)
         self._drive_button_group.setExclusive(True)
@@ -529,6 +570,11 @@ class MainWindow(QMainWindow):
         self._detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
         self._detail_next_btn.clicked.connect(self._on_next_detail_hit)
         self._detail_open_location_btn.clicked.connect(self._on_open_file_location)
+        # 头部栏与侧边栏信号槽（rule-12 HeaderBar + Sidebar）
+        self._header_button_group.idClicked.connect(self._on_header_tab_changed)
+        self._sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
+        self._settings_btn.clicked.connect(self._on_settings)
+        self._about_btn.clicked.connect(self._on_about)
 
         # actions 信号槽
         self._load_rules_action.triggered.connect(self._on_load_rules)
@@ -621,6 +667,7 @@ class MainWindow(QMainWindow):
         """切换工作流阶段页面并更新控件状态。
 
         SETUP=0 配置页、SCANNING=1 扫描中页、RESULTS=2 结果页。
+        同步侧边栏选中项，避免循环触发信号。
         """
         self._workflow_stage = stage
         page_index = {
@@ -629,7 +676,28 @@ class MainWindow(QMainWindow):
             WorkflowStage.RESULTS: 2,
         }[stage]
         self._main_stack.setCurrentIndex(page_index)
+        self._sidebar.blockSignals(True)
+        self._sidebar.setCurrentRow(page_index)
+        self._sidebar.blockSignals(False)
         self._update_stage_actions()
+
+    def _on_header_tab_changed(self, tab_id: int) -> None:
+        """头部 Tab 切换：切换 tab_stack 页面，非扫描 Tab 隐藏侧边栏。
+
+        :param tab_id: 0=扫描 / 1=规则管理 / 2=扫描历史
+        """
+        self._tab_stack.setCurrentIndex(tab_id)
+        self._sidebar.setVisible(tab_id == 0)
+
+    def _on_sidebar_stage_changed(self, row: int) -> None:
+        """侧边栏阶段项切换：映射 row 到 WorkflowStage 并切换页面。
+
+        :param row: 0=配置 / 1=扫描中 / 2=结果
+        """
+        stage_map = {0: WorkflowStage.SETUP, 1: WorkflowStage.SCANNING, 2: WorkflowStage.RESULTS}
+        stage = stage_map.get(row)
+        if stage is not None:
+            self._switch_stage(stage)
 
     def _update_stage_actions(self) -> None:
         """根据当前阶段与扫描状态更新按钮和菜单的可用性。"""
@@ -1171,7 +1239,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于 fuscan",
-            f"fuscan {__version__}\n\n通用文件扫描器\n支持多格式与压缩文件扫描\n\n技术栈: Python + PySide2",
+            f"fuscan {__version__}\n\n通用文件扫描器\n支持多格式与压缩文件扫描\n\n技术栈: Python + PySide",
         )
 
     def _on_settings(self) -> None:

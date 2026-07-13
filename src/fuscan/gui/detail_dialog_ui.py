@@ -25,13 +25,12 @@ class Ui_HitDetailDialog(object):
         HitDetailDialog.resize(800, 600)
         self.main_layout = QVBoxLayout(HitDetailDialog)
         self.main_layout.setObjectName(u"main_layout")
-        self.info_label = QLabel(HitDetailDialog)
-        self.info_label.setObjectName(u"info_label")
-        self.info_label.setStyleSheet(u"padding: 8px; background: #f5f5f5; border: 1px solid #ddd;")
-        self.info_label.setTextFormat(Qt.RichText)
-        self.info_label.setWordWrap(True)
+        self.hit_info_label = QLabel(HitDetailDialog)
+        self.hit_info_label.setObjectName(u"hit_info_label")
+        self.hit_info_label.setTextFormat(Qt.RichText)
+        self.hit_info_label.setWordWrap(True)
 
-        self.main_layout.addWidget(self.info_label)
+        self.main_layout.addWidget(self.hit_info_label)
 
         self.hits_title_label = QLabel(HitDetailDialog)
         self.hits_title_label.setObjectName(u"hits_title_label")
@@ -120,7 +119,7 @@ class Ui_HitDetailDialog(object):
 
     def retranslateUi(self, HitDetailDialog):
         HitDetailDialog.setWindowTitle(QCoreApplication.translate("HitDetailDialog", u"\u547d\u4e2d\u8be6\u60c5", None))
-        self.info_label.setText("")
+        self.hit_info_label.setText("")
         self.hits_title_label.setText(QCoreApplication.translate("HitDetailDialog", u"\u547d\u4e2d\u89c4\u5219:", None))
         ___qtablewidgetitem = self.hits_table.horizontalHeaderItem(0)
         ___qtablewidgetitem.setText(QCoreApplication.translate("HitDetailDialog", u"\u89c4\u5219\u540d", None));

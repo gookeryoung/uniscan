@@ -22,8 +22,8 @@ class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(1176, 742)
-        MainWindow.setMinimumSize(QSize(720, 480))
+        MainWindow.resize(1280, 800)
+        MainWindow.setMinimumSize(QSize(800, 600))
         self.load_rules_action = QAction(MainWindow)
         self.load_rules_action.setObjectName(u"load_rules_action")
         self.edit_rules_action = QAction(MainWindow)
@@ -47,8 +47,76 @@ class Ui_MainWindow(object):
         self.central_layout = QVBoxLayout(self.central)
         self.central_layout.setObjectName(u"central_layout")
         self.central_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_stack = QStackedWidget(self.central)
+        self.central_layout.setSpacing(0)
+
+        # ==================== 头部栏（rule-12 HeaderBar） ====================
+        self.header_bar = QFrame(self.central)
+        self.header_bar.setObjectName(u"header_bar")
+        self.header_bar.setFrameShape(QFrame.NoFrame)
+        self.header_layout = QHBoxLayout(self.header_bar)
+        self.header_layout.setObjectName(u"header_layout")
+        self.header_layout.setContentsMargins(8, 4, 8, 4)
+        self.header_layout.setSpacing(4)
+
+        self.tab_scan_btn = QPushButton(self.header_bar)
+        self.tab_scan_btn.setObjectName(u"tab_scan_btn")
+        self.tab_scan_btn.setCheckable(True)
+        self.tab_scan_btn.setChecked(True)
+        self.header_layout.addWidget(self.tab_scan_btn)
+
+        self.tab_rules_btn = QPushButton(self.header_bar)
+        self.tab_rules_btn.setObjectName(u"tab_rules_btn")
+        self.tab_rules_btn.setCheckable(True)
+        self.header_layout.addWidget(self.tab_rules_btn)
+
+        self.tab_history_btn = QPushButton(self.header_bar)
+        self.tab_history_btn.setObjectName(u"tab_history_btn")
+        self.tab_history_btn.setCheckable(True)
+        self.header_layout.addWidget(self.tab_history_btn)
+
+        self.header_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.header_layout.addItem(self.header_spacer)
+
+        self.settings_btn = QPushButton(self.header_bar)
+        self.settings_btn.setObjectName(u"settings_btn")
+        self.header_layout.addWidget(self.settings_btn)
+
+        self.about_btn = QPushButton(self.header_bar)
+        self.about_btn.setObjectName(u"about_btn")
+        self.header_layout.addWidget(self.about_btn)
+
+        self.central_layout.addWidget(self.header_bar)
+
+        # ==================== Tab Stack（3 个 Tab 页） ====================
+        self.tab_stack = QStackedWidget(self.central)
+        self.tab_stack.setObjectName(u"tab_stack")
+
+        # -------- Tab 0: 扫描（sidebar + main_stack） --------
+        self.scan_tab = QWidget()
+        self.scan_tab.setObjectName(u"scan_tab")
+        self.scan_tab_layout = QVBoxLayout(self.scan_tab)
+        self.scan_tab_layout.setObjectName(u"scan_tab_layout")
+        self.scan_tab_layout.setContentsMargins(0, 0, 0, 0)
+        self.scan_tab_layout.setSpacing(0)
+
+        self.sidebar_splitter = QSplitter(self.scan_tab)
+        self.sidebar_splitter.setObjectName(u"sidebar_splitter")
+        self.sidebar_splitter.setOrientation(Qt.Horizontal)
+        self.sidebar_splitter.setHandleWidth(4)
+
+        self.sidebar = QListWidget(self.sidebar_splitter)
+        self.sidebar.setObjectName(u"sidebar")
+        self.sidebar.setMinimumWidth(160)
+        self.sidebar.setMaximumWidth(280)
+
+        self.main_stack = QStackedWidget(self.sidebar_splitter)
         self.main_stack.setObjectName(u"main_stack")
+
+        self.sidebar_splitter.addWidget(self.sidebar)
+        self.sidebar_splitter.addWidget(self.main_stack)
+        self.scan_tab_layout.addWidget(self.sidebar_splitter)
+
+        # -------- 配置页（setup_page）：target_group + setup_action_bar --------
         self.setup_page = QWidget()
         self.setup_page.setObjectName(u"setup_page")
         self.setup_layout = QVBoxLayout(self.setup_page)
@@ -127,70 +195,9 @@ class Ui_MainWindow(object):
 
         self.scan_mode_layout.addWidget(self.target_stack)
 
-
         self.target_group_layout.addLayout(self.scan_mode_layout)
 
-        self.history_label = QLabel(self.target_group)
-        self.history_label.setObjectName(u"history_label")
-
-        self.target_group_layout.addWidget(self.history_label)
-
-        self.history_list = QListWidget(self.target_group)
-        self.history_list.setObjectName(u"history_list")
-        self.history_list.setMaximumSize(QSize(16777215, 120))
-
-        self.target_group_layout.addWidget(self.history_list)
-
-
         self.setup_layout.addWidget(self.target_group)
-
-        self.rules_group = QGroupBox(self.setup_page)
-        self.rules_group.setObjectName(u"rules_group")
-        self.rules_group_layout = QVBoxLayout(self.rules_group)
-        self.rules_group_layout.setSpacing(6)
-        self.rules_group_layout.setObjectName(u"rules_group_layout")
-        self.rules_group_layout.setContentsMargins(12, 16, 12, 12)
-        self.rules_btn_row = QHBoxLayout()
-        self.rules_btn_row.setSpacing(8)
-        self.rules_btn_row.setObjectName(u"rules_btn_row")
-        self.load_rules_btn = QPushButton(self.rules_group)
-        self.load_rules_btn.setObjectName(u"load_rules_btn")
-        self.load_rules_btn.setMinimumSize(QSize(150, 40))
-
-        self.rules_btn_row.addWidget(self.load_rules_btn)
-
-        self.edit_rule_btn = QPushButton(self.rules_group)
-        self.edit_rule_btn.setObjectName(u"edit_rule_btn")
-        self.edit_rule_btn.setMinimumSize(QSize(0, 40))
-
-        self.rules_btn_row.addWidget(self.edit_rule_btn)
-
-        self.rules_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.rules_btn_row.addItem(self.rules_btn_spacer)
-
-
-        self.rules_group_layout.addLayout(self.rules_btn_row)
-
-        self.rules_file_label = QLabel(self.rules_group)
-        self.rules_file_label.setObjectName(u"rules_file_label")
-
-        self.rules_group_layout.addWidget(self.rules_file_label)
-
-        self.rules_file_list = QListWidget(self.rules_group)
-        self.rules_file_list.setObjectName(u"rules_file_list")
-        self.rules_file_list.setMaximumSize(QSize(16777215, 120))
-
-        self.rules_group_layout.addWidget(self.rules_file_list)
-
-        self.rules_tree = QTreeWidget(self.rules_group)
-        self.rules_tree.setObjectName(u"rules_tree")
-        self.rules_tree.setRootIsDecorated(False)
-
-        self.rules_group_layout.addWidget(self.rules_tree)
-
-
-        self.setup_layout.addWidget(self.rules_group)
 
         self.setup_action_bar = QFrame(self.setup_page)
         self.setup_action_bar.setObjectName(u"setup_action_bar")
@@ -217,10 +224,11 @@ class Ui_MainWindow(object):
 
         self.setup_btn_row.addWidget(self.scan_btn)
 
-
         self.setup_layout.addWidget(self.setup_action_bar)
 
         self.main_stack.addWidget(self.setup_page)
+
+        # -------- 扫描中页（scanning_page）：不变 --------
         self.scanning_page = QWidget()
         self.scanning_page.setObjectName(u"scanning_page")
         self.scanning_layout = QVBoxLayout(self.scanning_page)
@@ -299,7 +307,6 @@ class Ui_MainWindow(object):
 
         self.stats_form_layout.setWidget(1, QFormLayout.LabelRole, self.stats_time_label)
 
-
         self.scanning_layout.addWidget(self.stats_group)
 
         self.scanning_btn_row = QHBoxLayout()
@@ -325,10 +332,11 @@ class Ui_MainWindow(object):
 
         self.scanning_btn_row.addItem(self.scanning_btn_right_spacer)
 
-
         self.scanning_layout.addLayout(self.scanning_btn_row)
 
         self.main_stack.addWidget(self.scanning_page)
+
+        # -------- 结果页（results_page）：不变 --------
         self.results_page = QWidget()
         self.results_page.setObjectName(u"results_page")
         self.results_page_layout = QVBoxLayout(self.results_page)
@@ -367,7 +375,6 @@ class Ui_MainWindow(object):
 
         self.results_top_layout.addItem(self.results_top_spacer)
 
-
         self.results_page_layout.addWidget(self.results_top_bar)
 
         self.results_splitter = QSplitter(self.results_page)
@@ -405,7 +412,6 @@ class Ui_MainWindow(object):
         self.group_mode_combo.setObjectName(u"group_mode_combo")
 
         self.filter_layout.addWidget(self.group_mode_combo)
-
 
         self.results_list_layout.addWidget(self.filter_bar)
 
@@ -569,12 +575,93 @@ class Ui_MainWindow(object):
 
         self.main_stack.addWidget(self.results_page)
 
-        self.central_layout.addWidget(self.main_stack)
+        self.tab_stack.addWidget(self.scan_tab)
+
+        # -------- Tab 1: 规则管理（rules_group 移入） --------
+        self.rules_tab = QWidget()
+        self.rules_tab.setObjectName(u"rules_tab")
+        self.rules_tab_layout = QVBoxLayout(self.rules_tab)
+        self.rules_tab_layout.setObjectName(u"rules_tab_layout")
+        self.rules_tab_layout.setContentsMargins(12, 12, 12, 12)
+        self.rules_tab_layout.setSpacing(8)
+
+        self.rules_group = QGroupBox(self.rules_tab)
+        self.rules_group.setObjectName(u"rules_group")
+        self.rules_group_layout = QVBoxLayout(self.rules_group)
+        self.rules_group_layout.setSpacing(6)
+        self.rules_group_layout.setObjectName(u"rules_group_layout")
+        self.rules_group_layout.setContentsMargins(12, 16, 12, 12)
+        self.rules_btn_row = QHBoxLayout()
+        self.rules_btn_row.setSpacing(8)
+        self.rules_btn_row.setObjectName(u"rules_btn_row")
+        self.load_rules_btn = QPushButton(self.rules_group)
+        self.load_rules_btn.setObjectName(u"load_rules_btn")
+        self.load_rules_btn.setMinimumSize(QSize(150, 40))
+
+        self.rules_btn_row.addWidget(self.load_rules_btn)
+
+        self.edit_rule_btn = QPushButton(self.rules_group)
+        self.edit_rule_btn.setObjectName(u"edit_rule_btn")
+        self.edit_rule_btn.setMinimumSize(QSize(0, 40))
+
+        self.rules_btn_row.addWidget(self.edit_rule_btn)
+
+        self.rules_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.rules_btn_row.addItem(self.rules_btn_spacer)
+
+        self.rules_group_layout.addLayout(self.rules_btn_row)
+
+        self.rules_file_label = QLabel(self.rules_group)
+        self.rules_file_label.setObjectName(u"rules_file_label")
+
+        self.rules_group_layout.addWidget(self.rules_file_label)
+
+        self.rules_file_list = QListWidget(self.rules_group)
+        self.rules_file_list.setObjectName(u"rules_file_list")
+        self.rules_file_list.setMaximumSize(QSize(16777215, 120))
+
+        self.rules_group_layout.addWidget(self.rules_file_list)
+
+        self.rules_tree = QTreeWidget(self.rules_group)
+        self.rules_tree.setObjectName(u"rules_tree")
+        self.rules_tree.setRootIsDecorated(False)
+
+        self.rules_group_layout.addWidget(self.rules_tree)
+
+        self.rules_tab_layout.addWidget(self.rules_group)
+
+        self.tab_stack.addWidget(self.rules_tab)
+
+        # -------- Tab 2: 扫描历史（history_label + history_list 移入） --------
+        self.history_tab = QWidget()
+        self.history_tab.setObjectName(u"history_tab")
+        self.history_tab_layout = QVBoxLayout(self.history_tab)
+        self.history_tab_layout.setObjectName(u"history_tab_layout")
+        self.history_tab_layout.setContentsMargins(12, 12, 12, 12)
+        self.history_tab_layout.setSpacing(8)
+
+        self.history_label = QLabel(self.history_tab)
+        self.history_label.setObjectName(u"history_label")
+
+        self.history_tab_layout.addWidget(self.history_label)
+
+        self.history_list = QListWidget(self.history_tab)
+        self.history_list.setObjectName(u"history_list")
+        self.history_list.setMaximumSize(QSize(16777215, 16777215))
+
+        self.history_tab_layout.addWidget(self.history_list)
+
+        self.tab_stack.addWidget(self.history_tab)
+
+        self.central_layout.addWidget(self.tab_stack)
 
         MainWindow.setCentralWidget(self.central)
+
+        # ==================== 菜单栏（保留不变） ====================
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 1176, 26))
+        self.menubar.setGeometry(QRect(0, 0, 1280, 26))
         self.file_menu = QMenu(self.menubar)
         self.file_menu.setObjectName(u"file_menu")
         self.scan_menu = QMenu(self.menubar)
@@ -605,6 +692,7 @@ class Ui_MainWindow(object):
         self.target_stack.setCurrentIndex(2)
         self.detail_action_stack.setCurrentIndex(0)
         self.detail_main_stack.setCurrentIndex(0)
+        self.tab_stack.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(MainWindow)
@@ -642,6 +730,11 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(shortcut)
         self.settings_action.setShortcut(QCoreApplication.translate("MainWindow", u"Ctrl+,", None))
 #endif // QT_CONFIG(shortcut)
+        self.tab_scan_btn.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf", None))
+        self.tab_rules_btn.setText(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u7ba1\u7406", None))
+        self.tab_history_btn.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5386\u53f2", None))
+        self.settings_btn.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u7f6e", None))
+        self.about_btn.setText(QCoreApplication.translate("MainWindow", u"\u5173\u4e8e", None))
         self.target_group.setTitle(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u76ee\u6807", None))
         self.scan_mode_combo.setItemText(0, QCoreApplication.translate("MainWindow", u"\u5168\u76d8\u626b\u63cf", None))
         self.scan_mode_combo.setItemText(1, QCoreApplication.translate("MainWindow", u"\u9009\u62e9\u76d8\u7b26", None))
@@ -743,4 +836,3 @@ class Ui_MainWindow(object):
         self.scan_menu.setTitle(QCoreApplication.translate("MainWindow", u"\u626b\u63cf(&S)", None))
         self.help_menu.setTitle(QCoreApplication.translate("MainWindow", u"\u5e2e\u52a9(&H)", None))
     # retranslateUi
-

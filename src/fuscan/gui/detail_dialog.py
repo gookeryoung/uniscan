@@ -34,6 +34,7 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
+from fuscan import theme
 from fuscan.extractors import extract_content
 from fuscan.gui.detail_dialog_ui import Ui_HitDetailDialog
 from fuscan.rules.model import Severity
@@ -50,11 +51,11 @@ _SEVERITY_LABELS: dict[Severity, str] = {
     Severity.INFO: "一般",
 }
 
-# 严重等级 → 前景色（QColor）
+# 严重等级 → 前景色（QColor，色值集中定义在 fuscan.theme）
 _SEVERITY_COLORS: dict[Severity, QColor] = {
-    Severity.CRITICAL: QColor("#d73a49"),
-    Severity.WARNING: QColor("#f0883e"),
-    Severity.INFO: QColor("#0366d6"),
+    Severity.CRITICAL: QColor(theme.COLOR_DANGER),
+    Severity.WARNING: QColor(theme.COLOR_WARNING),
+    Severity.INFO: QColor(theme.COLOR_INFO),
 }
 
 # 内容预览最大字符数，避免大文件阻塞 UI
@@ -200,7 +201,7 @@ class HitDetailDialog(QDialog):
     def _bind_widgets(self) -> None:
         """将 Ui_HitDetailDialog 的部件绑定到本类私有属性，保持业务逻辑兼容。"""
         ui = self._ui
-        self._info_label = ui.info_label
+        self._info_label = ui.hit_info_label
         self._hits_table = ui.hits_table
         self._preview = ui.preview
         self._prev_btn = ui.prev_btn
