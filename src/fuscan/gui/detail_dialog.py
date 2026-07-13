@@ -172,7 +172,7 @@ def _compile_keyword_pattern(kw: str) -> str:
     return re.escape(kw)
 
 
-class HitDetailDialog(QDialog):
+class HitDetailDialog(QDialog, Ui_HitDetailDialog):
     """命中详情对话框。
 
     展示：
@@ -187,47 +187,35 @@ class HitDetailDialog(QDialog):
     def __init__(self, result: ScanResult, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._result = result
-        self._ui = Ui_HitDetailDialog()
-        self._ui.setupUi(self)
+        self.setupUi(self)
         self._hit_positions: list[tuple[int, int, int]] = []
         self._current_hit_index: int = -1
-        self._bind_widgets()
         self._configure_ui()
         # 先填充预览以计算高亮位置，再填充文件信息和命中表（均依赖位置数据）
         self._populate_preview()
         self._populate_file_info()
         self._populate_hits_table()
 
-    def _bind_widgets(self) -> None:
-        """将 Ui_HitDetailDialog 的部件绑定到本类私有属性，保持业务逻辑兼容。"""
-        ui = self._ui
-        self._info_label = ui.hit_info_label
-        self._hits_table = ui.hits_table
-        self._preview = ui.preview
-        self._prev_btn = ui.prev_btn
-        self._next_btn = ui.next_btn
-        self._nav_label = ui.nav_label
-
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性与信号槽连接。"""
         # 命中规则表：列头拉伸模式、只读、整行选择
-        self._hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self._hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self._hits_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self._hits_table.cellClicked.connect(self._on_hits_row_clicked)
+        self.hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.hits_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.hits_table.cellClicked.connect(self._on_hits_row_clicked)
 
         # 命中导航按钮信号槽
-        self._prev_btn.clicked.connect(self._on_prev_hit)
-        self._next_btn.clicked.connect(self._on_next_hit)
+        self.prev_btn.clicked.connect(self._on_prev_hit)
+        self.next_btn.clicked.connect(self._on_next_hit)
 
         # 内容预览伸缩比例（预览区占更大空间）
-        self._ui.main_layout.setStretch(0, 0)
-        self._ui.main_layout.setStretch(1, 0)
-        self._ui.main_layout.setStretch(2, 1)
-        self._ui.main_layout.setStretch(3, 0)
-        self._ui.main_layout.setStretch(4, 2)
-        self._ui.main_layout.setStretch(5, 0)
-        self._ui.main_layout.setStretch(6, 0)
+        self.main_layout.setStretch(0, 0)
+        self.main_layout.setStretch(1, 0)
+        self.main_layout.setStretch(2, 1)
+        self.main_layout.setStretch(3, 0)
+        self.main_layout.setStretch(4, 2)
+        self.main_layout.setStretch(5, 0)
+        self.main_layout.setStretch(6, 0)
 
     def _populate_file_info(self) -> None:
         """填充文件元信息。"""
@@ -246,26 +234,26 @@ class HitDetailDialog(QDialog):
             f"<b>命中规则数:</b> {len(self._result.hits)} | <b>匹配条数:</b> {self._result.total_match_count}"
             f" | <b>可切换位置:</b> {len(self._hit_positions)}"
         )
-        self._info_label.setText(info_html)
+        self.hit_info_label.setText(info_html)
 
     def _populate_hits_table(self) -> None:
         """填充命中规则表。"""
         hits = self._result.hits
-        self._hits_table.setRowCount(len(hits))
+        self.hits_table.setRowCount(len(hits))
         # 统计每条规则在预览中的高亮位置数
         position_counts: dict[int, int] = {}
         for _, _, rule_idx in self._hit_positions:
             position_counts[rule_idx] = position_counts.get(rule_idx, 0) + 1
         for row, hit in enumerate(hits):
-            self._hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
+            self.hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
             sev_item = QTableWidgetItem("")
             sev_text = _SEVERITY_LABELS.get(hit.severity, hit.severity.value)
             sev_item.setText(sev_text)
             sev_item.setForeground(_SEVERITY_COLORS[hit.severity])
-            self._hits_table.setItem(row, 1, sev_item)
+            self.hits_table.setItem(row, 1, sev_item)
             count_item = QTableWidgetItem(str(hit.match_count))
             count_item.setTextAlignment(Qt.AlignCenter)
-            self._hits_table.setItem(row, 2, count_item)
+            self.hits_table.setItem(row, 2, count_item)
             if hit.target == "filename":
                 pos_item = QTableWidgetItem("-")
                 pos_item.setToolTip("仅匹配文件名，无内容高亮位置")
@@ -273,11 +261,11 @@ class HitDetailDialog(QDialog):
                 pos_item = QTableWidgetItem(str(position_counts.get(row, 0)))
                 pos_item.setToolTip("该规则在预览中可高亮跳转的位置数")
             pos_item.setTextAlignment(Qt.AlignCenter)
-            self._hits_table.setItem(row, 3, pos_item)
+            self.hits_table.setItem(row, 3, pos_item)
             detail_text = hit.detail
             if hit.target == "filename":
                 detail_text = f"{detail_text}（仅文件名）"
-            self._hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
+            self.hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
 
     def _populate_preview(self) -> None:
         """填充内容预览，命中关键词高亮并定位到首个命中。"""
@@ -293,12 +281,12 @@ class HitDetailDialog(QDialog):
                 content = path.read_text(encoding="utf-8", errors="ignore")
             except OSError as exc:
                 logger.warning("读取内容预览失败 %s", path, exc_info=True)
-                self._preview.setPlainText(f"无法读取文件内容: {exc}")
+                self.preview.setPlainText(f"无法读取文件内容: {exc}")
                 self._update_nav_label()
                 return
 
         if not content:
-            self._preview.setPlainText("(文件内容为空或为二进制)")
+            self.preview.setPlainText("(文件内容为空或为二进制)")
             self._update_nav_label()
             return
 
@@ -311,7 +299,7 @@ class HitDetailDialog(QDialog):
         html_content = _build_preview_html(content, keywords)
         if truncated:
             html_content += "<p style='color: #888; font-size: 11px;'>(内容已截断，仅显示前 100KB)</p>"
-        self._preview.setHtml(html_content)
+        self.preview.setHtml(html_content)
 
         # 查找所有关键词位置并定位到首个命中
         self._find_hit_positions(self._result.hits)
@@ -335,7 +323,7 @@ class HitDetailDialog(QDialog):
         self._hit_positions = []
         if not hits:
             return
-        plain = self._preview.toPlainText()
+        plain = self.preview.toPlainText()
         if not plain:
             return
         keyword_to_rule = _build_keyword_to_rule_map(hits)
@@ -356,35 +344,35 @@ class HitDetailDialog(QDialog):
     def _highlight_current_hit(self) -> None:
         """用橙色背景高亮当前命中位置，区别于其他命中的黄色高亮。"""
         if self._current_hit_index < 0 or self._current_hit_index >= len(self._hit_positions):
-            self._preview.setExtraSelections([])
+            self.preview.setExtraSelections([])
             return
         start, end, _ = self._hit_positions[self._current_hit_index]
-        doc_length = len(self._preview.toPlainText())
+        doc_length = len(self.preview.toPlainText())
         if start >= doc_length or end > doc_length:
-            self._preview.setExtraSelections([])
+            self.preview.setExtraSelections([])
             return
         sel = QTextEdit.ExtraSelection()
-        cursor = self._preview.textCursor()
+        cursor = self.preview.textCursor()
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.KeepAnchor)
         sel.cursor = cursor
         fmt = QTextCharFormat()
         fmt.setBackground(QColor(255, 165, 0))
         sel.format = fmt
-        self._preview.setExtraSelections([sel])
+        self.preview.setExtraSelections([sel])
 
     def _scroll_to_current_hit(self) -> None:
         """滚动预览区域使当前命中位置可见。"""
         if self._current_hit_index < 0 or self._current_hit_index >= len(self._hit_positions):
             return
         start, _, _ = self._hit_positions[self._current_hit_index]
-        doc_length = len(self._preview.toPlainText())
+        doc_length = len(self.preview.toPlainText())
         if start >= doc_length:
             return
-        cursor = self._preview.textCursor()
+        cursor = self.preview.textCursor()
         cursor.setPosition(start)
-        self._preview.setTextCursor(cursor)
-        self._preview.ensureCursorVisible()
+        self.preview.setTextCursor(cursor)
+        self.preview.ensureCursorVisible()
 
     def _on_prev_hit(self) -> None:
         """跳转到上一个命中位置。"""
@@ -429,10 +417,10 @@ class HitDetailDialog(QDialog):
         """更新导航标签与按钮状态。"""
         total = len(self._hit_positions)
         if total == 0:
-            self._nav_label.setText("无命中")
-            self._prev_btn.setEnabled(False)
-            self._next_btn.setEnabled(False)
+            self.nav_label.setText("无命中")
+            self.prev_btn.setEnabled(False)
+            self.next_btn.setEnabled(False)
         else:
-            self._nav_label.setText(f"{self._current_hit_index + 1} / {total}")
-            self._prev_btn.setEnabled(True)
-            self._next_btn.setEnabled(True)
+            self.nav_label.setText(f"{self._current_hit_index + 1} / {total}")
+            self.prev_btn.setEnabled(True)
+            self.next_btn.setEnabled(True)

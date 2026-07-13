@@ -1655,7 +1655,7 @@ class TestSeverityDisplay:
         result = report.results[0]
 
         dialog = HitDetailDialog(result, None)
-        item = dialog._hits_table.item(0, 1)
+        item = dialog.hits_table.item(0, 1)
         assert item is not None
         assert item.text() == "警告"
         assert item.foreground().color().name() == "#f0883e"
@@ -2640,7 +2640,7 @@ class TestHitDetailDialog:
             hits=(RuleHit("r1", Severity.WARNING, "包含 'password'"),),
         )
         dialog = HitDetailDialog(result)
-        info_text = dialog._info_label.text()
+        info_text = dialog.hit_info_label.text()
         assert "secret.txt" in info_text
         assert "命中规则数" in info_text
         dialog.close()
@@ -2661,9 +2661,9 @@ class TestHitDetailDialog:
             ),
         )
         dialog = HitDetailDialog(result)
-        assert dialog._hits_table.rowCount() == 2
-        assert dialog._hits_table.item(0, 0).text() == "rule-a"
-        assert dialog._hits_table.item(1, 0).text() == "rule-b"
+        assert dialog.hits_table.rowCount() == 2
+        assert dialog.hits_table.item(0, 0).text() == "rule-a"
+        assert dialog.hits_table.item(1, 0).text() == "rule-b"
         dialog.close()
 
     def test_dialog_preview_highlights_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2682,7 +2682,7 @@ class TestHitDetailDialog:
             ),
         )
         dialog = HitDetailDialog(result)
-        html = dialog._preview.toHtml()
+        html = dialog.preview.toHtml()
         assert "password" in html
         assert "span" in html  # 有高亮标签
         dialog.close()
@@ -2700,7 +2700,7 @@ class TestHitDetailDialog:
             hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
         )
         dialog = HitDetailDialog(result)
-        text = dialog._preview.toPlainText()
+        text = dialog.preview.toPlainText()
         assert "为空" in text or "二进制" in text
         dialog.close()
 
@@ -2715,7 +2715,7 @@ class TestHitDetailDialog:
             hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
         )
         dialog = HitDetailDialog(result)
-        assert "无法读取" in dialog._preview.toPlainText()
+        assert "无法读取" in dialog.preview.toPlainText()
         dialog.close()
 
     def test_double_click_opens_dialog(
@@ -2793,9 +2793,9 @@ class TestHitDetailDialogNavigation:
     def test_nav_buttons_exist(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框应包含导航按钮和标签。"""
         dialog = self._make_dialog_with_content(qapp, tmp_path, "hello", "hello")
-        assert dialog._prev_btn is not None
-        assert dialog._next_btn is not None
-        assert dialog._nav_label is not None
+        assert dialog.prev_btn is not None
+        assert dialog.next_btn is not None
+        assert dialog.nav_label is not None
         dialog.close()
 
     def test_hit_positions_found(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2808,7 +2808,7 @@ class TestHitDetailDialogNavigation:
         """对话框打开时应定位到首个命中。"""
         dialog = self._make_dialog_with_content(qapp, tmp_path, "first password and second password", "password")
         assert dialog._current_hit_index == 0
-        assert "1 / 2" in dialog._nav_label.text()
+        assert "1 / 2" in dialog.nav_label.text()
         dialog.close()
 
     def test_next_hit_advances(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2817,7 +2817,7 @@ class TestHitDetailDialogNavigation:
         assert dialog._current_hit_index == 0
         dialog._on_next_hit()
         assert dialog._current_hit_index == 1
-        assert "2 / 2" in dialog._nav_label.text()
+        assert "2 / 2" in dialog.nav_label.text()
         dialog.close()
 
     def test_next_wraps_around(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2841,9 +2841,9 @@ class TestHitDetailDialogNavigation:
         """无关键词命中时按钮应禁用。"""
         dialog = self._make_dialog_with_content(qapp, tmp_path, "nothing here", "missing")
         assert len(dialog._hit_positions) == 0
-        assert not dialog._prev_btn.isEnabled()
-        assert not dialog._next_btn.isEnabled()
-        assert "无命中" in dialog._nav_label.text()
+        assert not dialog.prev_btn.isEnabled()
+        assert not dialog.next_btn.isEnabled()
+        assert "无命中" in dialog.nav_label.text()
         dialog.close()
 
     def test_empty_file_no_crash(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2884,7 +2884,7 @@ class TestHitDetailDialogNavigation:
         )
         dialog = HitDetailDialog(result)
         assert len(dialog._hit_positions) == 2
-        assert "1 / 2" in dialog._nav_label.text()
+        assert "1 / 2" in dialog.nav_label.text()
         dialog.close()
 
     def _make_dialog_multi_rule(self, qapp: QApplication, tmp_path: Path) -> HitDetailDialog:
@@ -2900,16 +2900,16 @@ class TestHitDetailDialogNavigation:
     def test_dialog_hits_table_has_position_count_column(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框命中规则表应包含5列，第4列为'位置数'。"""
         dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        assert dialog._hits_table.columnCount() == 5
-        assert dialog._hits_table.horizontalHeaderItem(3).text() == "位置数"
+        assert dialog.hits_table.columnCount() == 5
+        assert dialog.hits_table.horizontalHeaderItem(3).text() == "位置数"
         dialog.close()
 
     def test_dialog_hits_table_position_count_values(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框位置数列应显示每条规则在预览中的高亮位置数。"""
         dialog = self._make_dialog_multi_rule(qapp, tmp_path)
         # 规则0(密码): 2处password, 规则1(令牌): 1处token
-        assert dialog._hits_table.item(0, 3).text() == "2"
-        assert dialog._hits_table.item(1, 3).text() == "1"
+        assert dialog.hits_table.item(0, 3).text() == "2"
+        assert dialog.hits_table.item(1, 3).text() == "1"
         dialog.close()
 
     def test_dialog_click_hits_row_jumps_to_rule_highlight(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2956,23 +2956,23 @@ class TestHitDetailDialogNavigation:
         """对话框中文件名匹配规则的位置数列应显示'-'。"""
         report = _build_filename_match_report(tmp_path)
         dialog = HitDetailDialog(report.hits[0])
-        assert dialog._hits_table.item(0, 3).text() == "-"
-        assert dialog._hits_table.item(1, 3).text() == "1"
+        assert dialog.hits_table.item(0, 3).text() == "-"
+        assert dialog.hits_table.item(1, 3).text() == "1"
         dialog.close()
 
     def test_dialog_filename_match_detail_label(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框中文件名匹配规则的详情应追加'（仅文件名）'。"""
         report = _build_filename_match_report(tmp_path)
         dialog = HitDetailDialog(report.hits[0])
-        assert "（仅文件名）" in dialog._hits_table.item(0, 4).text()
-        assert "（仅文件名）" not in dialog._hits_table.item(1, 4).text()
+        assert "（仅文件名）" in dialog.hits_table.item(0, 4).text()
+        assert "（仅文件名）" not in dialog.hits_table.item(1, 4).text()
         dialog.close()
 
     def test_dialog_info_label_shows_switchable_count(self, qapp: QApplication, tmp_path: Path) -> None:
         """对话框信息标签应显示'可切换位置'字段。"""
         report = _build_multi_rule_report(tmp_path)
         dialog = HitDetailDialog(report.hits[0])
-        info_text = dialog._info_label.text()
+        info_text = dialog.hit_info_label.text()
         assert "可切换位置" in info_text
         dialog.close()
 
@@ -2988,7 +2988,7 @@ class TestHitDetailDialogNavigation:
             hits=(RuleHit("r", Severity.WARNING, "包含 'keyword'"),),
         )
         dialog = HitDetailDialog(result)
-        dialog._preview.setPlainText("short")
+        dialog.preview.setPlainText("short")
         dialog._hit_positions = [(0, 3, 0), (100, 200, 0)]
         dialog._current_hit_index = 1
         dialog._highlight_current_hit()
@@ -3066,7 +3066,7 @@ class TestMatchTextHighlighting:
         )
         dialog = HitDetailDialog(result)
         assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog._nav_label.text()
+        assert "1 /" in dialog.nav_label.text()
         dialog.close()
 
     def test_dialog_positions_db_connection_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3084,7 +3084,7 @@ class TestMatchTextHighlighting:
         )
         dialog = HitDetailDialog(result)
         assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog._nav_label.text()
+        assert "1 /" in dialog.nav_label.text()
         dialog.close()
 
     def test_dialog_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3102,7 +3102,7 @@ class TestMatchTextHighlighting:
         )
         dialog = HitDetailDialog(result)
         assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog._nav_label.text()
+        assert "1 /" in dialog.nav_label.text()
         dialog.close()
 
     def test_dialog_positions_single_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3120,7 +3120,7 @@ class TestMatchTextHighlighting:
         )
         dialog = HitDetailDialog(result)
         assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog._nav_label.text()
+        assert "1 /" in dialog.nav_label.text()
         dialog.close()
 
     def test_main_window_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3637,9 +3637,9 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        assert dialog._file_combo.count() == 1
-        assert dialog._file_combo.itemText(0) == "rules.yaml"
-        content = dialog._editor.toPlainText()
+        assert dialog.file_combo.count() == 1
+        assert dialog.file_combo.itemText(0) == "rules.yaml"
+        content = dialog.editor.toPlainText()
         assert "测试规则" in content
         dialog.close()
 
@@ -3654,9 +3654,9 @@ class TestRuleEditor:
             encoding="utf-8",
         )
         dialog = RuleEditorDialog([r1, r2])
-        assert "测试规则" in dialog._editor.toPlainText()
-        dialog._file_combo.setCurrentIndex(1)
-        assert "规则二" in dialog._editor.toPlainText()
+        assert "测试规则" in dialog.editor.toPlainText()
+        dialog.file_combo.setCurrentIndex(1)
+        assert "规则二" in dialog.editor.toPlainText()
         dialog.close()
 
     def test_save_writes_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3665,7 +3665,7 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog._editor.setPlainText(
+        dialog.editor.setPlainText(
             'version: "1.0"\nrules:\n  - name: 新规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: test\n',
         )
 
@@ -3691,7 +3691,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         original = rules_path.read_text(encoding="utf-8")
         dialog = RuleEditorDialog([rules_path])
-        dialog._editor.setPlainText("invalid: yaml: content: [")
+        dialog.editor.setPlainText("invalid: yaml: content: [")
 
         warned = {"called": False}
         monkeypatch.setattr(
@@ -3714,9 +3714,9 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog._editor.setPlainText("modified content")
+        dialog.editor.setPlainText("modified content")
         dialog._on_reload()
-        assert "测试规则" in dialog._editor.toPlainText()
+        assert "测试规则" in dialog.editor.toPlainText()
         dialog.close()
 
     def test_empty_rules_paths(self, qapp: QApplication) -> None:
@@ -3724,8 +3724,8 @@ class TestRuleEditor:
         from fuscan.gui.rule_editor import RuleEditorDialog
 
         dialog = RuleEditorDialog([])
-        assert dialog._file_combo.count() == 0
-        assert not dialog._editor.isEnabled()
+        assert dialog.file_combo.count() == 0
+        assert not dialog.editor.isEnabled()
         dialog.close()
 
     def test_main_window_edit_and_save_reloads(
@@ -3761,7 +3761,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
         dialog._load_file_content(99)
-        assert dialog._editor.toPlainText() == ""
+        assert dialog.editor.toPlainText() == ""
         dialog.close()
 
     def test_load_file_content_read_error(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3781,8 +3781,8 @@ class TestRuleEditor:
         finally:
             type(rules_path).read_text = monkeypatch_method  # type: ignore[method-assign]
 
-        assert "读取文件失败" in dialog._editor.toPlainText()
-        assert not dialog._editor.isEnabled()
+        assert "读取文件失败" in dialog.editor.toPlainText()
+        assert not dialog.editor.isEnabled()
         dialog.close()
 
     def test_save_invalid_index_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3795,7 +3795,7 @@ class TestRuleEditor:
         dialog.rules_saved.connect(saved_paths.append)
 
         # 模拟无效索引
-        dialog._file_combo.setCurrentIndex(-1)
+        dialog.file_combo.setCurrentIndex(-1)
         dialog._on_save()
         assert len(saved_paths) == 0
         dialog.close()
@@ -3808,7 +3808,7 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog._editor.setPlainText("version: '1.0'\nrules: []\n")
+        dialog.editor.setPlainText("version: '1.0'\nrules: []\n")
 
         warned = {"called": False}
         monkeypatch.setattr(
@@ -3846,7 +3846,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
         # 写入合法 YAML 但无效规则（缺少 match 字段）
-        dialog._editor.setPlainText('version: "1.0"\nrules:\n  - name: bad\n    severity: warning\n')
+        dialog.editor.setPlainText('version: "1.0"\nrules:\n  - name: bad\n    severity: warning\n')
 
         warned = {"called": False}
         monkeypatch.setattr(
