@@ -53,6 +53,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
     def _save_config(self) -> None:
         """将控件值保存到配置。"""
         self.config.max_workers = self.max_workers_spin.value()
+
         depth = self.max_depth_spin.value()
         self.config.max_depth = depth if depth > 0 else None
         self.config.scan_archives = self.scan_archives_check.isChecked()
@@ -72,7 +73,3 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         """确定按钮：保存配置并关闭对话框。"""
         self._save_config()
         self.accept()
-
-    def get_config(self) -> Config:
-        """获取当前对话框中的配置。"""
-        return self.config
