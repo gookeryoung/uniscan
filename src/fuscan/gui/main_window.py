@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import re
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
@@ -336,6 +337,12 @@ class MainWindow(QMainWindow):
         self._selected_drive: str | None = None
         # 扫描结果缓存（启用时惰性创建，关闭窗口时释放）
         self._cache: CacheStore | None = None
+        # 扫描中列表增量更新状态：记录上次已显示的列表快照与节流时间戳，
+        # 避免每次进度回调全量 clear+重添导致主线程阻塞（点击设置卡滞根因）
+        self._last_skipped_dirs: tuple[str, ...] = ()
+        self._last_matched_files: tuple[tuple[str, str], ...] = ()
+        # 初始 -1.0 确保首次回调不被节流（time.perf_counter 在新进程可能返回小值）
+        self._last_list_update_time: float = -1.0
 
         self._bind_widgets()
         self._configure_ui()
@@ -1060,6 +1067,10 @@ class MainWindow(QMainWindow):
         # 清空扫描中页的列表，避免残留上次扫描数据（统计已由状态栏 stats_label 承载）
         self._skipped_dirs_list.clear()
         self._matched_files_list.clear()
+        # 重置增量更新状态，避免上次扫描的快照干扰本次增量对比
+        self._last_skipped_dirs = ()
+        self._last_matched_files = ()
+        self._last_list_update_time = -1.0
         self._switch_stage(WorkflowStage.SCANNING)
 
         cache, source_files = self._build_cache_context()
@@ -1146,7 +1157,11 @@ class MainWindow(QMainWindow):
         self._worker = None
 
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
-        """扫描实时进度回调：更新进度条、当前文件、状态栏汇总与两个列表。"""
+        """扫描实时进度回调：更新进度条、当前文件、状态栏汇总与两个列表。
+
+        列表更新采用增量 append + 独立节流（0.5 秒），避免每次回调全量
+        clear+重添 O(N) 阻塞主线程导致点击设置等交互卡滞。
+        """
         # 切换为确定进度模式
         if info.total > 0 and self._progress.maximum() != info.total:
             self._progress.setRange(0, info.total)
@@ -1167,19 +1182,54 @@ class MainWindow(QMainWindow):
             f"已用 {info.elapsed:.1f}s | 速度 {speed:.0f} 文件/s"
         )
 
-        # 跳过的文件夹列表（仅在新条目增加时刷新，避免重置滚动条）
-        if info.skipped_dirs:
-            self._skipped_dirs_list.clear()
-            for dir_path in info.skipped_dirs:
-                self._skipped_dirs_list.addItem(dir_path)
-            self._skipped_dirs_list.scrollToBottom()
+        # 列表更新独立节流：0.5 秒一次，低于进度条/状态栏频率
+        now = time.perf_counter()
+        if now - self._last_list_update_time < 0.5:
+            return
+        self._last_list_update_time = now
 
-        # 命中的文件列表（格式 "路径 → 规则名"）
-        if info.matched_files:
+        self._update_skipped_dirs_list(info.skipped_dirs)
+        self._update_matched_files_list(info.matched_files)
+
+    def _update_skipped_dirs_list(self, new_dirs: tuple[str, ...]) -> None:
+        """增量更新跳过目录列表。
+
+        若新列表是旧列表的扩展（旧列表是新列表前缀），只 append 新增尾部条目；
+        否则（滚动截断或内容变化）全量重建用 addItems 批量添加。
+        """
+        old_dirs = self._last_skipped_dirs
+        if not new_dirs:
+            return
+        if new_dirs == old_dirs:
+            return
+        if len(new_dirs) > len(old_dirs) and new_dirs[: len(old_dirs)] == old_dirs:
+            # 增量 append：旧列表是新列表前缀，只添加新增尾部
+            self._skipped_dirs_list.addItems(new_dirs[len(old_dirs) :])
+        else:
+            # 全量重建（滚动截断或内容变化）
+            self._skipped_dirs_list.clear()
+            self._skipped_dirs_list.addItems(new_dirs)
+        self._skipped_dirs_list.scrollToBottom()
+        self._last_skipped_dirs = new_dirs
+
+    def _update_matched_files_list(self, new_files: tuple[tuple[str, str], ...]) -> None:
+        """增量更新命中文件列表，逻辑同 _update_skipped_dirs_list。"""
+        old_files = self._last_matched_files
+        if not new_files:
+            return
+        if new_files == old_files:
+            return
+        if len(new_files) > len(old_files) and new_files[: len(old_files)] == old_files:
+            # 增量 append：格式 "路径 → 规则名"
+            items = [f"{fp} → {rn}" for fp, rn in new_files[len(old_files) :]]
+            self._matched_files_list.addItems(items)
+        else:
+            # 全量重建
             self._matched_files_list.clear()
-            for file_path, rule_name in info.matched_files:
-                self._matched_files_list.addItem(f"{file_path} → {rule_name}")
-            self._matched_files_list.scrollToBottom()
+            items = [f"{fp} → {rn}" for fp, rn in new_files]
+            self._matched_files_list.addItems(items)
+        self._matched_files_list.scrollToBottom()
+        self._last_matched_files = new_files
 
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调：填充结果并切换到结果页。"""

@@ -15,10 +15,7 @@
   </property>
   <layout class="QVBoxLayout" name="main_layout">
    <item>
-    <widget class="QLabel" name="info_label">
-     <property name="styleSheet">
-      <string notr="true">padding: 8px; background: #f5f5f5; border: 1px solid #ddd;</string>
-     </property>
+    <widget class="QLabel" name="hit_info_label">
      <property name="text">
       <string/>
      </property>

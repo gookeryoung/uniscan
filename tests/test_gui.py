@@ -4595,6 +4595,173 @@ class TestScanCallbacks:
         assert "10" in stats_text
         window.close()
 
+    def test_on_scan_progress_throttles_list_update(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """连续两次进度回调在 0.5 秒内，第二次应跳过列表更新。"""
+        import time as time_mod
+
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        t = [100.0]
+        monkeypatch.setattr(time_mod, "perf_counter", lambda: t[0])
+
+        info1 = ProgressInfo(
+            total=10,
+            scanned=1,
+            skipped=1,
+            matched=0,
+            errors=0,
+            current_file="/a.txt",
+            elapsed=1.0,
+            skipped_dirs=("/dir1",),
+        )
+        window._on_scan_progress(info1)
+        assert window._skipped_dirs_list.count() == 1
+
+        # 推进 0.1 秒，新增一个跳过目录，但应被节流跳过
+        t[0] = 100.1
+        info2 = ProgressInfo(
+            total=10,
+            scanned=2,
+            skipped=2,
+            matched=0,
+            errors=0,
+            current_file="/b.txt",
+            elapsed=1.1,
+            skipped_dirs=("/dir1", "/dir2"),
+        )
+        window._on_scan_progress(info2)
+        assert window._skipped_dirs_list.count() == 1  # 仍为 1，节流生效
+        window.close()
+
+    def test_on_scan_progress_incremental_append_skipped_dirs(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """增量 append：旧列表是新列表前缀时只添加新增尾部，不 clear 重建。"""
+        import time as time_mod
+
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        t = [100.0]
+        monkeypatch.setattr(time_mod, "perf_counter", lambda: t[0])
+
+        info1 = ProgressInfo(
+            total=10,
+            scanned=1,
+            skipped=1,
+            matched=0,
+            errors=0,
+            current_file="/a.txt",
+            elapsed=1.0,
+            skipped_dirs=("/dir1", "/dir2"),
+        )
+        window._on_scan_progress(info1)
+        assert window._skipped_dirs_list.count() == 2
+
+        # 推进 0.6 秒（超过节流间隔），新增一个目录
+        t[0] = 100.6
+        info2 = ProgressInfo(
+            total=10,
+            scanned=2,
+            skipped=2,
+            matched=0,
+            errors=0,
+            current_file="/b.txt",
+            elapsed=1.6,
+            skipped_dirs=("/dir1", "/dir2", "/dir3"),
+        )
+        window._on_scan_progress(info2)
+        assert window._skipped_dirs_list.count() == 3
+        # 前两项应保持不变（未 clear 重建）
+        assert window._skipped_dirs_list.item(0).text() == "/dir1"
+        assert window._skipped_dirs_list.item(1).text() == "/dir2"
+        window.close()
+
+    def test_on_scan_progress_full_rebuild_on_truncation(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """滚动截断时（新列表非旧列表前缀）应全量重建。"""
+        import time as time_mod
+
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        t = [100.0]
+        monkeypatch.setattr(time_mod, "perf_counter", lambda: t[0])
+
+        info1 = ProgressInfo(
+            total=10,
+            scanned=1,
+            skipped=2,
+            matched=0,
+            errors=0,
+            current_file="/a.txt",
+            elapsed=1.0,
+            skipped_dirs=("/dir1", "/dir2"),
+        )
+        window._on_scan_progress(info1)
+
+        # 推进 0.6 秒，模拟滚动截断：旧前缀被丢弃，新列表完全不同
+        t[0] = 100.6
+        info2 = ProgressInfo(
+            total=10,
+            scanned=2,
+            skipped=2,
+            matched=0,
+            errors=0,
+            current_file="/b.txt",
+            elapsed=1.6,
+            skipped_dirs=("/dir3", "/dir4"),
+        )
+        window._on_scan_progress(info2)
+        assert window._skipped_dirs_list.count() == 2
+        assert window._skipped_dirs_list.item(0).text() == "/dir3"
+        assert window._skipped_dirs_list.item(1).text() == "/dir4"
+        window.close()
+
+    def test_on_scan_progress_incremental_append_matched_files(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """命中文件列表增量 append：只添加新增项，格式"路径 → 规则名"。"""
+        import time as time_mod
+
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        t = [100.0]
+        monkeypatch.setattr(time_mod, "perf_counter", lambda: t[0])
+
+        info1 = ProgressInfo(
+            total=10,
+            scanned=1,
+            skipped=0,
+            matched=1,
+            errors=0,
+            current_file="/a.txt",
+            elapsed=1.0,
+            matched_files=(("/p/a.py", "规则A"),),
+        )
+        window._on_scan_progress(info1)
+        assert window._matched_files_list.count() == 1
+
+        t[0] = 100.6
+        info2 = ProgressInfo(
+            total=10,
+            scanned=2,
+            skipped=0,
+            matched=2,
+            errors=0,
+            current_file="/b.txt",
+            elapsed=1.6,
+            matched_files=(("/p/a.py", "规则A"), ("/p/b.py", "规则B")),
+        )
+        window._on_scan_progress(info2)
+        assert window._matched_files_list.count() == 2
+        assert window._matched_files_list.item(0).text() == "/p/a.py → 规则A"
+        assert window._matched_files_list.item(1).text() == "/p/b.py → 规则B"
+        window.close()
+
     def test_on_scan_failed(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """_on_scan_failed 应重置 UI 并弹出错误。"""
         window = MainWindow()
