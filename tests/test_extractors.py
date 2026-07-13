@@ -198,6 +198,28 @@ class TestTextExtractor:
         # latin-1 能解码任意字节，不应为空
         assert len(content) == 3
 
+    def test_normalizes_crlf_to_lf(self, tmp_path: Path) -> None:
+        """CRLF 行尾应规范化为 LF，保证跨平台 CONTENT EQUALS 比较一致。"""
+        path = tmp_path / "crlf.txt"
+        path.write_bytes(b"line1\r\nline2\r\n")
+        content = TextExtractor().extract(path)
+        assert content == "line1\nline2\n"
+        assert "\r\n" not in content
+
+    def test_normalizes_cr_to_lf(self, tmp_path: Path) -> None:
+        """旧式 CR 行尾应规范化为 LF。"""
+        path = tmp_path / "cr.txt"
+        path.write_bytes(b"line1\rline2\r")
+        content = TextExtractor().extract(path)
+        assert content == "line1\nline2\n"
+
+    def test_lf_preserved(self, tmp_path: Path) -> None:
+        """LF 行尾保持不变。"""
+        path = tmp_path / "lf.txt"
+        path.write_bytes(b"line1\nline2\n")
+        content = TextExtractor().extract(path)
+        assert content == "line1\nline2\n"
+
 
 # ---------------------------------------------------------------------------
 # DocxExtractor

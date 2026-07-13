@@ -53,8 +53,10 @@ __all__ = [
 # ----------------------------- 色彩令牌 -----------------------------
 
 COLOR_PRIMARY = "#0366d6"
-COLOR_PRIMARY_DARK = "#0256c1"
-COLOR_PRIMARY_DARKER = "#024aa0"
+# 选中态：与 PRIMARY 拉大对比（ΔG≈28、ΔB≈54），避免视觉上过近
+COLOR_PRIMARY_DARK = "#024aa0"
+# 按下态：再加深一档，与 PRIMARY_DARK 保持可辨层次
+COLOR_PRIMARY_DARKER = "#013d82"
 COLOR_ACCENT = "#58a6ff"
 
 COLOR_DANGER = "#d73a49"

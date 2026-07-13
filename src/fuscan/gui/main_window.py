@@ -47,6 +47,7 @@ try:
         QMainWindow,
         QMenu,
         QMessageBox,
+        QProgressBar,
         QPushButton,
         QShortcut,
         QTableWidget,
@@ -375,17 +376,24 @@ class MainWindow(QMainWindow):
         self._rules_file_list = ui.rules_file_list
         self._edit_rule_btn = ui.edit_rule_btn
         self._rules_tree = ui.rules_tree
-        # 扫描中页
-        self._progress = ui.progress
-        self._current_file_label = ui.current_file_label
-        self._stats_counts_label = ui.stats_counts_label
-        self._stats_time_label = ui.stats_time_label
+        # 扫描中页：进度与当前文件标签移至状态栏右侧（permanent 区）
         self._skipped_dirs_list = ui.skipped_dirs_list
         self._matched_files_list = ui.matched_files_list
-        # 状态栏（stats_label 仍由代码创建挂到 statusBar）
+        # 状态栏：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）
         self._stats_label = QLabel("就绪")
         self._stats_label.setObjectName("stats_label")
         self.statusBar().addWidget(self._stats_label, 1)
+        self._current_file_label = QLabel("")
+        self._current_file_label.setObjectName("current_file_label")
+        self._current_file_label.setMaximumWidth(400)
+        self._current_file_label.setVisible(False)
+        self.statusBar().addPermanentWidget(self._current_file_label)
+        self._progress = QProgressBar()
+        self._progress.setObjectName("progress")
+        self._progress.setFixedWidth(200)
+        self._progress.setRange(0, 0)
+        self._progress.setVisible(False)
+        self.statusBar().addPermanentWidget(self._progress)
         # 结果页
         self._splitter = ui.results_splitter
         self._result_tree = ui.result_tree
@@ -439,9 +447,11 @@ class MainWindow(QMainWindow):
 
         # layout 伸缩因子（.ui 不支持 stretch vector）
         ui = self._ui
-        # 配置页：target_group / setup_action_bar（rules_group 已移至 rules_tab）
-        ui.setup_layout.setStretch(0, 1)
+        # 配置页：target_group 自然尺寸 + setup_action_bar 紧随其后 + 底部弹簧填充剩余空间
+        ui.setup_layout.setStretch(0, 0)
         ui.setup_layout.setStretch(1, 0)
+        ui.setup_layout.addStretch()
+        ui.setup_layout.setStretch(2, 1)
         # target_group 内：scan_mode_layout（history 已移至 history_tab）
         ui.target_group_layout.setStretch(0, 0)
         # rules_group 内：rules_btn_row / rules_file_label / rules_file_list / rules_tree
@@ -702,12 +712,18 @@ class MainWindow(QMainWindow):
     def _update_stage_actions(self) -> None:
         """根据当前阶段与扫描状态更新按钮和菜单的可用性。"""
         is_setup = self._workflow_stage == WorkflowStage.SETUP
+        is_scanning = self._workflow_stage == WorkflowStage.SCANNING
         is_results = self._workflow_stage == WorkflowStage.RESULTS
         has_report = self._last_report is not None
 
-        # 配置页：scan_btn 仅在 SETUP 可用，view_results_btn 仅有结果时可见
+        # 配置页：scan_btn 仅在 SETUP 可用；view_results_btn 始终可见，根据是否有结果启用
         self._scan_btn.setEnabled(is_setup and self._can_start_scan())
-        self._view_results_btn.setVisible(is_setup and has_report)
+        self._view_results_btn.setVisible(is_setup)
+        self._view_results_btn.setEnabled(has_report)
+
+        # 状态栏进度条与当前文件标签：仅扫描中可见
+        self._progress.setVisible(is_scanning)
+        self._current_file_label.setVisible(is_scanning)
 
         # 扫描中页：pause_resume_btn 文本随 ScanState 切换
         if self._workflow_stage == WorkflowStage.SCANNING:
@@ -1041,11 +1057,9 @@ class MainWindow(QMainWindow):
         self._progress.setRange(0, 0)
         self._current_file_label.setText("准备扫描...")
         self._stats_label.setText("扫描中...")
-        # 清空扫描中页的列表与统计面板，避免残留上次扫描数据
+        # 清空扫描中页的列表，避免残留上次扫描数据（统计已由状态栏 stats_label 承载）
         self._skipped_dirs_list.clear()
         self._matched_files_list.clear()
-        self._stats_counts_label.setText("已扫描 0 | 跳过 0 | 命中 0 | 条数 0 | 错误 0")
-        self._stats_time_label.setText("已用 0.0s | 速度 0 文件/s")
         self._switch_stage(WorkflowStage.SCANNING)
 
         cache, source_files = self._build_cache_context()
@@ -1132,31 +1146,25 @@ class MainWindow(QMainWindow):
         self._worker = None
 
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
-        """扫描实时进度回调：更新进度条、当前文件、统计面板与两个列表。"""
+        """扫描实时进度回调：更新进度条、当前文件、状态栏汇总与两个列表。"""
         # 切换为确定进度模式
         if info.total > 0 and self._progress.maximum() != info.total:
             self._progress.setRange(0, info.total)
         self._progress.setValue(info.scanned)
 
-        # 当前文件（截断显示）
+        # 当前文件（截断显示，挂载在状态栏右侧）
         if info.current_file:
             path_text = info.current_file
             if len(path_text) > 100:
                 path_text = "..." + path_text[-97:]
             self._current_file_label.setText(f"正在解析: {path_text}")
 
-        # 统计面板：计数行 + 时间行（速度 = scanned / elapsed）
-        self._stats_counts_label.setText(
-            f"已扫描 {info.scanned} | 跳过 {info.skipped} | 命中 {info.matched} | 条数 {info.matches} | 错误 {info.errors}"
-        )
+        # 状态栏汇总文本（速度 = scanned / elapsed）
         speed = info.scanned / info.elapsed if info.elapsed > 0 else 0.0
-        self._stats_time_label.setText(f"已用 {info.elapsed:.1f}s | 速度 {speed:.0f} 文件/s")
-
-        # 状态栏（保留原汇总文本，便于后台查看）
         self._stats_label.setText(
             f"已扫描 {info.scanned} | 跳过 {info.skipped} | "
             f"命中 {info.matched} | 条数 {info.matches} | 错误 {info.errors} | "
-            f"已用 {info.elapsed:.1f}s"
+            f"已用 {info.elapsed:.1f}s | 速度 {speed:.0f} 文件/s"
         )
 
         # 跳过的文件夹列表（仅在新条目增加时刷新，避免重置滚动条）

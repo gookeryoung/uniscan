@@ -42,6 +42,8 @@ QFrame#header_bar QPushButton:hover {
 
 QFrame#header_bar QPushButton:checked {
     background: ${COLOR_PRIMARY_DARK};
+    border-bottom: 3px solid ${COLOR_ACCENT};
+    padding-bottom: 1px;
 }
 
 /* ========== 侧边栏（rule-12 Sidebar） ========== */

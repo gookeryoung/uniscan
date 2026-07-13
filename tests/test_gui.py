@@ -1176,16 +1176,18 @@ class TestWorkflowStage:
         assert window._main_stack.currentIndex() == 2
         window.close()
 
-    def test_view_results_btn_hidden_initially(self, qapp: QApplication) -> None:
-        """新建窗口无报告时查看结果按钮不可见。"""
+    def test_view_results_btn_disabled_initially(self, qapp: QApplication) -> None:
+        """新建窗口无报告时查看结果按钮应可见但禁用。"""
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        assert not window._view_results_btn.isVisible()
+        # 按钮始终可见（与 scan_btn 组合在一起），但无结果时禁用
+        assert window._view_results_btn.isVisible()
+        assert not window._view_results_btn.isEnabled()
         window.close()
 
-    def test_view_results_btn_visible_with_report(self, qapp: QApplication, tmp_path: Path) -> None:
-        """配置页有报告时查看结果按钮应可见。"""
+    def test_view_results_btn_enabled_with_report(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置页有报告时查看结果按钮应可见且启用。"""
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
@@ -1198,6 +1200,7 @@ class TestWorkflowStage:
         window.show()
         qapp.processEvents()
         assert window._view_results_btn.isVisible()
+        assert window._view_results_btn.isEnabled()
         window.close()
 
     def test_scan_btn_disabled_without_ruleset(self, qapp: QApplication) -> None:
@@ -1427,6 +1430,149 @@ class TestSetupActionBar:
         view_results_section = qss[qss.find("QPushButton#view_results_btn") :]
         assert "background: #ffffff" in view_results_section[:200]
         assert "border: 1px solid #0366d6" in view_results_section[:200]
+
+    def test_view_results_btn_same_size_as_scan_btn(self, qapp: QApplication) -> None:
+        """view_results_btn 与 scan_btn 最小尺寸应一致（180x44）。"""
+        window = MainWindow()
+        assert window._view_results_btn.minimumWidth() == window._scan_btn.minimumWidth()
+        assert window._view_results_btn.minimumHeight() == window._scan_btn.minimumHeight()
+        assert window._scan_btn.minimumWidth() == 180
+        assert window._scan_btn.minimumHeight() == 44
+        window.close()
+
+    def test_view_results_btn_adjacent_to_scan_btn(self, qapp: QApplication) -> None:
+        """view_results_btn 与 scan_btn 应相邻（中间无 stretch spacer 分隔）。
+
+        通过验证 setup_btn_row 中两个按钮的布局索引相邻且无 Expanding spacer 插入。
+        """
+        window = MainWindow()
+        layout = window._ui.setup_btn_row
+        # 找到 view_results_btn 和 scan_btn 的位置索引
+        view_idx = -1
+        scan_idx = -1
+        spacer_count = 0
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item is None:
+                continue
+            if item.widget() is window._view_results_btn:
+                view_idx = i
+            elif item.widget() is window._scan_btn:
+                scan_idx = i
+            elif item.spacerItem() is not None and item.spacerItem().expandingDirections() != 0:
+                spacer_count += 1
+        assert view_idx >= 0 and scan_idx >= 0
+        # 两个按钮索引相邻（差的绝对值为 1）
+        assert abs(scan_idx - view_idx) == 1
+        # 仅保留一个 leading spacer 用于右对齐，按钮间不再插入 spacer
+        assert spacer_count == 1
+        window.close()
+
+    def test_setup_btn_spacer_removed(self, qapp: QApplication) -> None:
+        """原 setup_btn_spacer（按钮间分隔）应已移除，仅保留 leading spacer。"""
+        window = MainWindow()
+        # 旧属性名不应再存在
+        assert not hasattr(window._ui, "setup_btn_spacer")
+        assert hasattr(window._ui, "setup_btn_leading_spacer")
+        window.close()
+
+
+class TestScanningPageLayout:
+    """扫描中页布局调整测试：进度与当前文件移至状态栏，统计面板移除。"""
+
+    def test_stats_group_removed_from_ui(self, qapp: QApplication) -> None:
+        """scanning_page 不应再包含 stats_group / stats_counts_label / stats_time_label。"""
+        window = MainWindow()
+        assert not hasattr(window._ui, "stats_group")
+        assert not hasattr(window._ui, "stats_counts_label")
+        assert not hasattr(window._ui, "stats_time_label")
+        window.close()
+
+    def test_progress_moved_to_status_bar(self, qapp: QApplication) -> None:
+        """进度条应挂载到状态栏（permanent 区），且初始不可见。"""
+        window = MainWindow()
+        window.show()
+        qapp.processEvents()
+        # _progress 应存在且为 QProgressBar
+        try:
+            from PySide2.QtWidgets import QProgressBar as _QProgressBar
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QProgressBar as _QProgressBar
+        assert isinstance(window._progress, _QProgressBar)
+        # 初始（SETUP 阶段）应不可见
+        assert not window._progress.isVisible()
+        window.close()
+
+    def test_current_file_label_in_status_bar(self, qapp: QApplication) -> None:
+        """当前文件标签应挂载到状态栏，且初始不可见。"""
+        window = MainWindow()
+        window.show()
+        qapp.processEvents()
+        assert not window._current_file_label.isVisible()
+        # 进入扫描中阶段后应可见
+        window._switch_stage(WorkflowStage.SCANNING)
+        qapp.processEvents()
+        assert window._current_file_label.isVisible()
+        assert window._progress.isVisible()
+        window.close()
+
+    def test_progress_hidden_in_non_scanning_stage(self, qapp: QApplication) -> None:
+        """非扫描阶段进度条与当前文件标签应隐藏。"""
+        window = MainWindow()
+        window.show()
+        qapp.processEvents()
+        window._switch_stage(WorkflowStage.SETUP)
+        qapp.processEvents()
+        assert not window._progress.isVisible()
+        assert not window._current_file_label.isVisible()
+        window._switch_stage(WorkflowStage.RESULTS)
+        qapp.processEvents()
+        assert not window._progress.isVisible()
+        assert not window._current_file_label.isVisible()
+        window.close()
+
+    def test_progress_updates_value_in_status_bar(self, qapp: QApplication) -> None:
+        """_on_scan_progress 应更新状态栏进度条的值。"""
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        window._switch_stage(WorkflowStage.SCANNING)
+        info = ProgressInfo(
+            total=100,
+            scanned=50,
+            skipped=0,
+            matched=0,
+            errors=0,
+            current_file="/test/file.txt",
+            elapsed=1.0,
+        )
+        window._on_scan_progress(info)
+        assert window._progress.value() == 50
+        assert window._progress.maximum() == 100
+        window.close()
+
+
+class TestThemeColorContrast:
+    """主题色选中/未选中对比度测试。"""
+
+    def test_primary_dark_distinct_from_primary(self) -> None:
+        """COLOR_PRIMARY_DARK 应与 COLOR_PRIMARY 有明显色差（非相邻值）。"""
+        from fuscan import theme
+
+        assert theme.COLOR_PRIMARY != theme.COLOR_PRIMARY_DARK
+        assert theme.COLOR_PRIMARY_DARK != theme.COLOR_PRIMARY_DARKER
+        # PRIMARY_DARK 应比 PRIMARY 更深（hex 值更小）
+        assert theme.COLOR_PRIMARY_DARK < theme.COLOR_PRIMARY
+
+    def test_header_tab_checked_has_accent_border(self) -> None:
+        """QSS 中头部 Tab 选中态应有强调色底边。"""
+        from fuscan.gui.app import load_stylesheet
+
+        qss = load_stylesheet()
+        checked_section = qss[qss.find("QFrame#header_bar QPushButton:checked") :]
+        assert "border-bottom" in checked_section[:300]
+        assert "${COLOR_ACCENT}" not in checked_section  # 占位符应已替换
+        assert "#58a6ff" in checked_section  # COLOR_ACCENT 替换后的值
 
 
 class TestSeverityDisplay:
@@ -4424,7 +4570,7 @@ class TestScanCallbacks:
         window.close()
 
     def test_on_scan_progress_updates_stats_labels(self, qapp: QApplication) -> None:
-        """_on_scan_progress 应更新统计面板的计数与时间标签。"""
+        """_on_scan_progress 应更新状态栏汇总文本（含计数与速度）。"""
         from fuscan.scanner.result import ProgressInfo
 
         window = MainWindow()
@@ -4438,15 +4584,15 @@ class TestScanCallbacks:
             elapsed=10.0,
         )
         window._on_scan_progress(info)
-        counts_text = window._stats_counts_label.text()
-        time_text = window._stats_time_label.text()
-        assert "100" in counts_text
-        assert "50" in counts_text
-        assert "30" in counts_text
-        assert "5" in counts_text
-        assert "10.0s" in time_text
+        stats_text = window._stats_label.text()
+        # 计数与时间应汇总到状态栏文本
+        assert "100" in stats_text
+        assert "50" in stats_text
+        assert "30" in stats_text
+        assert "5" in stats_text
+        assert "10.0s" in stats_text
         # 速度 = 100 / 10.0 = 10 文件/s
-        assert "10" in time_text
+        assert "10" in stats_text
         window.close()
 
     def test_on_scan_failed(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -206,15 +206,17 @@ class Ui_MainWindow(object):
         self.setup_btn_row.setSpacing(8)
         self.setup_btn_row.setObjectName(u"setup_btn_row")
         self.setup_btn_row.setContentsMargins(0, 12, 0, 0)
+        self.setup_btn_leading_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.setup_btn_row.addItem(self.setup_btn_leading_spacer)
+
         self.view_results_btn = QPushButton(self.setup_action_bar)
         self.view_results_btn.setObjectName(u"view_results_btn")
-        self.view_results_btn.setVisible(False)
+        self.view_results_btn.setEnabled(False)
+        self.view_results_btn.setMinimumSize(QSize(180, 44))
+        self.view_results_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.setup_btn_row.addWidget(self.view_results_btn)
-
-        self.setup_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.setup_btn_row.addItem(self.setup_btn_spacer)
 
         self.scan_btn = QPushButton(self.setup_action_bar)
         self.scan_btn.setObjectName(u"scan_btn")
@@ -228,7 +230,7 @@ class Ui_MainWindow(object):
 
         self.main_stack.addWidget(self.setup_page)
 
-        # -------- 扫描中页（scanning_page）：不变 --------
+        # -------- 扫描中页（scanning_page）：进度与当前文件移至状态栏，统计面板与状态栏重复已移除 --------
         self.scanning_page = QWidget()
         self.scanning_page.setObjectName(u"scanning_page")
         self.scanning_layout = QVBoxLayout(self.scanning_page)
@@ -246,20 +248,6 @@ class Ui_MainWindow(object):
         self.scanning_title_label.setAlignment(Qt.AlignCenter)
 
         self.scanning_layout.addWidget(self.scanning_title_label)
-
-        self.progress = QProgressBar(self.scanning_page)
-        self.progress.setObjectName(u"progress")
-        self.progress.setMinimumSize(QSize(0, 30))
-        self.progress.setValue(0)
-
-        self.scanning_layout.addWidget(self.progress)
-
-        self.current_file_label = QLabel(self.scanning_page)
-        self.current_file_label.setObjectName(u"current_file_label")
-        self.current_file_label.setAlignment(Qt.AlignCenter)
-        self.current_file_label.setWordWrap(True)
-
-        self.scanning_layout.addWidget(self.current_file_label)
 
         self.lists_splitter = QSplitter(self.scanning_page)
         self.lists_splitter.setObjectName(u"lists_splitter")
@@ -292,22 +280,6 @@ class Ui_MainWindow(object):
         self.lists_splitter.addWidget(self.matched_files_group)
 
         self.scanning_layout.addWidget(self.lists_splitter)
-
-        self.stats_group = QGroupBox(self.scanning_page)
-        self.stats_group.setObjectName(u"stats_group")
-        self.stats_form_layout = QFormLayout(self.stats_group)
-        self.stats_form_layout.setObjectName(u"stats_form_layout")
-        self.stats_counts_label = QLabel(self.stats_group)
-        self.stats_counts_label.setObjectName(u"stats_counts_label")
-
-        self.stats_form_layout.setWidget(0, QFormLayout.LabelRole, self.stats_counts_label)
-
-        self.stats_time_label = QLabel(self.stats_group)
-        self.stats_time_label.setObjectName(u"stats_time_label")
-
-        self.stats_form_layout.setWidget(1, QFormLayout.LabelRole, self.stats_time_label)
-
-        self.scanning_layout.addWidget(self.stats_group)
 
         self.scanning_btn_row = QHBoxLayout()
         self.scanning_btn_row.setSpacing(12)
@@ -772,12 +744,8 @@ class Ui_MainWindow(object):
         self.view_results_btn.setText(QCoreApplication.translate("MainWindow", u"\u67e5\u770b\u7ed3\u679c", None))
         self.scan_btn.setText(QCoreApplication.translate("MainWindow", u"\u5f00\u59cb\u626b\u63cf", None))
         self.scanning_title_label.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u8fdb\u884c\u4e2d", None))
-        self.current_file_label.setText("")
         self.skipped_dirs_group.setTitle(QCoreApplication.translate("MainWindow", u"\u8df3\u8fc7\u7684\u6587\u4ef6\u5939", None))
         self.matched_files_group.setTitle(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u7684\u6587\u4ef6", None))
-        self.stats_group.setTitle(QCoreApplication.translate("MainWindow", u"\u7edf\u8ba1", None))
-        self.stats_counts_label.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u626b\u63cf 0 | \u8df3\u8fc7 0 | \u547d\u4e2d 0 | \u9519\u8bef 0", None))
-        self.stats_time_label.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u7528 0.0s | \u901f\u5ea6 0 \u6587\u4ef6/s", None))
         self.pause_resume_btn.setText(QCoreApplication.translate("MainWindow", u"\u6682\u505c\u626b\u63cf", None))
         self.cancel_btn.setText(QCoreApplication.translate("MainWindow", u"\u53d6\u6d88\u626b\u63cf", None))
 #if QT_CONFIG(tooltip)

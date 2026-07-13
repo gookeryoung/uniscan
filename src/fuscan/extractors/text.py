@@ -116,13 +116,17 @@ class TextExtractor(Extractor):
         return self._decode(data)
 
     def _decode(self, data: bytes) -> str:
-        """检测编码并解码字节流。"""
+        """检测编码并解码字节流。
+
+        统一行尾为 ``\\n``：Windows 上 ``write_text`` 会将 ``\\n`` 写为 ``\\r\\n``，
+        若不规范化会导致 CONTENT EQUALS 等严格比较在跨平台时失败。
+        """
         try:
             from charset_normalizer import from_bytes
 
             result = from_bytes(data).best()
             if result is not None:
-                return str(result)
+                return _normalize_newlines(str(result))
         except ImportError:
             logger.warning("charset-normalizer 未安装，回退到 UTF-8 解码")
         except Exception:
@@ -131,7 +135,12 @@ class TextExtractor(Extractor):
         # 回退：尝试 UTF-8 和 GBK，最终用 latin-1（能解码任意字节序列，永不失败）
         for encoding in ("utf-8", "gbk"):
             try:
-                return data.decode(encoding)
+                return _normalize_newlines(data.decode(encoding))
             except UnicodeDecodeError:
                 continue
-        return data.decode("latin-1")
+        return _normalize_newlines(data.decode("latin-1"))
+
+
+def _normalize_newlines(text: str) -> str:
+    """将 CRLF/CR 统一为 LF，保证跨平台内容比较一致。"""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
