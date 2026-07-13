@@ -13,14 +13,20 @@ from pathlib import Path
 import pytest
 
 from fuscan.extractors import (
+    DocExtractor,
     DocxExtractor,
+    EmlExtractor,
     ExtractorError,
     ExtractorRegistry,
+    MsgExtractor,
     OdtExtractor,
     PdfExtractor,
+    PptExtractor,
     PptxExtractor,
+    RtfExtractor,
     TextExtractor,
     WpsExtractor,
+    XlsExtractor,
     XlsxExtractor,
     default_registry,
     extract_content,
@@ -1364,3 +1370,741 @@ class TestLargeFileStreaming:
         content = TextExtractor().extract_from_bytes(data)
         assert isinstance(content, str)
         assert len(content) > 0
+
+
+# ---------------------------------------------------------------------------
+# RTF 提取器
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def rtf_file(tmp_path: Path) -> Path:
+    """生成包含 password 关键词的 RTF 测试文件。"""
+    rtf_content = (
+        r"{\rtf1\ansi\deff0 {\fonttbl {\f0 Times New Roman;}}"
+        r"\f0\fs24 Hello password world\par This is a test.}"
+    )
+    path = tmp_path / "test.rtf"
+    path.write_text(rtf_content, encoding="utf-8")
+    return path
+
+
+class TestRtfExtractor:
+    def test_supported_extensions(self) -> None:
+        assert RtfExtractor().supported_extensions == ("rtf",)
+
+    def test_extract_rtf_text(self, rtf_file: Path) -> None:
+        content = RtfExtractor().extract(rtf_file)
+        assert "Hello password world" in content
+        assert "This is a test" in content
+
+    def test_extract_from_bytes(self) -> None:
+        rtf = r"{\rtf1\ansi Hello password}"
+        content = RtfExtractor().extract_from_bytes(rtf.encode("utf-8"))
+        assert "Hello password" in content
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            RtfExtractor().extract(tmp_path / "nonexistent.rtf")
+
+    def test_registry_has_rtf_extractor(self) -> None:
+        assert isinstance(get_extractor("rtf"), RtfExtractor)
+
+    def test_rtf_import_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """striprtf 未安装时应抛出 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "striprtf.striprtf":
+                raise ImportError("No module named 'striprtf'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="striprtf 未安装"):
+            RtfExtractor().extract_from_bytes(b"{\\rtf1 fake}")
+
+    def test_rtf_parse_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """rtf_to_text 抛异常时应包装为 ExtractorError。"""
+
+        def raise_parse(text: str) -> None:
+            raise RuntimeError("解析失败")
+
+        monkeypatch.setattr("striprtf.striprtf.rtf_to_text", raise_parse)
+        with pytest.raises(ExtractorError, match="RTF 解析失败"):
+            RtfExtractor().extract_from_bytes(b"{\\rtf1 fake}")
+
+
+# ---------------------------------------------------------------------------
+# EML 提取器
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def eml_file(tmp_path: Path) -> Path:
+    """生成包含 password 关键词的 EML 测试文件。"""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "Test Subject"
+    msg["From"] = "sender@example.com"
+    msg.set_content("Hello password world")
+    path = tmp_path / "test.eml"
+    path.write_bytes(msg.as_bytes())
+    return path
+
+
+@pytest.fixture()
+def html_eml_file(tmp_path: Path) -> Path:
+    """生成仅含 HTML 正文的 EML 测试文件。"""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "HTML Test"
+    msg["From"] = "sender@example.com"
+    msg.set_content("<html><body><p>Hello <b>password</b></p></body></html>", subtype="html")
+    path = tmp_path / "test_html.eml"
+    path.write_bytes(msg.as_bytes())
+    return path
+
+
+class TestEmlExtractor:
+    def test_supported_extensions(self) -> None:
+        assert EmlExtractor().supported_extensions == ("eml",)
+
+    def test_extract_eml_text(self, eml_file: Path) -> None:
+        content = EmlExtractor().extract(eml_file)
+        assert "Test Subject" in content
+        assert "sender@example.com" in content
+        assert "Hello password world" in content
+
+    def test_extract_html_body(self, html_eml_file: Path) -> None:
+        content = EmlExtractor().extract(html_eml_file)
+        assert "password" in content
+        assert "Hello" in content
+
+    def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """EML 解析失败抛 ExtractorError。"""
+        import email
+
+        def raise_parse(*args: object, **kwargs: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(email, "message_from_bytes", raise_parse)
+        with pytest.raises(ExtractorError, match="EML 解析失败"):
+            EmlExtractor().extract_from_bytes(b"bad data")
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            EmlExtractor().extract(tmp_path / "nonexistent.eml")
+
+    def test_registry_has_eml_extractor(self) -> None:
+        assert isinstance(get_extractor("eml"), EmlExtractor)
+
+    def test_eml_with_attachment_skipped(self, tmp_path: Path) -> None:
+        """带附件的 EML 应跳过附件，仅提取正文。"""
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg["Subject"] = "带附件"
+        msg["From"] = "sender@example.com"
+        msg.set_content("正文 password 内容")
+        msg.add_attachment(b"attachment data", maintype="application", subtype="octet-stream")
+        path = tmp_path / "attach.eml"
+        path.write_bytes(msg.as_bytes())
+
+        content = EmlExtractor().extract(path)
+        assert "正文 password 内容" in content
+        assert "attachment data" not in content
+
+    def test_eml_invalid_charset_plain_fallback(self, tmp_path: Path) -> None:
+        """text/plain 的 charset 无效时应回退到 UTF-8 解码。"""
+        raw = (
+            b"From: a@b.com\r\n"
+            b"Subject: charset test\r\n"
+            b"Content-Type: text/plain; charset=invalid-charset\r\n"
+            b"\r\n"
+            b"password text content"
+        )
+        path = tmp_path / "bad_charset.eml"
+        path.write_bytes(raw)
+        content = EmlExtractor().extract(path)
+        assert "password text content" in content
+
+    def test_eml_invalid_charset_html_fallback(self, tmp_path: Path) -> None:
+        """text/html 的 charset 无效时应回退到 UTF-8 解码。"""
+        raw = (
+            b"From: a@b.com\r\n"
+            b"Subject: html charset test\r\n"
+            b"Content-Type: text/html; charset=invalid-charset\r\n"
+            b"\r\n"
+            b"<p>password html</p>"
+        )
+        path = tmp_path / "bad_html_charset.eml"
+        path.write_bytes(raw)
+        content = EmlExtractor().extract(path)
+        assert "password html" in content
+
+    def test_eml_empty_body_returns_empty(self, tmp_path: Path) -> None:
+        """无正文的 EML 仅返回主题和发件人。"""
+        raw = b"From: a@b.com\r\nSubject: no body\r\n\r\n"
+        path = tmp_path / "no_body.eml"
+        path.write_bytes(raw)
+        content = EmlExtractor().extract(path)
+        assert "no body" in content
+        assert "a@b.com" in content
+
+    def test_eml_no_subject_no_sender(self, tmp_path: Path) -> None:
+        """无主题和发件人的 EML 仅返回正文。"""
+        raw = b"Content-Type: text/plain\r\n\r\nbody password text"
+        path = tmp_path / "no_headers.eml"
+        path.write_bytes(raw)
+        content = EmlExtractor().extract(path)
+        assert "body password text" in content
+        assert "主题" not in content
+        assert "发件人" not in content
+
+
+# ---------------------------------------------------------------------------
+# MSG 提取器
+# ---------------------------------------------------------------------------
+
+
+class TestMsgExtractor:
+    def test_supported_extensions(self) -> None:
+        assert MsgExtractor().supported_extensions == ("msg",)
+
+    def test_extract_from_bytes_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """mock extract_msg.Message 验证文本提取逻辑。"""
+        import extract_msg
+
+        class FakeMessage:
+            subject = "Test Subject"
+            sender = "sender@example.com"
+            body = "Hello password world"
+
+        monkeypatch.setattr(extract_msg, "Message", lambda data: FakeMessage())
+        content = MsgExtractor().extract_from_bytes(b"fake msg data")
+        assert "Test Subject" in content
+        assert "sender@example.com" in content
+        assert "Hello password world" in content
+
+    def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """MSG 解析失败抛 ExtractorError。"""
+        import extract_msg
+
+        def raise_parse(data: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(extract_msg, "Message", raise_parse)
+        with pytest.raises(ExtractorError, match="MSG 解析失败"):
+            MsgExtractor().extract_from_bytes(b"bad data")
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="MSG 解析失败"):
+            MsgExtractor().extract(tmp_path / "nonexistent.msg")
+
+    def test_registry_has_msg_extractor(self) -> None:
+        assert isinstance(get_extractor("msg"), MsgExtractor)
+
+    def test_extract_from_path_with_mock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 路径应正确提取文本。"""
+        import extract_msg
+
+        class FakeMessage:
+            subject = "路径测试"
+            sender = "path@example.com"
+            body = "password from path"
+
+        monkeypatch.setattr(extract_msg, "Message", lambda path: FakeMessage())
+        path = tmp_path / "test.msg"
+        path.write_bytes(b"fake msg")
+        content = MsgExtractor().extract(path)
+        assert "路径测试" in content
+        assert "path@example.com" in content
+        assert "password from path" in content
+
+    def test_extract_from_path_parse_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 解析失败抛 ExtractorError。"""
+        import extract_msg
+
+        def raise_parse(path: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(extract_msg, "Message", raise_parse)
+        path = tmp_path / "bad.msg"
+        path.write_bytes(b"fake")
+        with pytest.raises(ExtractorError, match="MSG 解析失败"):
+            MsgExtractor().extract(path)
+
+    def test_msg_import_error_from_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 时 extract_msg 未安装应抛 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "extract_msg":
+                raise ImportError("No module named 'extract_msg'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        path = tmp_path / "test.msg"
+        path.write_bytes(b"fake")
+        with pytest.raises(ExtractorError, match="extract-msg 未安装"):
+            MsgExtractor().extract(path)
+
+    def test_msg_import_error_from_bytes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract_from_bytes 时 extract_msg 未安装应抛 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "extract_msg":
+                raise ImportError("No module named 'extract_msg'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="extract-msg 未安装"):
+            MsgExtractor().extract_from_bytes(b"fake")
+
+    def test_msg_empty_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """body 为 None 时仅返回主题和发件人。"""
+        import extract_msg
+
+        class FakeMessage:
+            subject: str | None = "无正文"
+            sender: str | None = "nob@example.com"
+            body: str | None = None
+
+        monkeypatch.setattr(extract_msg, "Message", lambda data: FakeMessage())
+        content = MsgExtractor().extract_from_bytes(b"fake")
+        assert "无正文" in content
+        assert "nob@example.com" in content
+
+    def test_msg_no_subject_no_sender(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """subject 和 sender 为 None 时仅返回正文。"""
+        import extract_msg
+
+        class FakeMessage:
+            subject: str | None = None
+            sender: str | None = None
+            body: str | None = "password only body"
+
+        monkeypatch.setattr(extract_msg, "Message", lambda data: FakeMessage())
+        content = MsgExtractor().extract_from_bytes(b"fake")
+        assert "password only body" in content
+        assert "主题" not in content
+        assert "发件人" not in content
+
+
+# ---------------------------------------------------------------------------
+# XLS 提取器
+# ---------------------------------------------------------------------------
+
+
+class TestXlsExtractor:
+    def test_supported_extensions(self) -> None:
+        assert XlsExtractor().supported_extensions == ("xls",)
+
+    def test_extract_from_bytes_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """mock xlrd.open_workbook 验证单元格遍历逻辑。"""
+        import xlrd
+
+        class FakeSheet:
+            nrows = 2
+            ncols = 2
+
+            def cell_value(self, row: int, col: int) -> str:
+                return [["姓名", "密码"], ["张三", "pwd123"]][row][col]
+
+        class FakeWorkbook:
+            def sheets(self) -> list[object]:
+                return [FakeSheet()]
+
+        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+
+        content = XlsExtractor().extract_from_bytes(b"fake xls data")
+        assert "姓名" in content
+        assert "pwd123" in content
+        assert "张三" in content
+
+    def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """XLS 解析失败抛 ExtractorError。"""
+        import xlrd
+
+        def raise_parse(**kwargs: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(xlrd, "open_workbook", raise_parse)
+        with pytest.raises(ExtractorError, match="XLS 解析失败"):
+            XlsExtractor().extract_from_bytes(b"bad data")
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            XlsExtractor().extract(tmp_path / "nonexistent.xls")
+
+    def test_registry_has_xls_extractor(self) -> None:
+        assert isinstance(get_extractor("xls"), XlsExtractor)
+
+    def test_extract_from_path_with_mock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 路径应正确提取单元格文本。"""
+        import xlrd
+
+        class FakeSheet:
+            nrows = 1
+            ncols = 2
+
+            def cell_value(self, row: int, col: int) -> str:
+                return ["user", "password123"][col]
+
+        class FakeWorkbook:
+            def sheets(self) -> list[object]:
+                return [FakeSheet()]
+
+        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+        path = tmp_path / "test.xls"
+        path.write_bytes(b"fake xls")
+        content = XlsExtractor().extract(path)
+        assert "password123" in content
+        assert "user" in content
+
+    def test_xls_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """xlrd 未安装时应抛出 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "xlrd":
+                raise ImportError("No module named 'xlrd'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="xlrd 未安装"):
+            XlsExtractor().extract_from_bytes(b"fake")
+
+    def test_xls_empty_sheet(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """空工作表应返回空字符串。"""
+        import xlrd
+
+        class FakeSheet:
+            nrows = 0
+            ncols = 0
+
+            def cell_value(self, row: int, col: int) -> str:
+                return ""
+
+        class FakeWorkbook:
+            def sheets(self) -> list[object]:
+                return [FakeSheet()]
+
+        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+        assert XlsExtractor().extract_from_bytes(b"fake") == ""
+
+
+# ---------------------------------------------------------------------------
+# DOC/PPT 提取器
+# ---------------------------------------------------------------------------
+
+
+class TestExtractUtf16leText:
+    """测试 _extract_utf16le_text 辅助函数。"""
+
+    def test_extract_ascii_text(self) -> None:
+        from fuscan.extractors.legacy_office import _extract_utf16le_text
+
+        text = "Hello password world"
+        data = text.encode("utf-16-le")
+        result = _extract_utf16le_text(data)
+        assert "Hello password world" in result
+
+    def test_extract_chinese_text(self) -> None:
+        from fuscan.extractors.legacy_office import _extract_utf16le_text
+
+        text = "密码 password 测试"
+        data = text.encode("utf-16-le")
+        result = _extract_utf16le_text(data)
+        assert "密码" in result
+        assert "password" in result
+        assert "测试" in result
+
+    def test_empty_data(self) -> None:
+        from fuscan.extractors.legacy_office import _extract_utf16le_text
+
+        assert _extract_utf16le_text(b"") == ""
+        assert _extract_utf16le_text(b"\x00") == ""
+
+    def test_skip_short_fragments(self) -> None:
+        """长度 < 2 的文本片段被过滤。"""
+        from fuscan.extractors.legacy_office import _extract_utf16le_text
+
+        # 单字符 A 后跟非文本字节
+        data = b"A\x00\x00\x00B\x00\x00\x00"
+        result = _extract_utf16le_text(data)
+        assert result == ""
+
+
+class TestDocExtractor:
+    def test_supported_extensions(self) -> None:
+        assert DocExtractor().supported_extensions == ("doc",)
+
+    def test_extract_from_bytes_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """mock olefile.OleFileIO 验证 WordDocument 流文本提取。"""
+        import olefile
+
+        text = "Hello password world"
+        encoded = text.encode("utf-16-le")
+
+        class FakeStream:
+            def read(self) -> bytes:
+                return encoded
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return name == "WordDocument"
+
+            def openstream(self, name: str) -> FakeStream:
+                return FakeStream()
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        content = DocExtractor().extract_from_bytes(b"fake doc data")
+        assert "Hello password world" in content
+
+    def test_extract_no_worddocument_stream(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OLE 文件无 WordDocument 流时返回空字符串。"""
+        import olefile
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return False
+
+            def openstream(self, name: str) -> None:
+                raise AssertionError("不应调用 openstream")
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        assert DocExtractor().extract_from_bytes(b"fake") == ""
+
+    def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """DOC 解析失败抛 ExtractorError。"""
+        import olefile
+
+        def raise_parse(data: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(olefile, "OleFileIO", raise_parse)
+        with pytest.raises(ExtractorError, match="DOC 解析失败"):
+            DocExtractor().extract_from_bytes(b"bad data")
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            DocExtractor().extract(tmp_path / "nonexistent.doc")
+
+    def test_registry_has_doc_extractor(self) -> None:
+        assert isinstance(get_extractor("doc"), DocExtractor)
+
+    def test_extract_from_path_with_mock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 路径应正确提取 WordDocument 流文本。"""
+        import olefile
+
+        text = "doc password text"
+        encoded = text.encode("utf-16-le")
+
+        class FakeStream:
+            def read(self) -> bytes:
+                return encoded
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return name == "WordDocument"
+
+            def openstream(self, name: str) -> FakeStream:
+                return FakeStream()
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        path = tmp_path / "test.doc"
+        path.write_bytes(b"fake doc")
+        content = DocExtractor().extract(path)
+        assert "doc password text" in content
+
+    def test_doc_import_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """olefile 未安装时应抛出 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "olefile":
+                raise ImportError("No module named 'olefile'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="olefile 未安装"):
+            DocExtractor().extract_from_bytes(b"fake")
+
+
+class TestPptExtractor:
+    def test_supported_extensions(self) -> None:
+        assert PptExtractor().supported_extensions == ("ppt",)
+
+    def test_extract_from_bytes_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """mock olefile.OleFileIO 验证 PowerPoint Document 流文本提取。"""
+        import olefile
+
+        text = "Slide password content"
+        encoded = text.encode("utf-16-le")
+
+        class FakeStream:
+            def read(self) -> bytes:
+                return encoded
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return name == "PowerPoint Document"
+
+            def openstream(self, name: str) -> FakeStream:
+                return FakeStream()
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        content = PptExtractor().extract_from_bytes(b"fake ppt data")
+        assert "Slide password content" in content
+
+    def test_extract_no_powerpoint_stream(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OLE 文件无 PowerPoint Document 流时返回空字符串。"""
+        import olefile
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return False
+
+            def openstream(self, name: str) -> None:
+                raise AssertionError("不应调用 openstream")
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        assert PptExtractor().extract_from_bytes(b"fake") == ""
+
+    def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PPT 解析失败抛 ExtractorError。"""
+        import olefile
+
+        def raise_parse(data: object) -> None:
+            raise ValueError("解析失败")
+
+        monkeypatch.setattr(olefile, "OleFileIO", raise_parse)
+        with pytest.raises(ExtractorError, match="PPT 解析失败"):
+            PptExtractor().extract_from_bytes(b"bad data")
+
+    def test_extract_nonexistent_raises_error(self, tmp_path: Path) -> None:
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            PptExtractor().extract(tmp_path / "nonexistent.ppt")
+
+    def test_registry_has_ppt_extractor(self) -> None:
+        assert isinstance(get_extractor("ppt"), PptExtractor)
+
+    def test_extract_from_path_with_mock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """extract(path) 路径应正确提取 PowerPoint Document 流文本。"""
+        import olefile
+
+        text = "ppt password slide"
+        encoded = text.encode("utf-16-le")
+
+        class FakeStream:
+            def read(self) -> bytes:
+                return encoded
+
+        class FakeOle:
+            def exists(self, name: str) -> bool:
+                return name == "PowerPoint Document"
+
+            def openstream(self, name: str) -> FakeStream:
+                return FakeStream()
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr(olefile, "OleFileIO", lambda data: FakeOle())
+        path = tmp_path / "test.ppt"
+        path.write_bytes(b"fake ppt")
+        content = PptExtractor().extract(path)
+        assert "ppt password slide" in content
+
+    def test_ppt_import_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """olefile 未安装时应抛出 ExtractorError。"""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "olefile":
+                raise ImportError("No module named 'olefile'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ExtractorError, match="olefile 未安装"):
+            PptExtractor().extract_from_bytes(b"fake")
+
+
+# ---------------------------------------------------------------------------
+# 新格式集成测试
+# ---------------------------------------------------------------------------
+
+
+class TestScannerWithNewFormats:
+    def test_scan_rtf_content(self, rtf_file: Path) -> None:
+        from fuscan.rules.model import (
+            LeafMatch,
+            MatchMode,
+            MatchTarget,
+            Rule,
+            RuleSet,
+            Severity,
+        )
+        from fuscan.scanner import Scanner
+
+        rule = Rule(
+            name="敏感词",
+            severity=Severity.WARNING,
+            match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+        )
+        rs = RuleSet(version="1.0", rules=(rule,))
+        scanner = Scanner(rs)
+        result = scanner.scan_file(rtf_file)
+        assert result.has_hit
+
+    def test_scan_eml_content(self, eml_file: Path) -> None:
+        from fuscan.rules.model import (
+            LeafMatch,
+            MatchMode,
+            MatchTarget,
+            Rule,
+            RuleSet,
+            Severity,
+        )
+        from fuscan.scanner import Scanner
+
+        rule = Rule(
+            name="敏感词",
+            severity=Severity.WARNING,
+            match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+        )
+        rs = RuleSet(version="1.0", rules=(rule,))
+        scanner = Scanner(rs)
+        result = scanner.scan_file(eml_file)
+        assert result.has_hit
