@@ -803,7 +803,7 @@ class TestScannerExtraCoverage:
         def raise_extract(p: Path) -> str:
             raise RuntimeError("提取失败")
 
-        monkeypatch.setattr("fuscan.scanner.scanner.extract_content", raise_extract)
+        monkeypatch.setattr("fuscan.extractors.base.extract_content", raise_extract)
         content = default_extract_content(entry)
         assert "password fallback" in content
 

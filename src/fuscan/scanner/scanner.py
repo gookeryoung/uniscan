@@ -15,7 +15,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
-from fuscan.extractors import extract_content, extract_content_from_bytes
+from fuscan.extractors import extract_content_from_bytes, extract_content_with_fallback
 from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, HashingContentProvider, MatchContext
 from fuscan.scanner.matchers import Matcher, build_matcher
@@ -36,11 +36,7 @@ def default_extract_content(entry: FileEntry) -> str:
 
     无注册提取器时回退到纯文本读取；提取失败返回空字符串。
     """
-    try:
-        return extract_content(entry.path)
-    except Exception:
-        logger.debug("提取器提取失败，回退到纯文本: %s", entry.path, exc_info=True)
-        return entry.path.read_text(encoding="utf-8", errors="ignore")
+    return extract_content_with_fallback(entry.path)
 
 
 def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:

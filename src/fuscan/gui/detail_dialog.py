@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
-from fuscan.extractors import extract_content
+from fuscan.extractors import extract_content_with_fallback
 from fuscan.gui.detail_dialog_ui import Ui_HitDetailDialog
 from fuscan.gui.preview_utils import (
     PREVIEW_MAX_CHARS,
@@ -155,16 +155,12 @@ class HitDetailDialog(QDialog, Ui_HitDetailDialog):
 
         # 优先使用提取器（支持 PDF/DOCX 等格式），失败回退到纯文本
         try:
-            content = extract_content(path)
-        except Exception:
-            logger.debug("提取器提取失败，回退到纯文本: %s", path, exc_info=True)
-            try:
-                content = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError as exc:
-                logger.warning("读取内容预览失败 %s", path, exc_info=True)
-                self.preview.setPlainText(f"无法读取文件内容: {exc}")
-                self._update_nav_label()
-                return
+            content = extract_content_with_fallback(path)
+        except OSError as exc:
+            logger.warning("读取内容预览失败 %s", path, exc_info=True)
+            self.preview.setPlainText(f"无法读取文件内容: {exc}")
+            self._update_nav_label()
+            return
 
         if not content:
             self.preview.setPlainText("(文件内容为空或为二进制)")

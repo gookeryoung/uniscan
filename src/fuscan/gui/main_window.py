@@ -93,7 +93,7 @@ except ImportError:  # pragma: no cover
 from fuscan import __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MAX_HISTORY, Config, load_config, save_config
-from fuscan.extractors import extract_content
+from fuscan.extractors import extract_content_with_fallback
 from fuscan.gui.detail_dialog import HitDetailDialog
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.preview_utils import (
@@ -1321,16 +1321,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # 优先使用提取器（支持 PDF/DOCX 等格式），失败回退到纯文本
         try:
-            content = extract_content(path)
-        except Exception:
-            logger.debug("提取器提取失败，回退到纯文本: %s", path, exc_info=True)
-            try:
-                content = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError as exc:
-                logger.warning("读取内容预览失败 %s", path, exc_info=True)
-                self.detail_preview.setPlainText(f"无法读取文件内容: {exc}")
-                self._update_detail_nav_label()
-                return
+            content = extract_content_with_fallback(path)
+        except OSError as exc:
+            logger.warning("读取内容预览失败 %s", path, exc_info=True)
+            self.detail_preview.setPlainText(f"无法读取文件内容: {exc}")
+            self._update_detail_nav_label()
+            return
 
         if not content:
             self.detail_preview.setPlainText("(文件内容为空或为二进制)")

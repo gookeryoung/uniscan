@@ -20,6 +20,7 @@ from fuscan.extractors.base import (
     default_registry,
     extract_content,
     extract_content_from_bytes,
+    extract_content_with_fallback,
     get_extractor,
 )
 from fuscan.extractors.odf import OdtExtractor
@@ -49,6 +50,7 @@ __all__ = [
     "default_registry",
     "extract_content",
     "extract_content_from_bytes",
+    "extract_content_with_fallback",
     "get_extractor",
     "register_all",
 ]

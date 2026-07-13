@@ -25,6 +25,7 @@ from fuscan.extractors import (
     default_registry,
     extract_content,
     extract_content_from_bytes,
+    extract_content_with_fallback,
     get_extractor,
 )
 from fuscan.extractors.spreadsheet import OdsExtractor
@@ -941,6 +942,35 @@ class TestExtractContent:
         path = tmp_path / "unknown.xyz"
         path.write_text("content", encoding="utf-8")
         assert extract_content(path) == ""
+
+    def test_fallback_returns_extracted_content(self, text_file: Path) -> None:
+        """提取器成功时返回提取的内容。"""
+        content = extract_content_with_fallback(text_file)
+        assert "hello password world" in content
+
+    def test_fallback_extractor_failure_falls_back_to_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """提取器抛异常时回退到纯文本读取。"""
+
+        def raise_extract(p: Path) -> str:
+            raise RuntimeError("提取失败")
+
+        path = tmp_path / "a.txt"
+        path.write_text("plain content", encoding="utf-8")
+        monkeypatch.setattr("fuscan.extractors.base.extract_content", raise_extract)
+        assert extract_content_with_fallback(path) == "plain content"
+
+    def test_fallback_read_text_oserror_propagates(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """纯文本回退读取失败时 OSError 向上传播。"""
+
+        def raise_extract(p: Path) -> str:
+            raise RuntimeError("提取失败")
+
+        path = tmp_path / "nonexistent.txt"
+        monkeypatch.setattr("fuscan.extractors.base.extract_content", raise_extract)
+        with pytest.raises(OSError):
+            extract_content_with_fallback(path)
 
     def test_get_extractor_returns_none_for_unknown(self) -> None:
         assert get_extractor("xyz") is None

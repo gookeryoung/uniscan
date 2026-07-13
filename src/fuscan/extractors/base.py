@@ -22,6 +22,7 @@ __all__ = [
     "default_registry",
     "extract_content",
     "extract_content_from_bytes",
+    "extract_content_with_fallback",
     "get_extractor",
 ]
 
@@ -148,3 +149,21 @@ def extract_content_from_bytes(data: bytes, extension: str) -> str:
     :return: 提取的文本；无提取器时返回空字符串
     """
     return default_registry.extract_from_bytes(data, extension)
+
+
+def extract_content_with_fallback(path: Path) -> str:
+    """提取文件内容，提取器失败时回退到纯文本读取。
+
+    优先通过 :func:`extract_content` 提取（支持 PDF/DOCX 等格式），
+    提取器抛出任何异常时回退到 UTF-8 纯文本读取（``errors="ignore"``）。
+    纯文本读取失败时抛出 :class:`OSError`，由调用方处理。
+
+    :param path: 文件路径
+    :return: 提取的文本内容；提取器失败时返回纯文本内容
+    :raises OSError: 纯文本回退读取失败
+    """
+    try:
+        return extract_content(path)
+    except Exception:
+        logger.debug("提取器提取失败，回退到纯文本: %s", path, exc_info=True)
+        return path.read_text(encoding="utf-8", errors="ignore")
