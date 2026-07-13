@@ -348,13 +348,12 @@ class WorkflowStage(enum.Enum):
     RESULTS = "results"
 
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, Ui_MainWindow):
     """主窗口：扫描器 GUI 入口，基于工作流阶段的三页整页切换布局。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._ui = Ui_MainWindow()
-        self._ui.setupUi(self)
+        self.setupUi(self)
 
         self._config: Config = load_config()
         self._ruleset: RuleSet | None = None
@@ -386,158 +385,97 @@ class MainWindow(QMainWindow):
         # 初始 -1.0 确保首次回调不被节流（time.perf_counter 在新进程可能返回小值）
         self._last_list_update_time: float = -1.0
 
-        self._bind_widgets()
         self._configure_ui()
         self._apply_config()
         self._init_rules()
 
-    # ----------------------------- UI 绑定与配置 -----------------------------
-
-    def _bind_widgets(self) -> None:
-        """将 Ui_MainWindow 的部件绑定到本类私有属性，保持业务逻辑兼容。"""
-        ui = self._ui
-        # 头部栏与 Tab 切换（rule-12 HeaderBar）
-        self._tab_stack = ui.tab_stack
-        self._sidebar = ui.sidebar
-        self._tab_scan_btn = ui.tab_scan_btn
-        self._tab_rules_btn = ui.tab_rules_btn
-        self._tab_history_btn = ui.tab_history_btn
-        self._settings_btn = ui.settings_btn
-        self._about_btn = ui.about_btn
-        self._sidebar_splitter = ui.sidebar_splitter
-        # 主堆叠区与阶段页面
-        self._main_stack = ui.main_stack
-        self._scan_btn = ui.scan_btn
-        self._view_results_btn = ui.view_results_btn
-        self._pause_resume_btn = ui.pause_resume_btn
-        self._cancel_btn = ui.cancel_btn
-        self._rescan_btn = ui.rescan_btn
-        # 扫描目标区
-        self._scan_mode_combo = ui.scan_mode_combo
-        self._target_stack = ui.target_stack
-        self._drive_buttons_layout = ui.drive_buttons_layout
-        self._path_combo = ui.path_combo
-        self._select_path_btn = ui.select_path_btn
-        self._history_list = ui.history_list
-        # 规则配置区
-        self._load_rules_btn = ui.load_rules_btn
-        self._rules_file_list = ui.rules_file_list
-        self._edit_rule_btn = ui.edit_rule_btn
-        self._rules_tree = ui.rules_tree
-        # 扫描中页：进度与当前文件标签移至状态栏右侧（permanent 区）
-        self._skipped_dirs_list = ui.skipped_dirs_list
-        self._matched_files_list = ui.matched_files_list
-        # 状态栏：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）
-        self._stats_label = QLabel("就绪")
-        self._stats_label.setObjectName("stats_label")
-        self.statusBar().addWidget(self._stats_label, 1)
-        self._current_file_label = QLabel("")
-        self._current_file_label.setObjectName("current_file_label")
-        self._current_file_label.setMaximumWidth(400)
-        self._current_file_label.setVisible(False)
-        self.statusBar().addPermanentWidget(self._current_file_label)
-        self._progress = QProgressBar()
-        self._progress.setObjectName("progress")
-        self._progress.setFixedWidth(200)
-        # 初始为确定模式（0/100），避免未启动扫描时显示 indeterminate 动画；
-        # 扫描真正启动时（_start_scan）才切换为 setRange(0, 0)
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._progress.setVisible(False)
-        self.statusBar().addPermanentWidget(self._progress)
-        # 结果页
-        self._splitter = ui.results_splitter
-        self._result_tree = ui.result_tree
-        self._path_filter_input = ui.path_filter_input
-        self._rule_filter_combo = ui.rule_filter_combo
-        self._group_mode_combo = ui.group_mode_combo
-        self._note_edit = ui.note_edit
-        self._export_btn = ui.export_btn
-        # 详情区
-        self._detail_action_stack = ui.detail_action_stack
-        self._detail_main_stack = ui.detail_main_stack
-        self._detail_prev_btn = ui.detail_prev_btn
-        self._detail_next_btn = ui.detail_next_btn
-        self._detail_nav_label = ui.detail_nav_label
-        self._detail_open_location_btn = ui.detail_open_location_btn
-        self._detail_info_label = ui.detail_info_label
-        self._detail_hits_table = ui.detail_hits_table
-        self._detail_preview = ui.detail_preview
-        # actions
-        self._scan_action = ui.scan_action
-        self._load_rules_action = ui.load_rules_action
-        self._edit_rules_action = ui.edit_rules_action
-        self._export_csv_action = ui.export_csv_action
-        self._export_json_action = ui.export_json_action
-        self._settings_action = ui.settings_action
+    # ----------------------------- UI 配置 -----------------------------
 
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性、layout stretch 与信号槽连接。"""
+        # 状态栏：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）
+        self.stats_label = QLabel("就绪")
+        self.stats_label.setObjectName("stats_label")
+        self.statusBar().addWidget(self.stats_label, 1)
+        self.current_file_label = QLabel("")
+        self.current_file_label.setObjectName("current_file_label")
+        self.current_file_label.setMaximumWidth(400)
+        self.current_file_label.setVisible(False)
+        self.statusBar().addPermanentWidget(self.current_file_label)
+        self.progress = QProgressBar()
+        self.progress.setObjectName("progress")
+        self.progress.setFixedWidth(200)
+        # 初始为确定模式（0/100），避免未启动扫描时显示 indeterminate 动画；
+        # 扫描真正启动时（_start_scan）才切换为 setRange(0, 0)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setVisible(False)
+        self.statusBar().addPermanentWidget(self.progress)
+
         # 结果树列宽
-        self._result_tree.setColumnWidth(0, 400)
-        self._result_tree.setColumnWidth(1, 150)
-        self._result_tree.setColumnWidth(2, 80)
-        self._result_tree.setColumnWidth(3, 60)
-        self._result_tree.setColumnWidth(4, 60)
+        self.result_tree.setColumnWidth(0, 400)
+        self.result_tree.setColumnWidth(1, 150)
+        self.result_tree.setColumnWidth(2, 80)
+        self.result_tree.setColumnWidth(3, 60)
+        self.result_tree.setColumnWidth(4, 60)
 
         # 详情区命中表
-        self._detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self._detail_hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self._detail_hits_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self._detail_hits_table.cellClicked.connect(self._on_detail_hits_row_clicked)
+        self.detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.detail_hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.detail_hits_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.detail_hits_table.cellClicked.connect(self._on_detail_hits_row_clicked)
 
         # QComboBox 初始项
-        self._rule_filter_combo.addItem("全部规则", "")
-        self._group_mode_combo.addItem("不分组", "flat")
-        self._group_mode_combo.addItem("按规则", "rule")
-        self._group_mode_combo.addItem("按严重等级", "severity")
+        self.rule_filter_combo.addItem("全部规则", "")
+        self.group_mode_combo.addItem("不分组", "flat")
+        self.group_mode_combo.addItem("按规则", "rule")
+        self.group_mode_combo.addItem("按严重等级", "severity")
 
         # QSplitter 伸缩比例（左:右 = 2:3）
-        self._splitter.setStretchFactor(0, 2)
-        self._splitter.setStretchFactor(1, 3)
+        self.results_splitter.setStretchFactor(0, 2)
+        self.results_splitter.setStretchFactor(1, 3)
 
         # layout 伸缩因子（.ui 不支持 stretch vector）
-        ui = self._ui
         # 配置页：target_group 自然尺寸 + setup_action_bar 紧随其后 + 底部弹簧填充剩余空间
-        ui.setup_layout.setStretch(0, 0)
-        ui.setup_layout.setStretch(1, 0)
-        ui.setup_layout.addStretch()
-        ui.setup_layout.setStretch(2, 1)
+        self.setup_layout.setStretch(0, 0)
+        self.setup_layout.setStretch(1, 0)
+        self.setup_layout.addStretch()
+        self.setup_layout.setStretch(2, 1)
         # target_group 内：scan_mode_layout（history 已移至 history_tab）
-        ui.target_group_layout.setStretch(0, 0)
+        self.target_group_layout.setStretch(0, 0)
         # rules_group 内：rules_btn_row / rules_file_label / rules_file_list / rules_tree
-        ui.rules_group_layout.setStretch(0, 0)
-        ui.rules_group_layout.setStretch(1, 0)
-        ui.rules_group_layout.setStretch(2, 0)
-        ui.rules_group_layout.setStretch(3, 1)
+        self.rules_group_layout.setStretch(0, 0)
+        self.rules_group_layout.setStretch(1, 0)
+        self.rules_group_layout.setStretch(2, 0)
+        self.rules_group_layout.setStretch(3, 1)
         # rules_tab_layout: rules_group 占满
-        ui.rules_tab_layout.setStretch(0, 1)
+        self.rules_tab_layout.setStretch(0, 1)
         # history_tab_layout: history_label(0) / history_list(1)
-        ui.history_tab_layout.setStretch(0, 0)
-        ui.history_tab_layout.setStretch(1, 1)
+        self.history_tab_layout.setStretch(0, 0)
+        self.history_tab_layout.setStretch(1, 1)
         # sidebar_splitter: sidebar(0) / main_stack(1) 初始比例 220:1060
-        self._sidebar_splitter.setStretchFactor(0, 0)
-        self._sidebar_splitter.setStretchFactor(1, 1)
+        self.sidebar_splitter.setStretchFactor(0, 0)
+        self.sidebar_splitter.setStretchFactor(1, 1)
         # filter_layout: path_filter_input / rule_filter_combo / group_mode_combo
-        ui.filter_layout.setStretch(0, 2)
-        ui.filter_layout.setStretch(1, 1)
-        ui.filter_layout.setStretch(2, 1)
+        self.filter_layout.setStretch(0, 2)
+        self.filter_layout.setStretch(1, 1)
+        self.filter_layout.setStretch(2, 1)
         # results_list_layout: filter_bar / result_tree
-        ui.results_list_layout.setStretch(0, 0)
-        ui.results_list_layout.setStretch(1, 1)
+        self.results_list_layout.setStretch(0, 0)
+        self.results_list_layout.setStretch(1, 1)
         # detail_layout: detail_action_stack / detail_main_stack
-        ui.detail_layout.setStretch(0, 0)
-        ui.detail_layout.setStretch(1, 1)
-        ui.detail_nonempty_main_layout.setStretch(0, 0)
-        ui.detail_nonempty_main_layout.setStretch(1, 0)
-        ui.detail_nonempty_main_layout.setStretch(2, 1)
-        ui.detail_nonempty_main_layout.setStretch(3, 0)
-        ui.detail_nonempty_main_layout.setStretch(4, 2)
-        ui.detail_nonempty_main_layout.setStretch(5, 0)
+        self.detail_layout.setStretch(0, 0)
+        self.detail_layout.setStretch(1, 1)
+        self.detail_nonempty_main_layout.setStretch(0, 0)
+        self.detail_nonempty_main_layout.setStretch(1, 0)
+        self.detail_nonempty_main_layout.setStretch(2, 1)
+        self.detail_nonempty_main_layout.setStretch(3, 0)
+        self.detail_nonempty_main_layout.setStretch(4, 2)
+        self.detail_nonempty_main_layout.setStretch(5, 0)
 
         # 空白详情面板居中（.ui 中 QVBoxLayout 不支持 alignment 属性）
-        ui.detail_empty_main_layout.insertStretch(0)
-        ui.detail_empty_main_layout.addStretch()
+        self.detail_empty_main_layout.insertStretch(0)
+        self.detail_empty_main_layout.addStretch()
 
         # 加载图标并为扫描控制按钮设置
         self._icon_scan = _load_themed_icon(_ICON_SCAN, theme.COLOR_PRIMARY)
@@ -564,52 +502,52 @@ class MainWindow(QMainWindow):
         self._icon_load_list_on_primary = _load_themed_icon(_ICON_LOAD_LIST, theme.COLOR_TEXT_ON_PRIMARY)
         self._icon_settings_on_primary = _load_themed_icon(_ICON_SETTINGS, theme.COLOR_TEXT_ON_PRIMARY)
         self._icon_about_on_primary = _load_themed_icon(_ICON_ABOUT, theme.COLOR_TEXT_ON_PRIMARY)
-        self._scan_btn.setIcon(self._icon_scan)
+        self.scan_btn.setIcon(self._icon_scan)
         # 扫描模式下拉项图标
-        self._scan_mode_combo.setItemIcon(0, self._icon_all_disk)
-        self._scan_mode_combo.setItemIcon(1, self._icon_disk)
-        self._scan_mode_combo.setItemIcon(2, self._icon_folder)
+        self.scan_mode_combo.setItemIcon(0, self._icon_all_disk)
+        self.scan_mode_combo.setItemIcon(1, self._icon_disk)
+        self.scan_mode_combo.setItemIcon(2, self._icon_folder)
         # 加载规则按钮图标
-        self._load_rules_btn.setIcon(self._icon_load_list)
-        self._load_rules_action.setIcon(self._icon_load_list)
+        self.load_rules_btn.setIcon(self._icon_load_list)
+        self.load_rules_action.setIcon(self._icon_load_list)
         # 菜单 actions 图标
-        self._scan_action.setIcon(self._icon_scan)
-        self._edit_rule_btn.setIcon(self._icon_edit)
-        self._edit_rules_action.setIcon(self._icon_edit)
-        self._export_btn.setIcon(self._icon_export)
-        self._export_csv_action.setIcon(self._icon_export_csv)
-        self._export_json_action.setIcon(self._icon_export_json)
-        self._settings_action.setIcon(self._icon_settings)
-        self._ui.about_action.setIcon(self._icon_about)
-        self._rescan_btn.setIcon(self._icon_rescan)
-        self._cancel_btn.setIcon(self._icon_stop)
-        self._pause_resume_btn.setIcon(self._icon_pause)
+        self.scan_action.setIcon(self._icon_scan)
+        self.edit_rule_btn.setIcon(self._icon_edit)
+        self.edit_rules_action.setIcon(self._icon_edit)
+        self.export_btn.setIcon(self._icon_export)
+        self.export_csv_action.setIcon(self._icon_export_csv)
+        self.export_json_action.setIcon(self._icon_export_json)
+        self.settings_action.setIcon(self._icon_settings)
+        self.about_action.setIcon(self._icon_about)
+        self.rescan_btn.setIcon(self._icon_rescan)
+        self.cancel_btn.setIcon(self._icon_stop)
+        self.pause_resume_btn.setIcon(self._icon_pause)
 
         # 头部栏按钮图标（深色背景用白色变体，rule-12 HeaderBar）
-        self._tab_scan_btn.setIcon(self._icon_scan_on_primary)
-        self._tab_rules_btn.setIcon(self._icon_load_list_on_primary)
-        self._tab_history_btn.setIcon(self._icon_history_on_primary)
-        self._settings_btn.setIcon(self._icon_settings_on_primary)
-        self._about_btn.setIcon(self._icon_about_on_primary)
+        self.tab_scan_btn.setIcon(self._icon_scan_on_primary)
+        self.tab_rules_btn.setIcon(self._icon_load_list_on_primary)
+        self.tab_history_btn.setIcon(self._icon_history_on_primary)
+        self.settings_btn.setIcon(self._icon_settings_on_primary)
+        self.about_btn.setIcon(self._icon_about_on_primary)
 
         # 头部 Tab 按钮互斥组（id 0=扫描 / 1=规则 / 2=历史）
         self._header_button_group = QButtonGroup(self)
         self._header_button_group.setExclusive(True)
-        self._header_button_group.addButton(self._tab_scan_btn, 0)
-        self._header_button_group.addButton(self._tab_rules_btn, 1)
-        self._header_button_group.addButton(self._tab_history_btn, 2)
+        self._header_button_group.addButton(self.tab_scan_btn, 0)
+        self._header_button_group.addButton(self.tab_rules_btn, 1)
+        self._header_button_group.addButton(self.tab_history_btn, 2)
 
         # 侧边栏阶段项（深色背景用白色变体；配置 / 扫描中 / 结果）
-        self._sidebar.blockSignals(True)
-        self._sidebar.clear()
-        self._sidebar.addItem(QListWidgetItem(self._icon_folder_on_primary, "配置"))
-        self._sidebar.addItem(QListWidgetItem(self._icon_scan_on_primary, "扫描中"))
-        self._sidebar.addItem(QListWidgetItem(self._icon_history_on_primary, "结果"))
-        self._sidebar.setCurrentRow(0)
-        self._sidebar.blockSignals(False)
+        self.sidebar.blockSignals(True)
+        self.sidebar.clear()
+        self.sidebar.addItem(QListWidgetItem(self._icon_folder_on_primary, "配置"))
+        self.sidebar.addItem(QListWidgetItem(self._icon_scan_on_primary, "扫描中"))
+        self.sidebar.addItem(QListWidgetItem(self._icon_history_on_primary, "结果"))
+        self.sidebar.setCurrentRow(0)
+        self.sidebar.blockSignals(False)
 
         # 侧边栏分隔器初始尺寸（220:剩余）
-        self._sidebar_splitter.setSizes([220, 1060])
+        self.sidebar_splitter.setSizes([220, 1060])
 
         # 初始化盘符按钮组（平铺选择，替代下拉）
         self._drive_button_group = QButtonGroup(self)
@@ -618,42 +556,42 @@ class MainWindow(QMainWindow):
         self._refresh_drive_buttons()
 
         # 信号槽连接
-        self._scan_btn.clicked.connect(self._on_scan)
-        self._view_results_btn.clicked.connect(self._on_view_results)
-        self._pause_resume_btn.clicked.connect(self._on_pause_resume)
-        self._cancel_btn.clicked.connect(self._on_cancel_scan)
-        self._rescan_btn.clicked.connect(self._on_rescan)
-        self._scan_mode_combo.currentIndexChanged.connect(self._on_scan_mode_changed)
-        self._path_combo.currentIndexChanged.connect(self._on_path_selected)
-        self._select_path_btn.clicked.connect(self._on_select_path)
-        self._load_rules_btn.clicked.connect(self._on_load_rules)
-        self._result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
-        self._result_tree.itemSelectionChanged.connect(self._on_result_selection_changed)
-        self._path_filter_input.textChanged.connect(self._refresh_result_tree)
-        self._rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
-        self._group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
-        self._edit_rule_btn.clicked.connect(self._on_edit_rules)
-        self._history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
-        self._export_btn.clicked.connect(self._on_export_menu)
-        self._detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
-        self._detail_next_btn.clicked.connect(self._on_next_detail_hit)
-        self._detail_open_location_btn.clicked.connect(self._on_open_file_location)
+        self.scan_btn.clicked.connect(self._on_scan)
+        self.view_results_btn.clicked.connect(self._on_view_results)
+        self.pause_resume_btn.clicked.connect(self._on_pause_resume)
+        self.cancel_btn.clicked.connect(self._on_cancel_scan)
+        self.rescan_btn.clicked.connect(self._on_rescan)
+        self.scan_mode_combo.currentIndexChanged.connect(self._on_scan_mode_changed)
+        self.path_combo.currentIndexChanged.connect(self._on_path_selected)
+        self.select_path_btn.clicked.connect(self._on_select_path)
+        self.load_rules_btn.clicked.connect(self._on_load_rules)
+        self.result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
+        self.result_tree.itemSelectionChanged.connect(self._on_result_selection_changed)
+        self.path_filter_input.textChanged.connect(self._refresh_result_tree)
+        self.rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
+        self.group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
+        self.edit_rule_btn.clicked.connect(self._on_edit_rules)
+        self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
+        self.export_btn.clicked.connect(self._on_export_menu)
+        self.detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
+        self.detail_next_btn.clicked.connect(self._on_next_detail_hit)
+        self.detail_open_location_btn.clicked.connect(self._on_open_file_location)
         # 头部栏与侧边栏信号槽（rule-12 HeaderBar + Sidebar）
         self._header_button_group.idClicked.connect(self._on_header_tab_changed)
-        self._sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
-        self._settings_btn.clicked.connect(self._on_settings)
-        self._about_btn.clicked.connect(self._on_about)
+        self.sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
+        self.settings_btn.clicked.connect(self._on_settings)
+        self.about_btn.clicked.connect(self._on_about)
 
         # actions 信号槽
-        self._load_rules_action.triggered.connect(self._on_load_rules)
-        self._edit_rules_action.triggered.connect(self._on_edit_rules)
-        self._export_csv_action.triggered.connect(lambda: self._on_export("csv"))
-        self._export_json_action.triggered.connect(lambda: self._on_export("json"))
-        self._ui.quit_action.triggered.connect(self.close)
-        self._ui.select_path_action.triggered.connect(self._on_select_path)
-        self._scan_action.triggered.connect(self._on_scan)
-        self._ui.about_action.triggered.connect(self._on_about)
-        self._settings_action.triggered.connect(self._on_settings)
+        self.load_rules_action.triggered.connect(self._on_load_rules)
+        self.edit_rules_action.triggered.connect(self._on_edit_rules)
+        self.export_csv_action.triggered.connect(lambda: self._on_export("csv"))
+        self.export_json_action.triggered.connect(lambda: self._on_export("json"))
+        self.quit_action.triggered.connect(self.close)
+        self.select_path_action.triggered.connect(self._on_select_path)
+        self.scan_action.triggered.connect(self._on_scan)
+        self.about_action.triggered.connect(self._on_about)
+        self.settings_action.triggered.connect(self._on_settings)
 
         # 右键菜单与快捷键
         self._setup_context_menus()
@@ -664,16 +602,16 @@ class MainWindow(QMainWindow):
 
     def _setup_context_menus(self) -> None:
         """为结果树和规则文件列表配置右键菜单策略。"""
-        self._result_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._result_tree.customContextMenuRequested.connect(self._on_result_tree_context_menu)
-        self._rules_file_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self._rules_file_list.customContextMenuRequested.connect(self._on_rules_file_list_context_menu)
+        self.result_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.result_tree.customContextMenuRequested.connect(self._on_result_tree_context_menu)
+        self.rules_file_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.rules_file_list.customContextMenuRequested.connect(self._on_rules_file_list_context_menu)
 
     def _on_result_tree_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
         """结果树右键菜单：复制路径 / 在新窗口打开 / 打开文件位置。"""
         if self._detail_current_result is None:
             return
-        menu = QMenu(self._result_tree)
+        menu = QMenu(self.result_tree)
         action_copy = QAction("复制路径", menu)
         action_open_window = QAction("在新窗口打开", menu)
         action_open_location = QAction("打开文件位置", menu)
@@ -683,13 +621,13 @@ class MainWindow(QMainWindow):
         menu.addAction(action_copy)
         menu.addAction(action_open_window)
         menu.addAction(action_open_location)
-        menu.exec_(self._result_tree.viewport().mapToGlobal(pos))
+        menu.exec_(self.result_tree.viewport().mapToGlobal(pos))
 
     def _on_rules_file_list_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
         """规则文件列表右键菜单：上移 / 下移 / 移除。"""
-        if self._rules_file_list.currentRow() < 0:
+        if self.rules_file_list.currentRow() < 0:
             return
-        menu = QMenu(self._rules_file_list)
+        menu = QMenu(self.rules_file_list)
         action_up = QAction("上移", menu)
         action_down = QAction("下移", menu)
         action_remove = QAction("移除", menu)
@@ -700,7 +638,7 @@ class MainWindow(QMainWindow):
         menu.addAction(action_down)
         menu.addSeparator()
         menu.addAction(action_remove)
-        menu.exec_(self._rules_file_list.viewport().mapToGlobal(pos))
+        menu.exec_(self.rules_file_list.viewport().mapToGlobal(pos))
 
     def _setup_shortcuts(self) -> None:
         """创建全局快捷键：F3 下一条命中、Shift+F3 上一条命中、Delete 移除规则文件。"""
@@ -708,7 +646,7 @@ class MainWindow(QMainWindow):
         self._shortcut_next.activated.connect(self._on_next_detail_hit)
         self._shortcut_prev = QShortcut(QKeySequence("Shift+F3"), self)
         self._shortcut_prev.activated.connect(self._on_prev_detail_hit)
-        self._shortcut_remove_rule = QShortcut(QKeySequence.Delete, self._rules_file_list)
+        self._shortcut_remove_rule = QShortcut(QKeySequence.Delete, self.rules_file_list)
         self._shortcut_remove_rule.activated.connect(self._on_remove_rule)
 
     def _set_use_builtin(self, enabled: bool) -> None:
@@ -723,9 +661,9 @@ class MainWindow(QMainWindow):
             self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+                self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
             else:
-                self._stats_label.setText("未加载规则")
+                self.stats_label.setText("未加载规则")
         except RuleError as exc:
             QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
@@ -743,10 +681,10 @@ class MainWindow(QMainWindow):
             WorkflowStage.SCANNING: 1,
             WorkflowStage.RESULTS: 2,
         }[stage]
-        self._main_stack.setCurrentIndex(page_index)
-        self._sidebar.blockSignals(True)
-        self._sidebar.setCurrentRow(page_index)
-        self._sidebar.blockSignals(False)
+        self.main_stack.setCurrentIndex(page_index)
+        self.sidebar.blockSignals(True)
+        self.sidebar.setCurrentRow(page_index)
+        self.sidebar.blockSignals(False)
         self._update_stage_actions()
 
     def _on_header_tab_changed(self, tab_id: int) -> None:
@@ -754,8 +692,8 @@ class MainWindow(QMainWindow):
 
         :param tab_id: 0=扫描 / 1=规则管理 / 2=扫描历史
         """
-        self._tab_stack.setCurrentIndex(tab_id)
-        self._sidebar.setVisible(tab_id == 0)
+        self.tab_stack.setCurrentIndex(tab_id)
+        self.sidebar.setVisible(tab_id == 0)
 
     def _on_sidebar_stage_changed(self, row: int) -> None:
         """侧边栏阶段项切换：映射 row 到 WorkflowStage 并切换页面。
@@ -775,37 +713,37 @@ class MainWindow(QMainWindow):
         has_report = self._last_report is not None
 
         # 配置页：scan_btn 仅在 SETUP 可用；view_results_btn 始终可见，根据是否有结果启用
-        self._scan_btn.setEnabled(is_setup and self._can_start_scan())
-        self._view_results_btn.setVisible(is_setup)
-        self._view_results_btn.setEnabled(has_report)
+        self.scan_btn.setEnabled(is_setup and self._can_start_scan())
+        self.view_results_btn.setVisible(is_setup)
+        self.view_results_btn.setEnabled(has_report)
 
         # 状态栏进度条与当前文件标签：扫描中阶段可见，其余阶段隐藏。
         # 进度条初始为确定模式（0/100），不会显示 indeterminate 动画；
         # 仅在 _start_scan 中切换为 indeterminate 模式。
-        self._progress.setVisible(is_scanning)
-        self._current_file_label.setVisible(is_scanning)
+        self.progress.setVisible(is_scanning)
+        self.current_file_label.setVisible(is_scanning)
 
         # 扫描中页：pause_resume_btn 文本随 ScanState 切换
         if self._workflow_stage == WorkflowStage.SCANNING:
             if self._scan_state == ScanState.PAUSED:
-                self._pause_resume_btn.setText("继续扫描")
+                self.pause_resume_btn.setText("继续扫描")
             else:
-                self._pause_resume_btn.setText("暂停扫描")
+                self.pause_resume_btn.setText("暂停扫描")
 
         # 结果页
-        self._rescan_btn.setEnabled(is_results)
+        self.rescan_btn.setEnabled(is_results)
         if is_results and has_report:
-            self._export_btn.setEnabled(len(self._last_report.hits) > 0)
+            self.export_btn.setEnabled(len(self._last_report.hits) > 0)
         else:
-            self._export_btn.setEnabled(False)
+            self.export_btn.setEnabled(False)
 
         # 菜单 actions
-        self._scan_action.setEnabled(is_setup and self._can_start_scan())
-        self._ui.select_path_action.setEnabled(is_setup)
-        self._export_csv_action.setEnabled(is_results and has_report)
-        self._export_json_action.setEnabled(is_results and has_report)
-        self._load_rules_action.setEnabled(is_setup)
-        self._edit_rules_action.setEnabled(is_setup)
+        self.scan_action.setEnabled(is_setup and self._can_start_scan())
+        self.select_path_action.setEnabled(is_setup)
+        self.export_csv_action.setEnabled(is_results and has_report)
+        self.export_json_action.setEnabled(is_results and has_report)
+        self.load_rules_action.setEnabled(is_setup)
+        self.edit_rules_action.setEnabled(is_setup)
 
     def _can_start_scan(self) -> bool:
         """判断是否满足开始扫描的条件。"""
@@ -870,14 +808,14 @@ class MainWindow(QMainWindow):
             self.showMaximized()
 
         if self._config.splitter_sizes:
-            self._splitter.setSizes(self._config.splitter_sizes)
+            self.results_splitter.setSizes(self._config.splitter_sizes)
 
         # 恢复扫描模式
         self._scan_mode = self._config.scan_mode if self._config.scan_mode in ("full", "drive", "folder") else "folder"
         mode_index_map = {"full": 0, "drive": 1, "folder": 2}
-        self._scan_mode_combo.blockSignals(True)
-        self._scan_mode_combo.setCurrentIndex(mode_index_map[self._scan_mode])
-        self._scan_mode_combo.blockSignals(False)
+        self.scan_mode_combo.blockSignals(True)
+        self.scan_mode_combo.setCurrentIndex(mode_index_map[self._scan_mode])
+        self.scan_mode_combo.blockSignals(False)
         self._update_target_visibility()
 
         # 恢复上次选择的盘符
@@ -893,18 +831,18 @@ class MainWindow(QMainWindow):
 
         self._rules_paths = [Path(p) for p in self._config.rules_paths if Path(p).exists()]
 
-        self._path_combo.blockSignals(True)
+        self.path_combo.blockSignals(True)
         for p in self._config.scan_paths:
-            self._path_combo.addItem(p)
-        self._path_combo.blockSignals(False)
+            self.path_combo.addItem(p)
+        self.path_combo.blockSignals(False)
 
         # 恢复扫描历史
         self._scan_history = list(self._config.scan_paths)
         self._refresh_history_list()
 
         # 恢复首个有效路径作为扫描目标，启用扫描按钮
-        if self._scan_mode == "folder" and self._path_combo.count() > 0:
-            first_path = Path(self._path_combo.itemText(0))
+        if self._scan_mode == "folder" and self.path_combo.count() > 0:
+            first_path = Path(self.path_combo.itemText(0))
             self._scan_root = first_path if first_path.exists() else None
         self._update_scan_button()
 
@@ -913,25 +851,25 @@ class MainWindow(QMainWindow):
         geo = self.geometry()
         self._config.window_geometry = [geo.x(), geo.y(), geo.width(), geo.height()]
         self._config.window_state = "maximized" if self.isMaximized() else "normal"
-        self._config.splitter_sizes = list(self._splitter.sizes())
+        self._config.splitter_sizes = list(self.results_splitter.sizes())
         self._config.scan_mode = self._scan_mode
         self._config.last_drive = self._selected_drive
         self._config.rules_paths = [str(p) for p in self._rules_paths]
         self._config.use_builtin = self._use_builtin
-        self._config.scan_paths = [self._path_combo.itemText(i) for i in range(self._path_combo.count())]
+        self._config.scan_paths = [self.path_combo.itemText(i) for i in range(self.path_combo.count())]
         save_config(self._config)
 
     def _add_scan_path_history(self, path_str: str) -> None:
         """将路径添加到扫描历史下拉与历史列表（去重、最近优先、限制数量）。"""
-        self._path_combo.blockSignals(True)
-        idx = self._path_combo.findText(path_str)
+        self.path_combo.blockSignals(True)
+        idx = self.path_combo.findText(path_str)
         if idx >= 0:
-            self._path_combo.removeItem(idx)
-        self._path_combo.insertItem(0, path_str)
-        while self._path_combo.count() > MAX_HISTORY:
-            self._path_combo.removeItem(self._path_combo.count() - 1)
-        self._path_combo.setCurrentIndex(0)
-        self._path_combo.blockSignals(False)
+            self.path_combo.removeItem(idx)
+        self.path_combo.insertItem(0, path_str)
+        while self.path_combo.count() > MAX_HISTORY:
+            self.path_combo.removeItem(self.path_combo.count() - 1)
+        self.path_combo.setCurrentIndex(0)
+        self.path_combo.blockSignals(False)
 
         # 同步扫描历史
         if path_str in self._scan_history:
@@ -943,11 +881,11 @@ class MainWindow(QMainWindow):
 
     def _refresh_history_list(self) -> None:
         """刷新扫描历史列表。"""
-        self._history_list.clear()
+        self.history_list.clear()
         for path_str in self._scan_history:
             item = QListWidgetItem(path_str)
             item.setToolTip(path_str)
-            self._history_list.addItem(item)
+            self.history_list.addItem(item)
 
     def _on_history_item_double_clicked(self, item: QListWidgetItem) -> None:
         """双击历史列表项切换到 folder 模式并选择该路径。"""
@@ -956,7 +894,7 @@ class MainWindow(QMainWindow):
         if not path.exists():
             QMessageBox.information(self, "提示", f"路径不存在:\n{path_str}")
             return
-        self._scan_mode_combo.setCurrentIndex(2)
+        self.scan_mode_combo.setCurrentIndex(2)
         self._scan_root = path
         self._add_scan_path_history(path_str)
         self._update_stage_actions()
@@ -971,10 +909,10 @@ class MainWindow(QMainWindow):
             self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条通用规则")
+                self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条通用规则")
         except RuleError as exc:
             logger.warning("内置规则加载失败: %s", exc)
-            self._stats_label.setText("内置规则加载失败")
+            self.stats_label.setText("内置规则加载失败")
 
     def _reload_ruleset(self) -> None:
         """根据当前通用规则开关与用户规则路径列表重新加载规则集。"""
@@ -997,26 +935,26 @@ class MainWindow(QMainWindow):
     def _update_target_visibility(self) -> None:
         """根据扫描模式切换目标选择区页面（QStackedWidget 保持布局稳定）。"""
         page_map = {"full": 0, "drive": 1, "folder": 2}
-        self._target_stack.setCurrentIndex(page_map.get(self._scan_mode, 2))
+        self.target_stack.setCurrentIndex(page_map.get(self._scan_mode, 2))
 
     def _refresh_drive_buttons(self) -> None:
         """刷新盘符按钮列表（hard_disk 图标 + 盘符字母，平铺展示）。"""
         # 清除旧按钮
         for btn in self._drive_buttons:
             self._drive_button_group.removeButton(btn)
-            self._drive_buttons_layout.removeWidget(btn)
+            self.drive_buttons_layout.removeWidget(btn)
             btn.deleteLater()
         self._drive_buttons.clear()
 
         for drive in list_drives(include_network=self._config.include_network_drives):
             letter = str(drive)[:1]
-            btn = QPushButton(letter, self._target_stack.widget(1))
+            btn = QPushButton(letter, self.target_stack.widget(1))
             btn.setObjectName(f"drive_btn_{letter}")
             btn.setCheckable(True)
             btn.setProperty("drive", str(drive))
             btn.setIcon(self._icon_hard_disk)
             btn.setIconSize(QSize(14, self._config.drive_icon_size))
-            self._drive_buttons_layout.addWidget(btn)
+            self.drive_buttons_layout.addWidget(btn)
             self._drive_button_group.addButton(btn)
             self._drive_buttons.append(btn)
 
@@ -1059,7 +997,7 @@ class MainWindow(QMainWindow):
             self._refresh_rules_file_list()
             self._update_scan_button()
             if self._ruleset is not None:
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+                self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
         except RuleError as exc:
             self._rules_paths.remove(path)
             self._reload_ruleset()
@@ -1088,7 +1026,7 @@ class MainWindow(QMainWindow):
             self._scan_root = None
             self._update_scan_button()
             return
-        path_str = self._path_combo.itemText(index)
+        path_str = self.path_combo.itemText(index)
         if not path_str:
             self._scan_root = None
         else:
@@ -1111,15 +1049,15 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
             return
 
-        self._result_tree.clear()
+        self.result_tree.clear()
         self._detail_clear()
         self._scan_state = ScanState.RUNNING
-        self._progress.setRange(0, 0)
-        self._current_file_label.setText("准备扫描...")
-        self._stats_label.setText("扫描中...")
+        self.progress.setRange(0, 0)
+        self.current_file_label.setText("准备扫描...")
+        self.stats_label.setText("扫描中...")
         # 清空扫描中页的列表，避免残留上次扫描数据（统计已由状态栏 stats_label 承载）
-        self._skipped_dirs_list.clear()
-        self._matched_files_list.clear()
+        self.skipped_dirs_list.clear()
+        self.matched_files_list.clear()
         # 重置增量更新状态，避免上次扫描的快照干扰本次增量对比
         self._last_skipped_dirs = ()
         self._last_matched_files = ()
@@ -1169,16 +1107,16 @@ class MainWindow(QMainWindow):
         if self._worker is not None:
             self._worker.pause()
         self._scan_state = ScanState.PAUSED
-        self._pause_resume_btn.setText("继续扫描")
-        self._stats_label.setText("已暂停")
+        self.pause_resume_btn.setText("继续扫描")
+        self.stats_label.setText("已暂停")
 
     def _resume_scan(self) -> None:
         """恢复扫描。"""
         if self._worker is not None:
             self._worker.resume()
         self._scan_state = ScanState.RUNNING
-        self._pause_resume_btn.setText("暂停扫描")
-        self._stats_label.setText("扫描中...")
+        self.pause_resume_btn.setText("暂停扫描")
+        self.stats_label.setText("扫描中...")
 
     def _on_scan_cancelled(self, report: ScanReport) -> None:
         """扫描被取消后的回调：有结果切结果页，无结果切配置页。"""
@@ -1186,7 +1124,7 @@ class MainWindow(QMainWindow):
         self._reset_scan_ui()
         self._populate_results(report)
         stats = report.stats
-        self._stats_label.setText(
+        self.stats_label.setText(
             f"已取消: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
             f"命中 {stats.matched_files} | 条数 {stats.total_matches} | 耗时 {stats.duration_seconds:.2f}s"
         )
@@ -1198,11 +1136,11 @@ class MainWindow(QMainWindow):
     def _reset_scan_ui(self) -> None:
         """重置扫描 UI 到空闲状态。"""
         self._scan_state = ScanState.IDLE
-        self._pause_resume_btn.setText("暂停扫描")
+        self.pause_resume_btn.setText("暂停扫描")
         # 重置进度条为确定模式（0/100），避免下次进入扫描页时残留 indeterminate 动画
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._current_file_label.setText("")
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.current_file_label.setText("")
         self._cleanup_worker()
 
     def _cleanup_worker(self) -> None:
@@ -1220,20 +1158,20 @@ class MainWindow(QMainWindow):
         clear+重添 O(N) 阻塞主线程导致点击设置等交互卡滞。
         """
         # 切换为确定进度模式
-        if info.total > 0 and self._progress.maximum() != info.total:
-            self._progress.setRange(0, info.total)
-        self._progress.setValue(info.scanned)
+        if info.total > 0 and self.progress.maximum() != info.total:
+            self.progress.setRange(0, info.total)
+        self.progress.setValue(info.scanned)
 
         # 当前文件（截断显示，挂载在状态栏右侧）
         if info.current_file:
             path_text = info.current_file
             if len(path_text) > 100:
                 path_text = "..." + path_text[-97:]
-            self._current_file_label.setText(f"正在解析: {path_text}")
+            self.current_file_label.setText(f"正在解析: {path_text}")
 
         # 状态栏汇总文本（速度 = scanned / elapsed）
         speed = info.scanned / info.elapsed if info.elapsed > 0 else 0.0
-        self._stats_label.setText(
+        self.stats_label.setText(
             f"已扫描 {info.scanned} | 跳过 {info.skipped} | "
             f"命中 {info.matched} | 条数 {info.matches} | 错误 {info.errors} | "
             f"已用 {info.elapsed:.1f}s | 速度 {speed:.0f} 文件/s"
@@ -1260,18 +1198,18 @@ class MainWindow(QMainWindow):
         if new_dirs == old_dirs:
             return
         # 关闭更新以避免逐项 addItems 触发重绘，批量完成后统一刷新
-        self._skipped_dirs_list.setUpdatesEnabled(False)
+        self.skipped_dirs_list.setUpdatesEnabled(False)
         try:
             if len(new_dirs) > len(old_dirs) and new_dirs[: len(old_dirs)] == old_dirs:
                 # 增量 append：旧列表是新列表前缀，只添加新增尾部
-                self._skipped_dirs_list.addItems(new_dirs[len(old_dirs) :])
+                self.skipped_dirs_list.addItems(new_dirs[len(old_dirs) :])
             else:
                 # 全量重建（滚动截断或内容变化）
-                self._skipped_dirs_list.clear()
-                self._skipped_dirs_list.addItems(new_dirs)
+                self.skipped_dirs_list.clear()
+                self.skipped_dirs_list.addItems(new_dirs)
         finally:
-            self._skipped_dirs_list.setUpdatesEnabled(True)
-        self._skipped_dirs_list.scrollToBottom()
+            self.skipped_dirs_list.setUpdatesEnabled(True)
+        self.skipped_dirs_list.scrollToBottom()
         self._last_skipped_dirs = new_dirs
 
     def _update_matched_files_list(self, new_files: tuple[tuple[str, str], ...]) -> None:
@@ -1282,20 +1220,20 @@ class MainWindow(QMainWindow):
         if new_files == old_files:
             return
         # 关闭更新以避免逐项 addItems 触发重绘，批量完成后统一刷新
-        self._matched_files_list.setUpdatesEnabled(False)
+        self.matched_files_list.setUpdatesEnabled(False)
         try:
             if len(new_files) > len(old_files) and new_files[: len(old_files)] == old_files:
                 # 增量 append：格式 "路径 → 规则名"
                 items = [f"{fp} → {rn}" for fp, rn in new_files[len(old_files) :]]
-                self._matched_files_list.addItems(items)
+                self.matched_files_list.addItems(items)
             else:
                 # 全量重建
-                self._matched_files_list.clear()
+                self.matched_files_list.clear()
                 items = [f"{fp} → {rn}" for fp, rn in new_files]
-                self._matched_files_list.addItems(items)
+                self.matched_files_list.addItems(items)
         finally:
-            self._matched_files_list.setUpdatesEnabled(True)
-        self._matched_files_list.scrollToBottom()
+            self.matched_files_list.setUpdatesEnabled(True)
+        self.matched_files_list.scrollToBottom()
         self._last_matched_files = new_files
 
     def _on_scan_finished(self, report: ScanReport) -> None:
@@ -1306,7 +1244,7 @@ class MainWindow(QMainWindow):
         self._populate_results(report)
 
         stats = report.stats
-        self._stats_label.setText(
+        self.stats_label.setText(
             f"完成: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
             f"跳过 {stats.skipped_files} | 命中 {stats.matched_files} | "
             f"条数 {stats.total_matches} | 错误 {stats.errors} | 耗时 {stats.duration_seconds:.2f}s"
@@ -1316,7 +1254,7 @@ class MainWindow(QMainWindow):
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调：切回配置页并提示。"""
         self._reset_scan_ui()
-        self._stats_label.setText("扫描失败")
+        self.stats_label.setText("扫描失败")
         self._switch_stage(WorkflowStage.SETUP)
         QMessageBox.critical(self, "扫描失败", error)
 
@@ -1391,7 +1329,7 @@ class MainWindow(QMainWindow):
 
     def _on_result_selection_changed(self) -> None:
         """结果树选中变化：更新详情区主体。"""
-        items = self._result_tree.selectedItems()
+        items = self.result_tree.selectedItems()
         if not items:
             self._detail_clear()
             return
@@ -1408,26 +1346,26 @@ class MainWindow(QMainWindow):
 
     def _detail_clear(self) -> None:
         """清空详情区，切换到空态。"""
-        self._detail_action_stack.setCurrentIndex(0)
-        self._detail_main_stack.setCurrentIndex(0)
+        self.detail_action_stack.setCurrentIndex(0)
+        self.detail_main_stack.setCurrentIndex(0)
         self._detail_current_result = None
         self._detail_hit_positions = []
         self._detail_current_hit_index = -1
-        self._detail_preview.clear()
-        self._detail_hits_table.setRowCount(0)
-        self._detail_info_label.setText("")
+        self.detail_preview.clear()
+        self.detail_hits_table.setRowCount(0)
+        self.detail_info_label.setText("")
 
     def _detail_show_result(self, result: ScanResult) -> None:
         """在详情区展示选中项的详情，切换到非空态。"""
         self._detail_current_result = result
-        self._detail_action_stack.setCurrentIndex(1)
-        self._detail_main_stack.setCurrentIndex(1)
+        self.detail_action_stack.setCurrentIndex(1)
+        self.detail_main_stack.setCurrentIndex(1)
         # 先填充预览以计算高亮位置，再填充文件信息和命中表（均依赖位置数据）
         self._populate_detail_preview(result)
         self._populate_detail_file_info(result)
         self._populate_detail_hits_table(result)
         # 强制刷新当前详情页，避免 Qt 渲染时序导致 stack 未生效
-        self._detail_main_stack.currentWidget().update()
+        self.detail_main_stack.currentWidget().update()
 
     def _populate_detail_file_info(self, result: ScanResult) -> None:
         """填充详情区文件元信息。"""
@@ -1446,25 +1384,25 @@ class MainWindow(QMainWindow):
             f"<b>命中规则数:</b> {len(result.hits)} | <b>匹配条数:</b> {result.total_match_count}"
             f" | <b>可切换位置:</b> {len(self._detail_hit_positions)}"
         )
-        self._detail_info_label.setText(info_html)
+        self.detail_info_label.setText(info_html)
 
     def _populate_detail_hits_table(self, result: ScanResult) -> None:
         """填充详情区命中规则表。"""
         hits = result.hits
         logger.debug("填充命中表: %s, 命中数=%d", result.path, len(hits))
-        self._detail_hits_table.setRowCount(len(hits))
+        self.detail_hits_table.setRowCount(len(hits))
         # 统计每条规则在预览中的高亮位置数
         position_counts: dict[int, int] = {}
         for _, _, rule_idx in self._detail_hit_positions:
             position_counts[rule_idx] = position_counts.get(rule_idx, 0) + 1
         for row, hit in enumerate(hits):
-            self._detail_hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
+            self.detail_hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
             sev_item = QTableWidgetItem("")
             _apply_severity_to_table_item(sev_item, hit.severity)
-            self._detail_hits_table.setItem(row, 1, sev_item)
+            self.detail_hits_table.setItem(row, 1, sev_item)
             count_item = QTableWidgetItem(str(hit.match_count))
             count_item.setTextAlignment(Qt.AlignCenter)
-            self._detail_hits_table.setItem(row, 2, count_item)
+            self.detail_hits_table.setItem(row, 2, count_item)
             if hit.target == "filename":
                 pos_item = QTableWidgetItem("-")
                 pos_item.setToolTip("仅匹配文件名，无内容高亮位置")
@@ -1472,11 +1410,11 @@ class MainWindow(QMainWindow):
                 pos_item = QTableWidgetItem(str(position_counts.get(row, 0)))
                 pos_item.setToolTip("该规则在预览中可高亮跳转的位置数")
             pos_item.setTextAlignment(Qt.AlignCenter)
-            self._detail_hits_table.setItem(row, 3, pos_item)
+            self.detail_hits_table.setItem(row, 3, pos_item)
             detail_text = hit.detail
             if hit.target == "filename":
                 detail_text = f"{detail_text}（仅文件名）"
-            self._detail_hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
+            self.detail_hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
 
     def _populate_detail_preview(self, result: ScanResult) -> None:
         """填充详情区内容预览，命中关键词高亮并定位到首个命中。"""
@@ -1492,12 +1430,12 @@ class MainWindow(QMainWindow):
                 content = path.read_text(encoding="utf-8", errors="ignore")
             except OSError as exc:
                 logger.warning("读取内容预览失败 %s", path, exc_info=True)
-                self._detail_preview.setPlainText(f"无法读取文件内容: {exc}")
+                self.detail_preview.setPlainText(f"无法读取文件内容: {exc}")
                 self._update_detail_nav_label()
                 return
 
         if not content:
-            self._detail_preview.setPlainText("(文件内容为空或为二进制)")
+            self.detail_preview.setPlainText("(文件内容为空或为二进制)")
             self._update_detail_nav_label()
             return
 
@@ -1510,7 +1448,7 @@ class MainWindow(QMainWindow):
         # 命中规则但无法提取关键词（如纯文件名/路径匹配），显示提示避免误判为"无命中"
         if not keywords and result.hits:
             rule_names = "、".join(h.rule_name for h in result.hits)
-            self._detail_preview.setPlainText(
+            self.detail_preview.setPlainText(
                 f"（此文件因【{rule_names}】规则命中，但无内容关键词可高亮。命中详情见上方表格。）"
             )
             self._detail_hit_positions = []
@@ -1520,7 +1458,7 @@ class MainWindow(QMainWindow):
         html_content = _build_preview_html(content, keywords)
         if truncated:
             html_content += "<p style='color: #888; font-size: 11px;'>(内容已截断，仅显示前 100KB)</p>"
-        self._detail_preview.setHtml(html_content)
+        self.detail_preview.setHtml(html_content)
 
         # 查找所有关键词位置并定位到首个命中
         self._find_detail_hit_positions(result.hits)
@@ -1544,7 +1482,7 @@ class MainWindow(QMainWindow):
         self._detail_hit_positions = []
         if not hits:
             return
-        plain = self._detail_preview.toPlainText()
+        plain = self.detail_preview.toPlainText()
         if not plain:
             return
         keyword_to_rule = _build_keyword_to_rule_map(hits)
@@ -1565,35 +1503,35 @@ class MainWindow(QMainWindow):
     def _highlight_current_detail_hit(self) -> None:
         """用橙色背景高亮当前命中位置，区别于其他命中的黄色高亮。"""
         if self._detail_current_hit_index < 0 or self._detail_current_hit_index >= len(self._detail_hit_positions):
-            self._detail_preview.setExtraSelections([])
+            self.detail_preview.setExtraSelections([])
             return
         start, end, _ = self._detail_hit_positions[self._detail_current_hit_index]
-        doc_length = len(self._detail_preview.toPlainText())
+        doc_length = len(self.detail_preview.toPlainText())
         if start >= doc_length or end > doc_length:
-            self._detail_preview.setExtraSelections([])
+            self.detail_preview.setExtraSelections([])
             return
         sel = QTextEdit.ExtraSelection()
-        cursor = self._detail_preview.textCursor()
+        cursor = self.detail_preview.textCursor()
         cursor.setPosition(start)
         cursor.setPosition(end, QTextCursor.KeepAnchor)
         sel.cursor = cursor
         fmt = QTextCharFormat()
         fmt.setBackground(QColor(255, 165, 0))
         sel.format = fmt
-        self._detail_preview.setExtraSelections([sel])
+        self.detail_preview.setExtraSelections([sel])
 
     def _scroll_to_current_detail_hit(self) -> None:
         """滚动详情区预览使当前命中位置可见。"""
         if self._detail_current_hit_index < 0 or self._detail_current_hit_index >= len(self._detail_hit_positions):
             return
         start, _, _ = self._detail_hit_positions[self._detail_current_hit_index]
-        doc_length = len(self._detail_preview.toPlainText())
+        doc_length = len(self.detail_preview.toPlainText())
         if start >= doc_length:
             return
-        cursor = self._detail_preview.textCursor()
+        cursor = self.detail_preview.textCursor()
         cursor.setPosition(start)
-        self._detail_preview.setTextCursor(cursor)
-        self._detail_preview.ensureCursorVisible()
+        self.detail_preview.setTextCursor(cursor)
+        self.detail_preview.ensureCursorVisible()
 
     def _on_prev_detail_hit(self) -> None:
         """跳转到上一个命中位置。"""
@@ -1638,13 +1576,13 @@ class MainWindow(QMainWindow):
         """更新详情区导航标签与按钮状态。"""
         total = len(self._detail_hit_positions)
         if total == 0:
-            self._detail_nav_label.setText("无命中")
-            self._detail_prev_btn.setEnabled(False)
-            self._detail_next_btn.setEnabled(False)
+            self.detail_nav_label.setText("无命中")
+            self.detail_prev_btn.setEnabled(False)
+            self.detail_next_btn.setEnabled(False)
         else:
-            self._detail_nav_label.setText(f"{self._detail_current_hit_index + 1} / {total}")
-            self._detail_prev_btn.setEnabled(True)
-            self._detail_next_btn.setEnabled(True)
+            self.detail_nav_label.setText(f"{self._detail_current_hit_index + 1} / {total}")
+            self.detail_prev_btn.setEnabled(True)
+            self.detail_next_btn.setEnabled(True)
 
     def _on_open_in_window(self) -> None:
         """在新窗口打开完整详情对话框。"""
@@ -1660,7 +1598,7 @@ class MainWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(str(self._detail_current_result.path))
-            self._stats_label.setText("已复制路径到剪贴板")
+            self.stats_label.setText("已复制路径到剪贴板")
 
     def _on_open_file_location(self) -> None:
         """在文件管理器中打开所在目录。"""
@@ -1685,7 +1623,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_rules_tree(self) -> None:
         """刷新规则列表展示。"""
-        self._rules_tree.clear()
+        self.rules_tree.clear()
         if self._ruleset is None:
             return
         for rule in self._ruleset.rules:
@@ -1697,19 +1635,19 @@ class MainWindow(QMainWindow):
                 ]
             )
             _apply_severity_to_tree_item(item, 1, rule.severity)
-            self._rules_tree.addTopLevelItem(item)
+            self.rules_tree.addTopLevelItem(item)
 
     def _refresh_rules_file_list(self) -> None:
         """刷新规则文件列表展示。"""
-        self._rules_file_list.clear()
+        self.rules_file_list.clear()
         for path in self._rules_paths:
             item = QListWidgetItem(str(path))
             item.setToolTip(str(path))
-            self._rules_file_list.addItem(item)
+            self.rules_file_list.addItem(item)
 
     def _on_move_rule_up(self) -> None:
         """将选中的规则文件上移一位。"""
-        row = self._rules_file_list.currentRow()
+        row = self.rules_file_list.currentRow()
         if row <= 0:
             return
         self._rules_paths[row - 1], self._rules_paths[row] = (
@@ -1717,12 +1655,12 @@ class MainWindow(QMainWindow):
             self._rules_paths[row - 1],
         )
         self._refresh_rules_file_list()
-        self._rules_file_list.setCurrentRow(row - 1)
+        self.rules_file_list.setCurrentRow(row - 1)
         self._reload_and_refresh()
 
     def _on_move_rule_down(self) -> None:
         """将选中的规则文件下移一位。"""
-        row = self._rules_file_list.currentRow()
+        row = self.rules_file_list.currentRow()
         if row < 0 or row >= len(self._rules_paths) - 1:
             return
         self._rules_paths[row + 1], self._rules_paths[row] = (
@@ -1730,12 +1668,12 @@ class MainWindow(QMainWindow):
             self._rules_paths[row + 1],
         )
         self._refresh_rules_file_list()
-        self._rules_file_list.setCurrentRow(row + 1)
+        self.rules_file_list.setCurrentRow(row + 1)
         self._reload_and_refresh()
 
     def _on_remove_rule(self) -> None:
         """移除选中的规则文件。"""
-        row = self._rules_file_list.currentRow()
+        row = self.rules_file_list.currentRow()
         if row < 0:
             return
         del self._rules_paths[row]
@@ -1764,9 +1702,9 @@ class MainWindow(QMainWindow):
             self._refresh_rules_tree()
             self._update_scan_button()
             if self._ruleset is not None:
-                self._stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
+                self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
             else:
-                self._stats_label.setText("未加载规则")
+                self.stats_label.setText("未加载规则")
         except RuleError as exc:
             QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
@@ -1776,14 +1714,14 @@ class MainWindow(QMainWindow):
         self._update_rule_filter_options(report)
         self._refresh_result_tree()
         # 有结果时启用导出按钮
-        self._export_btn.setEnabled(len(report.hits) > 0)
+        self.export_btn.setEnabled(len(report.hits) > 0)
 
     def _update_rule_filter_options(self, report: ScanReport) -> None:
         """根据扫描结果更新规则筛选下拉项。"""
-        current_rule = self._rule_filter_combo.currentData()
-        self._rule_filter_combo.blockSignals(True)
-        self._rule_filter_combo.clear()
-        self._rule_filter_combo.addItem("全部规则", "")
+        current_rule = self.rule_filter_combo.currentData()
+        self.rule_filter_combo.blockSignals(True)
+        self.rule_filter_combo.clear()
+        self.rule_filter_combo.addItem("全部规则", "")
         rule_names: list[str] = []
         seen = set()
         for result in report.hits:
@@ -1792,23 +1730,23 @@ class MainWindow(QMainWindow):
                     seen.add(hit.rule_name)
                     rule_names.append(hit.rule_name)
         for name in sorted(rule_names):
-            self._rule_filter_combo.addItem(name, name)
+            self.rule_filter_combo.addItem(name, name)
         # 恢复之前选中的规则
         if current_rule:
-            idx = self._rule_filter_combo.findData(current_rule)
+            idx = self.rule_filter_combo.findData(current_rule)
             if idx >= 0:
-                self._rule_filter_combo.setCurrentIndex(idx)
-        self._rule_filter_combo.blockSignals(False)
+                self.rule_filter_combo.setCurrentIndex(idx)
+        self.rule_filter_combo.blockSignals(False)
 
     def _refresh_result_tree(self) -> None:
         """根据当前筛选条件与分组模式刷新结果树。"""
-        self._result_tree.clear()
+        self.result_tree.clear()
         if self._last_report is None:
             return
 
-        path_filter = self._path_filter_input.text().strip().lower()
-        rule_filter = self._rule_filter_combo.currentData() or ""
-        group_mode = self._group_mode_combo.currentData() or "flat"
+        path_filter = self.path_filter_input.text().strip().lower()
+        rule_filter = self.rule_filter_combo.currentData() or ""
+        group_mode = self.group_mode_combo.currentData() or "flat"
 
         # 筛选 + 收集命中
         filtered = self._filter_results(self._last_report, path_filter, rule_filter)
@@ -1879,7 +1817,7 @@ class MainWindow(QMainWindow):
                 _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 file_item.addChild(child)
-            self._result_tree.addTopLevelItem(file_item)
+            self.result_tree.addTopLevelItem(file_item)
 
     def _populate_grouped_by_rule(self, results: list[ScanResult]) -> None:
         """按规则分组：规则名为顶层项，文件为子项。"""
@@ -1921,7 +1859,7 @@ class MainWindow(QMainWindow):
                 child.setTextAlignment(4, Qt.AlignCenter)
                 child.setData(0, Qt.UserRole, sr)
                 top.addChild(child)
-            self._result_tree.addTopLevelItem(top)
+            self.result_tree.addTopLevelItem(top)
 
     def _populate_grouped_by_severity(self, results: list[ScanResult]) -> None:
         """按严重等级分组：等级为顶层项，文件为子项。"""
@@ -1969,7 +1907,7 @@ class MainWindow(QMainWindow):
                     for col in range(child.columnCount()):
                         child.setBackground(col, _SEVERITY_BACKGROUNDS[Severity.CRITICAL])
                 top.addChild(child)
-            self._result_tree.addTopLevelItem(top)
+            self.result_tree.addTopLevelItem(top)
 
     def _on_result_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
         """双击结果项：在新窗口打开详情对话框。

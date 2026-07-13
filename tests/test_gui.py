@@ -89,14 +89,14 @@ class TestMainWindow:
     def test_window_creation(self, qapp: QApplication) -> None:
         window = MainWindow()
         assert window.windowTitle().startswith("fuscan")
-        assert window._scan_btn is not None
-        assert window._rules_tree is not None
-        assert window._result_tree is not None
+        assert window.scan_btn is not None
+        assert window.rules_tree is not None
+        assert window.result_tree is not None
         window.close()
 
     def test_scan_button_disabled_initially(self, qapp: QApplication) -> None:
         window = MainWindow()
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         window.close()
 
     def test_load_ruleset_updates_rules_tree(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -120,8 +120,8 @@ rules:
         window._ruleset = rs
         window._rules_paths = [rules_yaml]
         window._refresh_rules_tree()
-        assert window._rules_tree.topLevelItemCount() == 1
-        item = window._rules_tree.topLevelItem(0)
+        assert window.rules_tree.topLevelItemCount() == 1
+        item = window.rules_tree.topLevelItem(0)
         assert item.text(0) == "敏感名"
         window.close()
 
@@ -139,8 +139,8 @@ rules:
 
         window = MainWindow()
         window._populate_results(report)
-        assert window._result_tree.topLevelItemCount() == 1
-        item = window._result_tree.topLevelItem(0)
+        assert window.result_tree.topLevelItemCount() == 1
+        item = window.result_tree.topLevelItem(0)
         assert "secret.txt" in item.text(0)
         window.close()
 
@@ -205,7 +205,7 @@ rules:
         window._on_load_rules()
         assert window._ruleset is not None
         assert window._rules_paths == [rules_yaml]
-        assert window._rules_tree.topLevelItemCount() == 1
+        assert window.rules_tree.topLevelItemCount() == 1
         window.close()
 
     def test_load_rules_cancelled(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -263,17 +263,17 @@ rules:
     def test_update_scan_button_state(self, qapp: QApplication, tmp_path: Path) -> None:
         """扫描按钮状态随规则与路径就绪变化。"""
         window = MainWindow()
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
 
         # 仅设置规则
         window._ruleset = _build_ruleset()
         window._update_scan_button()
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
 
         # 设置路径
         window._scan_root = tmp_path
         window._update_scan_button()
-        assert window._scan_btn.isEnabled()
+        assert window.scan_btn.isEnabled()
         window.close()
 
     def test_refresh_rules_tree_empty(self, qapp: QApplication) -> None:
@@ -281,7 +281,7 @@ rules:
         window = MainWindow()
         window._ruleset = None
         window._refresh_rules_tree()
-        assert window._rules_tree.topLevelItemCount() == 0
+        assert window.rules_tree.topLevelItemCount() == 0
         window.close()
 
     def test_close_event_terminates_worker(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -303,7 +303,7 @@ class TestBuiltinRulesToggle:
         assert len(window._ruleset.rules) > 0
         assert window._use_builtin is True
         # 规则树应非空
-        assert window._rules_tree.topLevelItemCount() > 0
+        assert window.rules_tree.topLevelItemCount() > 0
         window.close()
 
     def test_uncheck_builtin_clears_ruleset(self, qapp: QApplication) -> None:
@@ -312,9 +312,9 @@ class TestBuiltinRulesToggle:
         window._set_use_builtin(False)
         assert window._use_builtin is False
         assert window._ruleset is None
-        assert window._rules_tree.topLevelItemCount() == 0
+        assert window.rules_tree.topLevelItemCount() == 0
         # 扫描按钮应禁用
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         window.close()
 
     def test_recheck_builtin_reloads_ruleset(self, qapp: QApplication) -> None:
@@ -350,7 +350,7 @@ class TestBuiltinRulesToggle:
         )
 
         window = MainWindow()
-        builtin_count = window._rules_tree.topLevelItemCount()
+        builtin_count = window.rules_tree.topLevelItemCount()
 
         monkeypatch.setattr(
             "fuscan.gui.main_window.QFileDialog.getOpenFileName",
@@ -358,7 +358,7 @@ class TestBuiltinRulesToggle:
         )
         window._on_load_rules()
         # 合并后规则数应大于内置规则数
-        assert window._rules_tree.topLevelItemCount() > builtin_count
+        assert window.rules_tree.topLevelItemCount() > builtin_count
         assert window._ruleset is not None
         window.close()
 
@@ -367,11 +367,11 @@ class TestBuiltinRulesToggle:
         window = MainWindow()
         assert window._ruleset is not None
         # 未选路径时按钮禁用
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         # 选择路径后按钮启用
         window._scan_root = tmp_path
         window._update_scan_button()
-        assert window._scan_btn.isEnabled()
+        assert window.scan_btn.isEnabled()
         window.close()
 
 
@@ -382,7 +382,7 @@ class TestMultiRulesList:
         """启动时（仅内置规则）规则文件列表应为空。"""
         window = MainWindow()
         assert window._rules_paths == []
-        assert window._rules_file_list.count() == 0
+        assert window.rules_file_list.count() == 0
         window.close()
 
     def test_load_multiple_rules_via_dialog(
@@ -415,9 +415,9 @@ class TestMultiRulesList:
         assert len(window._rules_paths) == 2
         assert window._rules_paths[0] == r1
         assert window._rules_paths[1] == r2
-        assert window._rules_file_list.count() == 2
+        assert window.rules_file_list.count() == 2
         # 合并后规则树应有 2 条规则
-        assert window._rules_tree.topLevelItemCount() == 2
+        assert window.rules_tree.topLevelItemCount() == 2
         window.close()
 
     def test_load_duplicate_rule_ignored(
@@ -471,7 +471,7 @@ class TestMultiRulesList:
         assert rule.match.pattern == "second"
 
         # 选中第二行并上移
-        window._rules_file_list.setCurrentRow(1)
+        window.rules_file_list.setCurrentRow(1)
         window._on_move_rule_up()
 
         # 顺序变为 [r2, r1]，r1 覆盖 r2，pattern 应为 first
@@ -500,7 +500,7 @@ class TestMultiRulesList:
         window._refresh_rules_file_list()
 
         # 选中第一行并下移
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
         window._on_move_rule_down()
 
         # 顺序变为 [r2, r1]，r1 覆盖 r2
@@ -527,7 +527,7 @@ class TestMultiRulesList:
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
         window._on_move_rule_up()
 
         assert window._rules_paths == [r1, r2]
@@ -551,7 +551,7 @@ class TestMultiRulesList:
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
-        window._rules_file_list.setCurrentRow(1)
+        window.rules_file_list.setCurrentRow(1)
         window._on_move_rule_down()
 
         assert window._rules_paths == [r1, r2]
@@ -576,16 +576,16 @@ class TestMultiRulesList:
         window._reload_ruleset()
         window._refresh_rules_file_list()
         window._refresh_rules_tree()
-        assert window._rules_tree.topLevelItemCount() == 2
+        assert window.rules_tree.topLevelItemCount() == 2
 
         # 选中第一行并移除
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
         window._on_remove_rule()
 
         assert len(window._rules_paths) == 1
         assert window._rules_paths[0] == r2
-        assert window._rules_file_list.count() == 1
-        assert window._rules_tree.topLevelItemCount() == 1
+        assert window.rules_file_list.count() == 1
+        assert window.rules_tree.topLevelItemCount() == 1
         window.close()
 
     def test_remove_all_rules_then_none(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -603,12 +603,12 @@ class TestMultiRulesList:
         window._refresh_rules_file_list()
         assert window._ruleset is not None
 
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
         window._on_remove_rule()
 
         assert len(window._rules_paths) == 0
         assert window._ruleset is None
-        assert window._rules_tree.topLevelItemCount() == 0
+        assert window.rules_tree.topLevelItemCount() == 0
         window.close()
 
     def test_order_affects_override(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -698,9 +698,9 @@ class TestConfigPersistence:
         _save_impl(config, tmp_path / "config.yaml")
 
         window = MainWindow()
-        assert window._path_combo.count() == 2
-        assert window._path_combo.itemText(0) == str(tmp_path / "dir_a")
-        assert window._path_combo.itemText(1) == str(tmp_path / "dir_b")
+        assert window.path_combo.count() == 2
+        assert window.path_combo.itemText(0) == str(tmp_path / "dir_a")
+        assert window.path_combo.itemText(1) == str(tmp_path / "dir_b")
         window.close()
 
     def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -747,8 +747,8 @@ class TestConfigPersistence:
         """从下拉选择路径应设置 scan_root。"""
         (tmp_path / "target").mkdir()
         window = MainWindow()
-        window._path_combo.addItem(str(tmp_path / "target"))
-        window._path_combo.setCurrentIndex(0)
+        window.path_combo.addItem(str(tmp_path / "target"))
+        window.path_combo.setCurrentIndex(0)
         assert window._scan_root == tmp_path / "target"
         window.close()
 
@@ -758,7 +758,7 @@ class TestConfigPersistence:
         window = MainWindow()
         window._add_scan_path_history(path_str)
         window._add_scan_path_history(path_str)
-        assert window._path_combo.count() == 1
+        assert window.path_combo.count() == 1
         window.close()
 
     def test_path_history_limit(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -768,9 +768,9 @@ class TestConfigPersistence:
         window = MainWindow()
         for i in range(MAX_HISTORY + 5):
             window._add_scan_path_history(f"/path/{i}")
-        assert window._path_combo.count() == MAX_HISTORY
+        assert window.path_combo.count() == MAX_HISTORY
         # 最近添加的应在最前
-        assert window._path_combo.itemText(0) == f"/path/{MAX_HISTORY + 4}"
+        assert window.path_combo.itemText(0) == f"/path/{MAX_HISTORY + 4}"
         window.close()
 
     def test_window_geometry_restored(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -803,7 +803,7 @@ class TestConfigPersistence:
         window._switch_stage(WorkflowStage.RESULTS)
         window.show()
         qapp.processEvents()
-        sizes = window._splitter.sizes()
+        sizes = window.results_splitter.sizes()
         assert len(sizes) == 2
         assert all(s > 0 for s in sizes)
         # 比例约为 400:600 = 2:3
@@ -823,7 +823,7 @@ class TestConfigPersistence:
 
         window = MainWindow()
         assert window._scan_root == scan_dir
-        assert window._scan_btn.isEnabled()
+        assert window.scan_btn.isEnabled()
         window.close()
 
     def test_invalid_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -836,7 +836,7 @@ class TestConfigPersistence:
 
         window = MainWindow()
         assert window._scan_root is None
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         window.close()
 
     def test_no_scan_path_disables_button_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -849,7 +849,7 @@ class TestConfigPersistence:
 
         window = MainWindow()
         assert window._scan_root is None
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         window.close()
 
 
@@ -921,8 +921,8 @@ class TestScanControlUI:
     def test_scan_button_text_idle(self, qapp: QApplication) -> None:
         """IDLE 状态扫描按钮文本为"开始扫描"。"""
         window = MainWindow()
-        assert window._scan_btn.text() == "开始扫描"
-        assert window._scan_action.text() == "开始扫描"
+        assert window.scan_btn.text() == "开始扫描"
+        assert window.scan_action.text() == "开始扫描"
         window.close()
 
     def test_update_scan_button_running_stays_enabled(self, qapp: QApplication) -> None:
@@ -931,8 +931,8 @@ class TestScanControlUI:
         window._ruleset = None
         window._scan_state = ScanState.RUNNING
         window._update_scan_button()
-        assert window._scan_btn.isEnabled()
-        assert window._scan_action.isEnabled()
+        assert window.scan_btn.isEnabled()
+        assert window.scan_action.isEnabled()
         window.close()
 
     def test_update_scan_button_paused_stays_enabled(self, qapp: QApplication) -> None:
@@ -941,8 +941,8 @@ class TestScanControlUI:
         window._ruleset = None
         window._scan_state = ScanState.PAUSED
         window._update_scan_button()
-        assert window._scan_btn.isEnabled()
-        assert window._scan_action.isEnabled()
+        assert window.scan_btn.isEnabled()
+        assert window.scan_action.isEnabled()
         window.close()
 
     def test_pause_scan_changes_state_and_text(self, qapp: QApplication) -> None:
@@ -951,8 +951,8 @@ class TestScanControlUI:
         window._scan_state = ScanState.RUNNING
         window._pause_scan()
         assert window._scan_state == ScanState.PAUSED
-        assert window._pause_resume_btn.text() == "继续扫描"
-        assert "已暂停" in window._stats_label.text()
+        assert window.pause_resume_btn.text() == "继续扫描"
+        assert "已暂停" in window.stats_label.text()
         window.close()
 
     def test_resume_scan_changes_state_and_text(self, qapp: QApplication) -> None:
@@ -961,7 +961,7 @@ class TestScanControlUI:
         window._scan_state = ScanState.PAUSED
         window._resume_scan()
         assert window._scan_state == ScanState.RUNNING
-        assert window._pause_resume_btn.text() == "暂停扫描"
+        assert window.pause_resume_btn.text() == "暂停扫描"
         window.close()
 
     def test_reset_scan_ui_resets_state(self, qapp: QApplication) -> None:
@@ -970,7 +970,7 @@ class TestScanControlUI:
         window._scan_state = ScanState.RUNNING
         window._reset_scan_ui()
         assert window._scan_state == ScanState.IDLE
-        assert window._pause_resume_btn.text() == "暂停扫描"
+        assert window.pause_resume_btn.text() == "暂停扫描"
         assert window._worker is None
         window.close()
 
@@ -989,7 +989,7 @@ class TestScanControlUI:
         window._scan_state = ScanState.RUNNING
         window._on_pause_resume()
         assert window._scan_state == ScanState.PAUSED
-        assert window._pause_resume_btn.text() == "继续扫描"
+        assert window.pause_resume_btn.text() == "继续扫描"
         window.close()
 
     def test_on_pause_resume_paused_triggers_resume(self, qapp: QApplication) -> None:
@@ -998,7 +998,7 @@ class TestScanControlUI:
         window._scan_state = ScanState.PAUSED
         window._on_pause_resume()
         assert window._scan_state == ScanState.RUNNING
-        assert window._pause_resume_btn.text() == "暂停扫描"
+        assert window.pause_resume_btn.text() == "暂停扫描"
         window.close()
 
 
@@ -1024,8 +1024,8 @@ class TestScanControlIntegration:
         window._on_scan()
 
         assert window._scan_state == ScanState.RUNNING
-        assert window._pause_resume_btn.text() == "暂停扫描"
-        assert window._main_stack.currentIndex() == 1
+        assert window.pause_resume_btn.text() == "暂停扫描"
+        assert window.main_stack.currentIndex() == 1
 
         loop = QEventLoop()
         QTimer.singleShot(10000, loop.quit)
@@ -1036,8 +1036,8 @@ class TestScanControlIntegration:
             window._worker.wait(2000)
 
         assert window._scan_state == ScanState.IDLE
-        assert window._main_stack.currentIndex() == 2
-        assert window._result_tree.topLevelItemCount() >= 1
+        assert window.main_stack.currentIndex() == 2
+        assert window.result_tree.topLevelItemCount() >= 1
         assert window._worker is None
         window.close()
 
@@ -1064,8 +1064,8 @@ class TestScanControlIntegration:
         window._on_scan_cancelled(report)
 
         assert window._scan_state == ScanState.IDLE
-        assert window._main_stack.currentIndex() == 0
-        assert "已取消" in window._stats_label.text()
+        assert window.main_stack.currentIndex() == 0
+        assert "已取消" in window.stats_label.text()
         window.close()
 
     def test_cleanup_worker_sets_none(self, qapp: QApplication) -> None:
@@ -1103,7 +1103,7 @@ class TestWorkflowStage:
         """新建窗口应在 SETUP 阶段（配置页）。"""
         window = MainWindow()
         assert window._workflow_stage == WorkflowStage.SETUP
-        assert window._main_stack.currentIndex() == 0
+        assert window.main_stack.currentIndex() == 0
         window.close()
 
     def test_setup_to_scanning(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1115,7 +1115,7 @@ class TestWorkflowStage:
         window._scan_mode = "folder"
         window._on_scan()
         assert window._scan_state == ScanState.RUNNING
-        assert window._main_stack.currentIndex() == 1
+        assert window.main_stack.currentIndex() == 1
         assert window._workflow_stage == WorkflowStage.SCANNING
         # 清理后台线程
         if window._worker is not None:
@@ -1135,7 +1135,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
         window._on_scan_finished(report)
-        assert window._main_stack.currentIndex() == 2
+        assert window.main_stack.currentIndex() == 2
         assert window._workflow_stage == WorkflowStage.RESULTS
         window.close()
 
@@ -1148,7 +1148,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
         window._on_scan_failed("测试错误")
-        assert window._main_stack.currentIndex() == 0
+        assert window.main_stack.currentIndex() == 0
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
 
@@ -1157,7 +1157,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._switch_stage(WorkflowStage.RESULTS)
         window._on_rescan()
-        assert window._main_stack.currentIndex() == 0
+        assert window.main_stack.currentIndex() == 0
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
 
@@ -1173,7 +1173,7 @@ class TestWorkflowStage:
         window._last_report = report
         window._update_stage_actions()
         window._on_view_results()
-        assert window._main_stack.currentIndex() == 2
+        assert window.main_stack.currentIndex() == 2
         window.close()
 
     def test_view_results_btn_disabled_initially(self, qapp: QApplication) -> None:
@@ -1182,8 +1182,8 @@ class TestWorkflowStage:
         window.show()
         qapp.processEvents()
         # 按钮始终可见（与 scan_btn 组合在一起），但无结果时禁用
-        assert window._view_results_btn.isVisible()
-        assert not window._view_results_btn.isEnabled()
+        assert window.view_results_btn.isVisible()
+        assert not window.view_results_btn.isEnabled()
         window.close()
 
     def test_view_results_btn_enabled_with_report(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1199,8 +1199,8 @@ class TestWorkflowStage:
         window._update_stage_actions()
         window.show()
         qapp.processEvents()
-        assert window._view_results_btn.isVisible()
-        assert window._view_results_btn.isEnabled()
+        assert window.view_results_btn.isVisible()
+        assert window.view_results_btn.isEnabled()
         window.close()
 
     def test_scan_btn_disabled_without_ruleset(self, qapp: QApplication) -> None:
@@ -1208,7 +1208,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._ruleset = None
         window._update_stage_actions()
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         window.close()
 
     def test_scan_btn_enabled_with_ruleset_and_target(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1219,16 +1219,16 @@ class TestWorkflowStage:
         window._scan_root = tmp_path
         window._scan_mode = "folder"
         window._update_stage_actions()
-        assert window._scan_btn.isEnabled()
+        assert window.scan_btn.isEnabled()
         window.close()
 
     def test_rescan_btn_disabled_in_setup(self, qapp: QApplication) -> None:
         """SETUP 阶段重新扫描按钮应禁用，RESULTS 阶段应启用。"""
         window = MainWindow()
         window._update_stage_actions()
-        assert not window._rescan_btn.isEnabled()
+        assert not window.rescan_btn.isEnabled()
         window._switch_stage(WorkflowStage.RESULTS)
-        assert window._rescan_btn.isEnabled()
+        assert window.rescan_btn.isEnabled()
         window.close()
 
     def test_pause_resume_btn_text_in_scanning_running(self, qapp: QApplication) -> None:
@@ -1236,7 +1236,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
         window._switch_stage(WorkflowStage.SCANNING)
-        assert window._pause_resume_btn.text() == "暂停扫描"
+        assert window.pause_resume_btn.text() == "暂停扫描"
         window.close()
 
     def test_pause_resume_btn_text_in_scanning_paused(self, qapp: QApplication) -> None:
@@ -1244,7 +1244,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.PAUSED
         window._switch_stage(WorkflowStage.SCANNING)
-        assert window._pause_resume_btn.text() == "继续扫描"
+        assert window.pause_resume_btn.text() == "继续扫描"
         window.close()
 
     def test_on_pause_resume_idle_does_nothing(self, qapp: QApplication) -> None:
@@ -1290,7 +1290,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
         window._on_scan_cancelled(report)
-        assert window._main_stack.currentIndex() == 2
+        assert window.main_stack.currentIndex() == 2
         window.close()
 
     def test_cancel_scan_without_hits_returns_to_setup(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1307,22 +1307,22 @@ class TestWorkflowStage:
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
         window._on_scan_cancelled(report)
-        assert window._main_stack.currentIndex() == 0
+        assert window.main_stack.currentIndex() == 0
         window.close()
 
     def test_scan_action_disabled_in_scanning(self, qapp: QApplication) -> None:
         """SCANNING 阶段扫描菜单项应禁用。"""
         window = MainWindow()
         window._switch_stage(WorkflowStage.SCANNING)
-        assert not window._scan_action.isEnabled()
+        assert not window.scan_action.isEnabled()
         window.close()
 
     def test_export_actions_disabled_in_setup(self, qapp: QApplication) -> None:
         """SETUP 阶段导出菜单项应禁用。"""
         window = MainWindow()
         window._update_stage_actions()
-        assert not window._export_csv_action.isEnabled()
-        assert not window._export_json_action.isEnabled()
+        assert not window.export_csv_action.isEnabled()
+        assert not window.export_json_action.isEnabled()
         window.close()
 
     def test_export_actions_enabled_in_results_with_report(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1336,27 +1336,27 @@ class TestWorkflowStage:
         window = MainWindow()
         window._last_report = report
         window._switch_stage(WorkflowStage.RESULTS)
-        assert window._export_csv_action.isEnabled()
-        assert window._export_json_action.isEnabled()
+        assert window.export_csv_action.isEnabled()
+        assert window.export_json_action.isEnabled()
         window.close()
 
     def test_load_edit_rules_actions_disabled_in_results(self, qapp: QApplication) -> None:
         """RESULTS 阶段加载/编辑规则菜单项应禁用。"""
         window = MainWindow()
         window._switch_stage(WorkflowStage.RESULTS)
-        assert not window._load_rules_action.isEnabled()
-        assert not window._edit_rules_action.isEnabled()
+        assert not window.load_rules_action.isEnabled()
+        assert not window.edit_rules_action.isEnabled()
         window.close()
 
     def test_switch_stage_syncs_sidebar(self, qapp: QApplication) -> None:
         """_switch_stage 应同步侧边栏选中项。"""
         window = MainWindow()
         window._switch_stage(WorkflowStage.SCANNING)
-        assert window._sidebar.currentRow() == 1
+        assert window.sidebar.currentRow() == 1
         window._switch_stage(WorkflowStage.RESULTS)
-        assert window._sidebar.currentRow() == 2
+        assert window.sidebar.currentRow() == 2
         window._switch_stage(WorkflowStage.SETUP)
-        assert window._sidebar.currentRow() == 0
+        assert window.sidebar.currentRow() == 0
         window.close()
 
     def test_on_header_tab_changed_switches_tab_stack(self, qapp: QApplication) -> None:
@@ -1365,27 +1365,27 @@ class TestWorkflowStage:
         window.show()
         qapp.processEvents()
         window._on_header_tab_changed(1)
-        assert window._tab_stack.currentIndex() == 1
-        assert not window._sidebar.isVisible()
+        assert window.tab_stack.currentIndex() == 1
+        assert not window.sidebar.isVisible()
         window._on_header_tab_changed(2)
-        assert window._tab_stack.currentIndex() == 2
-        assert not window._sidebar.isVisible()
+        assert window.tab_stack.currentIndex() == 2
+        assert not window.sidebar.isVisible()
         window._on_header_tab_changed(0)
-        assert window._tab_stack.currentIndex() == 0
-        assert window._sidebar.isVisible()
+        assert window.tab_stack.currentIndex() == 0
+        assert window.sidebar.isVisible()
         window.close()
 
     def test_on_sidebar_stage_changed_switches_main_stack(self, qapp: QApplication) -> None:
         """_on_sidebar_stage_changed 应映射 row 到 WorkflowStage 并切换 main_stack。"""
         window = MainWindow()
         window._on_sidebar_stage_changed(1)
-        assert window._main_stack.currentIndex() == 1
+        assert window.main_stack.currentIndex() == 1
         assert window._workflow_stage == WorkflowStage.SCANNING
         window._on_sidebar_stage_changed(2)
-        assert window._main_stack.currentIndex() == 2
+        assert window.main_stack.currentIndex() == 2
         assert window._workflow_stage == WorkflowStage.RESULTS
         window._on_sidebar_stage_changed(0)
-        assert window._main_stack.currentIndex() == 0
+        assert window.main_stack.currentIndex() == 0
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
 
@@ -1396,20 +1396,20 @@ class TestSetupActionBar:
     def test_scan_btn_height_reduced_to_44(self, qapp: QApplication) -> None:
         """scan_btn 最小高度应为 44（与扫描中页按钮一致）。"""
         window = MainWindow()
-        assert window._scan_btn.minimumHeight() == 44
+        assert window.scan_btn.minimumHeight() == 44
         window.close()
 
     def test_scan_btn_minimum_width_180(self, qapp: QApplication) -> None:
         """scan_btn 最小宽度应为 180。"""
         window = MainWindow()
-        assert window._scan_btn.minimumWidth() >= 180
+        assert window.scan_btn.minimumWidth() >= 180
         window.close()
 
     def test_setup_action_bar_exists(self, qapp: QApplication) -> None:
         """配置页应包含 setup_action_bar 容器。"""
         window = MainWindow()
-        assert hasattr(window._ui, "setup_action_bar")
-        assert window._ui.setup_action_bar is not None
+        assert hasattr(window, "setup_action_bar")
+        assert window.setup_action_bar is not None
         window.close()
 
     def test_scan_btn_qss_uses_primary_blue(self) -> None:
@@ -1434,10 +1434,10 @@ class TestSetupActionBar:
     def test_view_results_btn_same_size_as_scan_btn(self, qapp: QApplication) -> None:
         """view_results_btn 与 scan_btn 最小尺寸应一致（180x44）。"""
         window = MainWindow()
-        assert window._view_results_btn.minimumWidth() == window._scan_btn.minimumWidth()
-        assert window._view_results_btn.minimumHeight() == window._scan_btn.minimumHeight()
-        assert window._scan_btn.minimumWidth() == 180
-        assert window._scan_btn.minimumHeight() == 44
+        assert window.view_results_btn.minimumWidth() == window.scan_btn.minimumWidth()
+        assert window.view_results_btn.minimumHeight() == window.scan_btn.minimumHeight()
+        assert window.scan_btn.minimumWidth() == 180
+        assert window.scan_btn.minimumHeight() == 44
         window.close()
 
     def test_view_results_btn_adjacent_to_scan_btn(self, qapp: QApplication) -> None:
@@ -1446,7 +1446,7 @@ class TestSetupActionBar:
         通过验证 setup_btn_row 中两个按钮的布局索引相邻且无 Expanding spacer 插入。
         """
         window = MainWindow()
-        layout = window._ui.setup_btn_row
+        layout = window.setup_btn_row
         # 找到 view_results_btn 和 scan_btn 的位置索引
         view_idx = -1
         scan_idx = -1
@@ -1455,9 +1455,9 @@ class TestSetupActionBar:
             item = layout.itemAt(i)
             if item is None:
                 continue
-            if item.widget() is window._view_results_btn:
+            if item.widget() is window.view_results_btn:
                 view_idx = i
-            elif item.widget() is window._scan_btn:
+            elif item.widget() is window.scan_btn:
                 scan_idx = i
             elif item.spacerItem() is not None and item.spacerItem().expandingDirections() != 0:
                 spacer_count += 1
@@ -1472,8 +1472,8 @@ class TestSetupActionBar:
         """原 setup_btn_spacer（按钮间分隔）应已移除，仅保留 leading spacer。"""
         window = MainWindow()
         # 旧属性名不应再存在
-        assert not hasattr(window._ui, "setup_btn_spacer")
-        assert hasattr(window._ui, "setup_btn_leading_spacer")
+        assert not hasattr(window, "setup_btn_spacer")
+        assert hasattr(window, "setup_btn_leading_spacer")
         window.close()
 
 
@@ -1483,9 +1483,9 @@ class TestScanningPageLayout:
     def test_stats_group_removed_from_ui(self, qapp: QApplication) -> None:
         """scanning_page 不应再包含 stats_group / stats_counts_label / stats_time_label。"""
         window = MainWindow()
-        assert not hasattr(window._ui, "stats_group")
-        assert not hasattr(window._ui, "stats_counts_label")
-        assert not hasattr(window._ui, "stats_time_label")
+        assert not hasattr(window, "stats_group")
+        assert not hasattr(window, "stats_counts_label")
+        assert not hasattr(window, "stats_time_label")
         window.close()
 
     def test_progress_moved_to_status_bar(self, qapp: QApplication) -> None:
@@ -1498,9 +1498,9 @@ class TestScanningPageLayout:
             from PySide2.QtWidgets import QProgressBar as _QProgressBar
         except ImportError:  # pragma: no cover
             from PySide6.QtWidgets import QProgressBar as _QProgressBar
-        assert isinstance(window._progress, _QProgressBar)
+        assert isinstance(window.progress, _QProgressBar)
         # 初始（SETUP 阶段）应不可见
-        assert not window._progress.isVisible()
+        assert not window.progress.isVisible()
         window.close()
 
     def test_current_file_label_in_status_bar(self, qapp: QApplication) -> None:
@@ -1508,12 +1508,12 @@ class TestScanningPageLayout:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        assert not window._current_file_label.isVisible()
+        assert not window.current_file_label.isVisible()
         # 进入扫描中阶段后应可见
         window._switch_stage(WorkflowStage.SCANNING)
         qapp.processEvents()
-        assert window._current_file_label.isVisible()
-        assert window._progress.isVisible()
+        assert window.current_file_label.isVisible()
+        assert window.progress.isVisible()
         window.close()
 
     def test_progress_hidden_in_non_scanning_stage(self, qapp: QApplication) -> None:
@@ -1523,12 +1523,12 @@ class TestScanningPageLayout:
         qapp.processEvents()
         window._switch_stage(WorkflowStage.SETUP)
         qapp.processEvents()
-        assert not window._progress.isVisible()
-        assert not window._current_file_label.isVisible()
+        assert not window.progress.isVisible()
+        assert not window.current_file_label.isVisible()
         window._switch_stage(WorkflowStage.RESULTS)
         qapp.processEvents()
-        assert not window._progress.isVisible()
-        assert not window._current_file_label.isVisible()
+        assert not window.progress.isVisible()
+        assert not window.current_file_label.isVisible()
         window.close()
 
     def test_progress_updates_value_in_status_bar(self, qapp: QApplication) -> None:
@@ -1547,8 +1547,8 @@ class TestScanningPageLayout:
             elapsed=1.0,
         )
         window._on_scan_progress(info)
-        assert window._progress.value() == 50
-        assert window._progress.maximum() == 100
+        assert window.progress.value() == 50
+        assert window.progress.maximum() == 100
         window.close()
 
 
@@ -1597,7 +1597,7 @@ class TestSeverityDisplay:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_tree.topLevelItem(0)
+        top_item = window.result_tree.topLevelItem(0)
         assert top_item is not None
         assert top_item.text(2) == "警告"
         assert top_item.foreground(2).color().name() == "#f0883e"
@@ -1621,11 +1621,11 @@ class TestSeverityDisplay:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_tree.topLevelItem(0)
+        top_item = window.result_tree.topLevelItem(0)
         top_item.setSelected(True)
         qapp.processEvents()
 
-        item = window._detail_hits_table.item(0, 1)
+        item = window.detail_hits_table.item(0, 1)
         assert item is not None
         assert item.text() == "警告"
         assert item.foreground().color().name() == "#f0883e"
@@ -1637,7 +1637,7 @@ class TestSeverityDisplay:
         window._ruleset = _build_ruleset()
         window._refresh_rules_tree()
 
-        item = window._rules_tree.topLevelItem(0)
+        item = window.rules_tree.topLevelItem(0)
         assert item is not None
         sev_text = item.text(1)
         assert sev_text in ("严重", "警告", "一般")
@@ -2466,7 +2466,7 @@ class TestScanMode:
         """启动时默认扫描模式为 folder。"""
         window = MainWindow()
         assert window._scan_mode == "folder"
-        assert window._scan_mode_combo.currentIndex() == 2
+        assert window.scan_mode_combo.currentIndex() == 2
         window.close()
 
     def test_folder_mode_shows_path_row(self, qapp: QApplication) -> None:
@@ -2474,8 +2474,8 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        assert window._target_stack.currentIndex() == 2
-        assert window._path_combo.isVisible()
+        assert window.target_stack.currentIndex() == 2
+        assert window.path_combo.isVisible()
         window.close()
 
     def test_full_mode_hides_target_selectors(self, qapp: QApplication) -> None:
@@ -2483,9 +2483,9 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window._scan_mode_combo.setCurrentIndex(0)
+        window.scan_mode_combo.setCurrentIndex(0)
         assert window._scan_mode == "full"
-        assert window._target_stack.currentIndex() == 0
+        assert window.target_stack.currentIndex() == 0
         window.close()
 
     def test_drive_mode_shows_drive_buttons(self, qapp: QApplication) -> None:
@@ -2493,9 +2493,9 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window._scan_mode_combo.setCurrentIndex(1)
+        window.scan_mode_combo.setCurrentIndex(1)
         assert window._scan_mode == "drive"
-        assert window._target_stack.currentIndex() == 1
+        assert window.target_stack.currentIndex() == 1
         window.close()
 
     def test_full_mode_enables_scan_without_path(self, qapp: QApplication) -> None:
@@ -2503,21 +2503,21 @@ class TestScanMode:
         window = MainWindow()
         assert window._ruleset is not None
         # folder 模式下未选路径，按钮禁用
-        assert not window._scan_btn.isEnabled()
+        assert not window.scan_btn.isEnabled()
         # 切换到 full 模式
-        window._scan_mode_combo.setCurrentIndex(0)
-        assert window._scan_btn.isEnabled()
+        window.scan_mode_combo.setCurrentIndex(0)
+        assert window.scan_btn.isEnabled()
         window.close()
 
     def test_drive_mode_enables_scan_with_drive(self, qapp: QApplication) -> None:
         """drive 模式下选中盘符即可扫描。"""
         window = MainWindow()
-        window._scan_mode_combo.setCurrentIndex(1)
+        window.scan_mode_combo.setCurrentIndex(1)
         # 盘符按钮在测试环境（Windows）通常有盘符
         if len(window._drive_buttons) > 0:
             window._drive_buttons[0].setChecked(True)
             window._on_drive_selected(window._drive_buttons[0])
-            assert window._scan_btn.isEnabled()
+            assert window.scan_btn.isEnabled()
         window.close()
 
     def test_build_scan_roots_full_mode(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2528,7 +2528,7 @@ class TestScanMode:
         monkeypatch.setattr(mw_mod, "list_drives", lambda include_network=False: fake_drives)
 
         window = MainWindow()
-        window._scan_mode_combo.setCurrentIndex(0)
+        window.scan_mode_combo.setCurrentIndex(0)
         roots = window._build_scan_roots()
         assert roots == fake_drives
         window.close()
@@ -2536,7 +2536,7 @@ class TestScanMode:
     def test_build_scan_roots_drive_mode(self, qapp: QApplication) -> None:
         """drive 模式应返回选中的单个盘符。"""
         window = MainWindow()
-        window._scan_mode_combo.setCurrentIndex(1)
+        window.scan_mode_combo.setCurrentIndex(1)
         if len(window._drive_buttons) > 0:
             window._drive_buttons[0].setChecked(True)
             window._on_drive_selected(window._drive_buttons[0])
@@ -2574,7 +2574,7 @@ class TestScanModePersistence:
 
         window = MainWindow()
         assert window._scan_mode == "full"
-        assert window._scan_mode_combo.currentIndex() == 0
+        assert window.scan_mode_combo.currentIndex() == 0
         window.close()
 
     def test_drive_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2587,13 +2587,13 @@ class TestScanModePersistence:
 
         window = MainWindow()
         assert window._scan_mode == "drive"
-        assert window._scan_mode_combo.currentIndex() == 1
+        assert window.scan_mode_combo.currentIndex() == 1
         window.close()
 
     def test_close_saves_scan_mode(self, qapp: QApplication, tmp_path: Path) -> None:
         """关闭时扫描模式应被保存。"""
         window = MainWindow()
-        window._scan_mode_combo.setCurrentIndex(0)
+        window.scan_mode_combo.setCurrentIndex(0)
         window.close()
 
         from fuscan.config import load_config as _load_impl
@@ -2743,7 +2743,7 @@ class TestHitDetailDialog:
         monkeypatch.setattr(mw_module.HitDetailDialog, "exec_", fake_exec)
 
         # 双击顶层项
-        top_item = window._result_tree.topLevelItem(0)
+        top_item = window.result_tree.topLevelItem(0)
         window._on_result_double_clicked(top_item, 0)
         assert called["count"] == 1
 
@@ -2765,7 +2765,7 @@ class TestHitDetailDialog:
         window = MainWindow()
         # 创建一个没有 UserRole 数据的项
         item = QTreeWidgetItem(["test", "", "", ""])
-        window._result_tree.addTopLevelItem(item)
+        window.result_tree.addTopLevelItem(item)
         # 不应抛异常
         window._on_result_double_clicked(item, 0)
         window.close()
@@ -3138,7 +3138,7 @@ class TestMatchTextHighlighting:
         window = MainWindow()
         window._detail_show_result(result)
         assert len(window._detail_hit_positions) >= 1
-        assert "1 /" in window._detail_nav_label.text()
+        assert "1 /" in window.detail_nav_label.text()
         window.close()
 
     def test_main_window_positions_db_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3156,7 +3156,7 @@ class TestMatchTextHighlighting:
         window = MainWindow()
         window._detail_show_result(result)
         assert len(window._detail_hit_positions) >= 1
-        assert "1 /" in window._detail_nav_label.text()
+        assert "1 /" in window.detail_nav_label.text()
         window.close()
 
     def test_main_window_positions_db_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3174,7 +3174,7 @@ class TestMatchTextHighlighting:
         window = MainWindow()
         window._detail_show_result(result)
         assert len(window._detail_hit_positions) >= 1
-        assert "1 /" in window._detail_nav_label.text()
+        assert "1 /" in window.detail_nav_label.text()
         window.close()
 
 
@@ -3219,21 +3219,21 @@ class TestResultFilterAndGroup:
     def test_filter_bar_exists(self, qapp: QApplication) -> None:
         """筛选栏控件应存在。"""
         window = MainWindow()
-        assert window._path_filter_input is not None
-        assert window._rule_filter_combo is not None
-        assert window._group_mode_combo is not None
+        assert window.path_filter_input is not None
+        assert window.rule_filter_combo is not None
+        assert window.group_mode_combo is not None
         window.close()
 
     def test_header_sorting_enabled(self, qapp: QApplication) -> None:
         """结果树应启用表头排序。"""
         window = MainWindow()
-        assert window._result_tree.isSortingEnabled()
+        assert window.result_tree.isSortingEnabled()
         window.close()
 
     def test_column_count_includes_hit_count(self, qapp: QApplication) -> None:
         """结果树应包含命中数与条数列。"""
         window = MainWindow()
-        assert window._result_tree.columnCount() == 6
+        assert window.result_tree.columnCount() == 6
         window.close()
 
     def test_rule_filter_populated_after_scan(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3241,7 +3241,7 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        combo = window._rule_filter_combo
+        combo = window.rule_filter_combo
         assert combo.count() == 3  # "全部规则" + 2 个命中规则
         assert combo.itemText(0) == "全部规则"
         rule_texts = {combo.itemText(i) for i in range(1, combo.count())}
@@ -3254,11 +3254,11 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        assert window._result_tree.topLevelItemCount() == 2  # secret.txt + key.txt
+        assert window.result_tree.topLevelItemCount() == 2  # secret.txt + key.txt
 
-        window._path_filter_input.setText("secret")
-        assert window._result_tree.topLevelItemCount() == 1
-        assert "secret.txt" in window._result_tree.topLevelItem(0).text(0)
+        window.path_filter_input.setText("secret")
+        assert window.result_tree.topLevelItemCount() == 1
+        assert "secret.txt" in window.result_tree.topLevelItem(0).text(0)
         window.close()
 
     def test_path_filter_case_insensitive(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3266,8 +3266,8 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        window._path_filter_input.setText("SECRET")
-        assert window._result_tree.topLevelItemCount() == 1
+        window.path_filter_input.setText("SECRET")
+        assert window.result_tree.topLevelItemCount() == 1
         window.close()
 
     def test_rule_filter(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3276,11 +3276,11 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._rule_filter_combo.findData("密钥内容")
+        idx = window.rule_filter_combo.findData("密钥内容")
         assert idx >= 0
-        window._rule_filter_combo.setCurrentIndex(idx)
+        window.rule_filter_combo.setCurrentIndex(idx)
         # secret.txt 同时命中"密钥内容"（内容含 key），key.txt 也命中"密钥内容"
-        count = window._result_tree.topLevelItemCount()
+        count = window.result_tree.topLevelItemCount()
         assert count >= 1
         window.close()
 
@@ -3290,11 +3290,11 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        window._path_filter_input.setText("key.txt")
-        idx = window._rule_filter_combo.findData("密钥内容")
-        window._rule_filter_combo.setCurrentIndex(idx)
-        assert window._result_tree.topLevelItemCount() == 1
-        assert "key.txt" in window._result_tree.topLevelItem(0).text(0)
+        window.path_filter_input.setText("key.txt")
+        idx = window.rule_filter_combo.findData("密钥内容")
+        window.rule_filter_combo.setCurrentIndex(idx)
+        assert window.result_tree.topLevelItemCount() == 1
+        assert "key.txt" in window.result_tree.topLevelItem(0).text(0)
         window.close()
 
     def test_no_results_after_filter(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3302,8 +3302,8 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        window._path_filter_input.setText("nonexistent_path")
-        assert window._result_tree.topLevelItemCount() == 0
+        window.path_filter_input.setText("nonexistent_path")
+        assert window.result_tree.topLevelItemCount() == 0
         window.close()
 
     def test_clear_path_filter_restores_results(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3311,10 +3311,10 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        window._path_filter_input.setText("secret")
-        assert window._result_tree.topLevelItemCount() == 1
-        window._path_filter_input.setText("")
-        assert window._result_tree.topLevelItemCount() == 2
+        window.path_filter_input.setText("secret")
+        assert window.result_tree.topLevelItemCount() == 1
+        window.path_filter_input.setText("")
+        assert window.result_tree.topLevelItemCount() == 2
         window.close()
 
     def test_group_by_rule(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3323,11 +3323,11 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._group_mode_combo.findData("rule")
-        window._group_mode_combo.setCurrentIndex(idx)
-        top_count = window._result_tree.topLevelItemCount()
+        idx = window.group_mode_combo.findData("rule")
+        window.group_mode_combo.setCurrentIndex(idx)
+        top_count = window.result_tree.topLevelItemCount()
         assert top_count == 2  # 两个规则
-        rule_names = {window._result_tree.topLevelItem(i).text(1) for i in range(top_count)}
+        rule_names = {window.result_tree.topLevelItem(i).text(1) for i in range(top_count)}
         assert "敏感文件名" in rule_names
         assert "密钥内容" in rule_names
         window.close()
@@ -3338,11 +3338,11 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._group_mode_combo.findData("severity")
-        window._group_mode_combo.setCurrentIndex(idx)
-        top_count = window._result_tree.topLevelItemCount()
+        idx = window.group_mode_combo.findData("severity")
+        window.group_mode_combo.setCurrentIndex(idx)
+        top_count = window.result_tree.topLevelItemCount()
         assert top_count == 2  # warning + critical
-        severities = {window._result_tree.topLevelItem(i).text(2) for i in range(top_count)}
+        severities = {window.result_tree.topLevelItem(i).text(2) for i in range(top_count)}
         assert "警告" in severities
         assert "严重" in severities
         window.close()
@@ -3353,9 +3353,9 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._group_mode_combo.findData("rule")
-        window._group_mode_combo.setCurrentIndex(idx)
-        top = window._result_tree.topLevelItem(0)
+        idx = window.group_mode_combo.findData("rule")
+        window.group_mode_combo.setCurrentIndex(idx)
+        top = window.result_tree.topLevelItem(0)
         assert top.childCount() > 0
         child = top.child(0)
         assert child.data(0, Qt.UserRole) is not None
@@ -3369,8 +3369,8 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._group_mode_combo.findData("rule")
-        window._group_mode_combo.setCurrentIndex(idx)
+        idx = window.group_mode_combo.findData("rule")
+        window.group_mode_combo.setCurrentIndex(idx)
 
         called = {"count": 0}
 
@@ -3380,7 +3380,7 @@ class TestResultFilterAndGroup:
 
         monkeypatch_obj = pytest.MonkeyPatch()
         monkeypatch_obj.setattr(dd_module.HitDetailDialog, "exec_", fake_exec)
-        top = window._result_tree.topLevelItem(0)
+        top = window.result_tree.topLevelItem(0)
         child = top.child(0)
         window._on_result_double_clicked(child, 0)
         assert called["count"] == 1
@@ -3392,7 +3392,7 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         window._last_report = None
         window._refresh_result_tree()
-        assert window._result_tree.topLevelItemCount() == 0
+        assert window.result_tree.topLevelItemCount() == 0
         window.close()
 
     def test_rule_filter_restored_after_repopulate(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3401,13 +3401,13 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._rule_filter_combo.findData("密钥内容")
-        window._rule_filter_combo.setCurrentIndex(idx)
-        assert window._rule_filter_combo.currentData() == "密钥内容"
+        idx = window.rule_filter_combo.findData("密钥内容")
+        window.rule_filter_combo.setCurrentIndex(idx)
+        assert window.rule_filter_combo.currentData() == "密钥内容"
 
         # 重新填充应恢复选中的规则
         window._populate_results(report)
-        assert window._rule_filter_combo.currentData() == "密钥内容"
+        assert window.rule_filter_combo.currentData() == "密钥内容"
         window.close()
 
 
@@ -3510,8 +3510,8 @@ class TestMatchCountDisplay:
 
         # key.txt：1 条规则命中（密钥），匹配 3 处
         key_item = None
-        for i in range(window._result_tree.topLevelItemCount()):
-            item = window._result_tree.topLevelItem(i)
+        for i in range(window.result_tree.topLevelItemCount()):
+            item = window.result_tree.topLevelItem(i)
             if item.text(0).endswith("key.txt"):
                 key_item = item
                 break
@@ -3529,8 +3529,8 @@ class TestMatchCountDisplay:
 
         # 找到 key.txt 顶层项，检查其子项
         key_item = None
-        for i in range(window._result_tree.topLevelItemCount()):
-            item = window._result_tree.topLevelItem(i)
+        for i in range(window.result_tree.topLevelItemCount()):
+            item = window.result_tree.topLevelItem(i)
             if item.text(0).endswith("key.txt"):
                 key_item = item
                 break
@@ -3548,13 +3548,13 @@ class TestMatchCountDisplay:
         report = _build_multi_match_report(tmp_path)
         window._populate_results(report)
 
-        idx = window._group_mode_combo.findData("rule")
-        window._group_mode_combo.setCurrentIndex(idx)
+        idx = window.group_mode_combo.findData("rule")
+        window.group_mode_combo.setCurrentIndex(idx)
 
         # "密钥"规则在 key.txt 命中 3 处
         rule_item = None
-        for i in range(window._result_tree.topLevelItemCount()):
-            item = window._result_tree.topLevelItem(i)
+        for i in range(window.result_tree.topLevelItemCount()):
+            item = window.result_tree.topLevelItem(i)
             if item.text(1) == "密钥":
                 rule_item = item
                 break
@@ -3569,15 +3569,15 @@ class TestMatchCountDisplay:
         window._populate_results(report)
 
         # 选中 key.txt 触发详情区更新
-        for i in range(window._result_tree.topLevelItemCount()):
-            item = window._result_tree.topLevelItem(i)
+        for i in range(window.result_tree.topLevelItemCount()):
+            item = window.result_tree.topLevelItem(i)
             if item.text(0).endswith("key.txt"):
                 item.setSelected(True)
                 break
 
         # 命中表列 2=条数
-        assert window._detail_hits_table.rowCount() == 1
-        assert window._detail_hits_table.item(0, 2).text() == "3"
+        assert window.detail_hits_table.rowCount() == 1
+        assert window.detail_hits_table.item(0, 2).text() == "3"
         window.close()
 
     def test_detail_info_label_shows_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3586,13 +3586,13 @@ class TestMatchCountDisplay:
         report = _build_multi_match_report(tmp_path)
         window._populate_results(report)
 
-        for i in range(window._result_tree.topLevelItemCount()):
-            item = window._result_tree.topLevelItem(i)
+        for i in range(window.result_tree.topLevelItemCount()):
+            item = window.result_tree.topLevelItem(i)
             if item.text(0).endswith("key.txt"):
                 item.setSelected(True)
                 break
 
-        info_text = window._detail_info_label.text()
+        info_text = window.detail_info_label.text()
         assert "匹配条数" in info_text
         assert "3" in info_text
         window.close()
@@ -3613,8 +3613,8 @@ class TestRuleEditor:
     def test_edit_button_exists(self, qapp: QApplication) -> None:
         """主窗口应包含编辑按钮。"""
         window = MainWindow()
-        assert window._edit_rule_btn is not None
-        assert window._edit_rule_btn.text() == "编辑"
+        assert window.edit_rule_btn is not None
+        assert window.edit_rule_btn.text() == "编辑"
         window.close()
 
     def test_edit_no_rules_shows_message(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3940,21 +3940,21 @@ class TestDetailArea:
     def test_detail_empty_state_initially(self, qapp: QApplication) -> None:
         """启动时详情区应在空态。"""
         window = MainWindow()
-        assert window._detail_action_stack.currentIndex() == 0
-        assert window._detail_main_stack.currentIndex() == 0
+        assert window.detail_action_stack.currentIndex() == 0
+        assert window.detail_main_stack.currentIndex() == 0
         window.close()
 
     def test_detail_clear(self, qapp: QApplication) -> None:
         """_detail_clear 应切换到空态并清空内容。"""
         window = MainWindow()
-        window._detail_action_stack.setCurrentIndex(1)
-        window._detail_main_stack.setCurrentIndex(1)
+        window.detail_action_stack.setCurrentIndex(1)
+        window.detail_main_stack.setCurrentIndex(1)
         window._detail_current_result = object()  # type: ignore[assignment]
         window._detail_hit_positions = [(0, 1, 0)]
         window._detail_current_hit_index = 0
         window._detail_clear()
-        assert window._detail_action_stack.currentIndex() == 0
-        assert window._detail_main_stack.currentIndex() == 0
+        assert window.detail_action_stack.currentIndex() == 0
+        assert window.detail_main_stack.currentIndex() == 0
         assert window._detail_current_result is None
         assert window._detail_hit_positions == []
         assert window._detail_current_hit_index == -1
@@ -3972,14 +3972,14 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         # 选中第一个结果项
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         # 详情区应切换到非空态
-        assert window._detail_action_stack.currentIndex() == 1
-        assert window._detail_main_stack.currentIndex() == 1
+        assert window.detail_action_stack.currentIndex() == 1
+        assert window.detail_main_stack.currentIndex() == 1
         assert window._detail_current_result is not None
         # 命中表应有行
-        assert window._detail_hits_table.rowCount() > 0
+        assert window.detail_hits_table.rowCount() > 0
         window.close()
 
     def test_detail_show_result_grouped_child(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3993,24 +3993,24 @@ class TestDetailArea:
         report = scanner.scan(tmp_path)
 
         window = MainWindow()
-        window._group_mode_combo.setCurrentText("按规则分组")
+        window.group_mode_combo.setCurrentText("按规则分组")
         window._populate_results(report)
         # 选中第一个子项
-        top = window._result_tree.topLevelItem(0)
+        top = window.result_tree.topLevelItem(0)
         if top.childCount() > 0:
             child = top.child(0)
-            window._result_tree.setCurrentItem(child)
-            assert window._detail_action_stack.currentIndex() == 1
+            window.result_tree.setCurrentItem(child)
+            assert window.detail_action_stack.currentIndex() == 1
         window.close()
 
     def test_detail_selection_no_items(self, qapp: QApplication) -> None:
         """无选中项时详情区应清空。"""
         window = MainWindow()
-        window._detail_action_stack.setCurrentIndex(1)
-        window._detail_main_stack.setCurrentIndex(1)
+        window.detail_action_stack.setCurrentIndex(1)
+        window.detail_main_stack.setCurrentIndex(1)
         window._on_result_selection_changed()
-        assert window._detail_action_stack.currentIndex() == 0
-        assert window._detail_main_stack.currentIndex() == 0
+        assert window.detail_action_stack.currentIndex() == 0
+        assert window.detail_main_stack.currentIndex() == 0
         window.close()
 
     def test_detail_hit_navigation(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4024,8 +4024,8 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
 
         total = len(window._detail_hit_positions)
         if total > 1:
@@ -4036,8 +4036,8 @@ class TestDetailArea:
             window._on_prev_detail_hit()
             assert window._detail_current_hit_index == 0
             # 导航标签应显示 "1 / total"
-            assert "1" in window._detail_nav_label.text()
-            assert str(total) in window._detail_nav_label.text()
+            assert "1" in window.detail_nav_label.text()
+            assert str(total) in window.detail_nav_label.text()
         window.close()
 
     def test_detail_nav_label_no_hits(self, qapp: QApplication) -> None:
@@ -4046,9 +4046,9 @@ class TestDetailArea:
         window._detail_hit_positions = []
         window._detail_current_hit_index = -1
         window._update_detail_nav_label()
-        assert "无命中" in window._detail_nav_label.text()
-        assert not window._detail_prev_btn.isEnabled()
-        assert not window._detail_next_btn.isEnabled()
+        assert "无命中" in window.detail_nav_label.text()
+        assert not window.detail_prev_btn.isEnabled()
+        assert not window.detail_next_btn.isEnabled()
         window.close()
 
     def test_detail_nav_label_with_hits(self, qapp: QApplication) -> None:
@@ -4057,9 +4057,9 @@ class TestDetailArea:
         window._detail_hit_positions = [(0, 1, 0), (5, 6, 0)]
         window._detail_current_hit_index = 0
         window._update_detail_nav_label()
-        assert "1 / 2" in window._detail_nav_label.text()
-        assert window._detail_prev_btn.isEnabled()
-        assert window._detail_next_btn.isEnabled()
+        assert "1 / 2" in window.detail_nav_label.text()
+        assert window.detail_prev_btn.isEnabled()
+        assert window.detail_next_btn.isEnabled()
         window.close()
 
     def test_detail_prev_next_wrap_around(self, qapp: QApplication) -> None:
@@ -4096,8 +4096,8 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         window._on_copy_path()
         clipboard = QApplication.clipboard()
         assert clipboard is not None
@@ -4127,10 +4127,10 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         # 空文件应显示提示
-        text = window._detail_preview.toPlainText()
+        text = window.detail_preview.toPlainText()
         assert "空" in text or "二进制" in text
         window.close()
 
@@ -4145,8 +4145,8 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         assert window._detail_current_result is not None
 
         captured: list[Any] = []
@@ -4162,7 +4162,7 @@ class TestDetailArea:
 
         mw_module.QMenu = FakeQMenu
         try:
-            window._on_result_tree_context_menu(window._result_tree.viewport().rect().center())
+            window._on_result_tree_context_menu(window.result_tree.viewport().rect().center())
         finally:
             mw_module.QMenu = original_qmenu
 
@@ -4193,7 +4193,7 @@ class TestDetailArea:
 
         mw_module.QMenu = FakeQMenu
         try:
-            window._on_result_tree_context_menu(window._result_tree.viewport().rect().center())
+            window._on_result_tree_context_menu(window.result_tree.viewport().rect().center())
         finally:
             mw_module.QMenu = original_qmenu
 
@@ -4208,7 +4208,7 @@ class TestDetailArea:
         window = MainWindow()
         window._rules_paths = [r1]
         window._refresh_rules_file_list()
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
 
         captured: list[Any] = []
         from fuscan.gui import main_window as mw_module
@@ -4223,7 +4223,7 @@ class TestDetailArea:
 
         mw_module.QMenu = FakeQMenu
         try:
-            window._on_rules_file_list_context_menu(window._rules_file_list.viewport().rect().center())
+            window._on_rules_file_list_context_menu(window.rules_file_list.viewport().rect().center())
         finally:
             mw_module.QMenu = original_qmenu
 
@@ -4272,8 +4272,8 @@ class TestDetailArea:
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
         window._detail_show_result(report.hits[0])
-        assert window._detail_hits_table.columnCount() == 5
-        assert window._detail_hits_table.horizontalHeaderItem(3).text() == "位置数"
+        assert window.detail_hits_table.columnCount() == 5
+        assert window.detail_hits_table.horizontalHeaderItem(3).text() == "位置数"
         window.close()
 
     def test_detail_hits_table_position_count_values(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4282,8 +4282,8 @@ class TestDetailArea:
         window = MainWindow()
         window._detail_show_result(report.hits[0])
         # 规则0(密码): 2处password, 规则1(令牌): 1处token
-        assert window._detail_hits_table.item(0, 3).text() == "2"
-        assert window._detail_hits_table.item(1, 3).text() == "1"
+        assert window.detail_hits_table.item(0, 3).text() == "2"
+        assert window.detail_hits_table.item(1, 3).text() == "1"
         window.close()
 
     def test_click_hits_row_jumps_to_rule_highlight(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4329,9 +4329,9 @@ class TestDetailArea:
         window = MainWindow()
         window._detail_show_result(report.hits[0])
         # 规则0(文件名): target="filename" → 位置数列显示"-"
-        assert window._detail_hits_table.item(0, 3).text() == "-"
+        assert window.detail_hits_table.item(0, 3).text() == "-"
         # 规则1(密码): target="content" → 位置数列显示"1"（password在预览中出现1次）
-        assert window._detail_hits_table.item(1, 3).text() == "1"
+        assert window.detail_hits_table.item(1, 3).text() == "1"
         window.close()
 
     def test_filename_match_detail_shows_filename_label(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4339,10 +4339,10 @@ class TestDetailArea:
         report = _build_filename_match_report(tmp_path)
         window = MainWindow()
         window._detail_show_result(report.hits[0])
-        detail_text = window._detail_hits_table.item(0, 4).text()
+        detail_text = window.detail_hits_table.item(0, 4).text()
         assert "（仅文件名）" in detail_text
         # 内容匹配规则不应有此标记
-        content_detail = window._detail_hits_table.item(1, 4).text()
+        content_detail = window.detail_hits_table.item(1, 4).text()
         assert "（仅文件名）" not in content_detail
         window.close()
 
@@ -4363,7 +4363,7 @@ class TestDetailArea:
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
         window._detail_show_result(report.hits[0])
-        info_text = window._detail_info_label.text()
+        info_text = window.detail_info_label.text()
         assert "可切换位置" in info_text
         # multi_rule.txt: password×2 + token×1 = 3个位置
         assert "3" in info_text
@@ -4372,7 +4372,7 @@ class TestDetailArea:
     def test_highlight_skips_out_of_range_position(self, qapp: QApplication) -> None:
         """高亮位置超出文档长度时应跳过高亮，不调用 setPosition 越界。"""
         window = MainWindow()
-        window._detail_preview.setPlainText("short")
+        window.detail_preview.setPlainText("short")
         # 设置一个超出文档长度的位置
         window._detail_hit_positions = [(0, 3, 0), (100, 200, 0)]
         window._detail_current_hit_index = 1
@@ -4388,7 +4388,7 @@ class TestDetailArea:
     def test_rules_file_list_context_menu_no_selection(self, qapp: QApplication) -> None:
         """规则文件列表无选中项时右键菜单不应弹出。"""
         window = MainWindow()
-        assert window._rules_file_list.currentRow() < 0
+        assert window.rules_file_list.currentRow() < 0
 
         from fuscan.gui import main_window as mw_module
 
@@ -4403,7 +4403,7 @@ class TestDetailArea:
 
         mw_module.QMenu = FakeQMenu
         try:
-            window._on_rules_file_list_context_menu(window._rules_file_list.viewport().rect().center())
+            window._on_rules_file_list_context_menu(window.rules_file_list.viewport().rect().center())
         finally:
             mw_module.QMenu = original_qmenu
 
@@ -4421,8 +4421,8 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         assert window._detail_current_result is not None
 
         popen_calls: list[Any] = []
@@ -4455,12 +4455,12 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        item = window._result_tree.topLevelItem(0)
-        window._result_tree.setCurrentItem(item)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
         assert window._detail_current_result is not None
 
         window._on_copy_path()
-        assert "已复制" in window._stats_label.text()
+        assert "已复制" in window.stats_label.text()
         window.close()
 
     def test_set_use_builtin_rule_error(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4493,7 +4493,7 @@ class TestScanCallbacks:
         from fuscan.scanner.result import ProgressInfo
 
         window = MainWindow()
-        window._progress.setVisible(True)
+        window.progress.setVisible(True)
         info = ProgressInfo(
             total=100,
             scanned=50,
@@ -4504,9 +4504,9 @@ class TestScanCallbacks:
             elapsed=1.5,
         )
         window._on_scan_progress(info)
-        assert window._progress.value() == 50
-        assert window._progress.maximum() == 100
-        assert "50" in window._stats_label.text()
+        assert window.progress.value() == 50
+        assert window.progress.maximum() == 100
+        assert "50" in window.stats_label.text()
         window.close()
 
     def test_on_scan_progress_long_path(self, qapp: QApplication) -> None:
@@ -4517,7 +4517,7 @@ class TestScanCallbacks:
         long_path = "/" + "a" * 200 + ".txt"
         info = ProgressInfo(total=10, scanned=1, skipped=0, matched=0, errors=0, current_file=long_path, elapsed=0.1)
         window._on_scan_progress(info)
-        label_text = window._current_file_label.text()
+        label_text = window.current_file_label.text()
         assert "..." in label_text
         window.close()
 
@@ -4537,8 +4537,8 @@ class TestScanCallbacks:
             skipped_dirs=("/proj/.git", "/proj/node_modules"),
         )
         window._on_scan_progress(info)
-        assert window._skipped_dirs_list.count() == 2
-        items = [window._skipped_dirs_list.item(i).text() for i in range(window._skipped_dirs_list.count())]
+        assert window.skipped_dirs_list.count() == 2
+        items = [window.skipped_dirs_list.item(i).text() for i in range(window.skipped_dirs_list.count())]
         assert any(".git" in t for t in items)
         assert any("node_modules" in t for t in items)
         window.close()
@@ -4562,8 +4562,8 @@ class TestScanCallbacks:
             ),
         )
         window._on_scan_progress(info)
-        assert window._matched_files_list.count() == 2
-        text0 = window._matched_files_list.item(0).text()
+        assert window.matched_files_list.count() == 2
+        text0 = window.matched_files_list.item(0).text()
         assert "secret.py" in text0
         assert "敏感文件名" in text0
         assert "→" in text0
@@ -4584,7 +4584,7 @@ class TestScanCallbacks:
             elapsed=10.0,
         )
         window._on_scan_progress(info)
-        stats_text = window._stats_label.text()
+        stats_text = window.stats_label.text()
         # 计数与时间应汇总到状态栏文本
         assert "100" in stats_text
         assert "50" in stats_text
@@ -4616,7 +4616,7 @@ class TestScanCallbacks:
             skipped_dirs=("/dir1",),
         )
         window._on_scan_progress(info1)
-        assert window._skipped_dirs_list.count() == 1
+        assert window.skipped_dirs_list.count() == 1
 
         # 推进 0.1 秒，新增一个跳过目录，但应被节流跳过
         t[0] = 100.1
@@ -4631,7 +4631,7 @@ class TestScanCallbacks:
             skipped_dirs=("/dir1", "/dir2"),
         )
         window._on_scan_progress(info2)
-        assert window._skipped_dirs_list.count() == 1  # 仍为 1，节流生效
+        assert window.skipped_dirs_list.count() == 1  # 仍为 1，节流生效
         window.close()
 
     def test_on_scan_progress_incremental_append_skipped_dirs(
@@ -4657,7 +4657,7 @@ class TestScanCallbacks:
             skipped_dirs=("/dir1", "/dir2"),
         )
         window._on_scan_progress(info1)
-        assert window._skipped_dirs_list.count() == 2
+        assert window.skipped_dirs_list.count() == 2
 
         # 推进 0.6 秒（超过节流间隔），新增一个目录
         t[0] = 100.6
@@ -4672,10 +4672,10 @@ class TestScanCallbacks:
             skipped_dirs=("/dir1", "/dir2", "/dir3"),
         )
         window._on_scan_progress(info2)
-        assert window._skipped_dirs_list.count() == 3
+        assert window.skipped_dirs_list.count() == 3
         # 前两项应保持不变（未 clear 重建）
-        assert window._skipped_dirs_list.item(0).text() == "/dir1"
-        assert window._skipped_dirs_list.item(1).text() == "/dir2"
+        assert window.skipped_dirs_list.item(0).text() == "/dir1"
+        assert window.skipped_dirs_list.item(1).text() == "/dir2"
         window.close()
 
     def test_on_scan_progress_full_rebuild_on_truncation(
@@ -4715,9 +4715,9 @@ class TestScanCallbacks:
             skipped_dirs=("/dir3", "/dir4"),
         )
         window._on_scan_progress(info2)
-        assert window._skipped_dirs_list.count() == 2
-        assert window._skipped_dirs_list.item(0).text() == "/dir3"
-        assert window._skipped_dirs_list.item(1).text() == "/dir4"
+        assert window.skipped_dirs_list.count() == 2
+        assert window.skipped_dirs_list.item(0).text() == "/dir3"
+        assert window.skipped_dirs_list.item(1).text() == "/dir4"
         window.close()
 
     def test_on_scan_progress_incremental_append_matched_files(
@@ -4743,7 +4743,7 @@ class TestScanCallbacks:
             matched_files=(("/p/a.py", "规则A"),),
         )
         window._on_scan_progress(info1)
-        assert window._matched_files_list.count() == 1
+        assert window.matched_files_list.count() == 1
 
         t[0] = 100.6
         info2 = ProgressInfo(
@@ -4757,9 +4757,9 @@ class TestScanCallbacks:
             matched_files=(("/p/a.py", "规则A"), ("/p/b.py", "规则B")),
         )
         window._on_scan_progress(info2)
-        assert window._matched_files_list.count() == 2
-        assert window._matched_files_list.item(0).text() == "/p/a.py → 规则A"
-        assert window._matched_files_list.item(1).text() == "/p/b.py → 规则B"
+        assert window.matched_files_list.count() == 2
+        assert window.matched_files_list.item(0).text() == "/p/a.py → 规则A"
+        assert window.matched_files_list.item(1).text() == "/p/b.py → 规则B"
         window.close()
 
     def test_on_scan_failed(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4772,7 +4772,7 @@ class TestScanCallbacks:
         )
         window._on_scan_failed("测试错误")
         assert warned["called"]
-        assert "扫描失败" in window._stats_label.text()
+        assert "扫描失败" in window.stats_label.text()
         window.close()
 
     def test_on_scan_cancelled(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4786,8 +4786,8 @@ class TestScanCallbacks:
 
         window = MainWindow()
         window._on_scan_cancelled(report)
-        assert "已取消" in window._stats_label.text()
-        assert window._result_tree.topLevelItemCount() > 0
+        assert "已取消" in window.stats_label.text()
+        assert window.result_tree.topLevelItemCount() > 0
         window.close()
 
     def test_pause_resume_scan(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4808,11 +4808,11 @@ class TestScanCallbacks:
 
         window._pause_scan()
         assert window._scan_state == ScanState.PAUSED
-        assert "继续" in window._pause_resume_btn.text()
+        assert "继续" in window.pause_resume_btn.text()
 
         window._resume_scan()
         assert window._scan_state == ScanState.RUNNING
-        assert "暂停" in window._pause_resume_btn.text()
+        assert "暂停" in window.pause_resume_btn.text()
 
         window._worker = None
         window.close()
@@ -5003,9 +5003,9 @@ class TestRulesManagement:
         window._set_use_builtin(False)
         window._rules_paths = [r1]
         window._refresh_rules_file_list()
-        assert window._rules_file_list.count() == 1
+        assert window.rules_file_list.count() == 1
 
-        window._rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)
         window._on_remove_rule()
         assert len(window._rules_paths) == 0
         window.close()
@@ -5076,14 +5076,14 @@ class TestSettingsDialog:
 
         window = MainWindow()
         # settings_action 应存在并连接到 _on_settings
-        assert window._settings_action is not None
-        assert window._settings_action.text() == "设置..."
+        assert window.settings_action is not None
+        assert window.settings_action.text() == "设置..."
         # 设置 action 应在文件菜单中
-        file_actions = window._ui.file_menu.actions()
+        file_actions = window.file_menu.actions()
         settings_texts = [a.text() for a in file_actions]
         assert "设置..." in settings_texts
         # 帮助菜单不应包含设置
-        help_actions = window._ui.help_menu.actions()
+        help_actions = window.help_menu.actions()
         help_texts = [a.text() for a in help_actions]
         assert "设置..." not in help_texts
         # 确认 QDialog 已导入可用
@@ -5325,21 +5325,21 @@ class TestIcons:
     def test_all_action_buttons_have_icons(self, qapp: QApplication) -> None:
         """所有操作按钮应设置图标。"""
         window = MainWindow()
-        assert not window._edit_rule_btn.icon().isNull()
-        assert not window._export_btn.icon().isNull()
-        assert not window._rescan_btn.icon().isNull()
-        assert not window._cancel_btn.icon().isNull()
-        assert not window._pause_resume_btn.icon().isNull()
+        assert not window.edit_rule_btn.icon().isNull()
+        assert not window.export_btn.icon().isNull()
+        assert not window.rescan_btn.icon().isNull()
+        assert not window.cancel_btn.icon().isNull()
+        assert not window.pause_resume_btn.icon().isNull()
         window.close()
 
     def test_all_menu_actions_have_icons(self, qapp: QApplication) -> None:
         """所有菜单动作应设置图标。"""
         window = MainWindow()
-        assert not window._edit_rules_action.icon().isNull()
-        assert not window._export_csv_action.icon().isNull()
-        assert not window._export_json_action.icon().isNull()
-        assert not window._settings_action.icon().isNull()
-        assert not window._ui.about_action.icon().isNull()
+        assert not window.edit_rules_action.icon().isNull()
+        assert not window.export_csv_action.icon().isNull()
+        assert not window.export_json_action.icon().isNull()
+        assert not window.settings_action.icon().isNull()
+        assert not window.about_action.icon().isNull()
         window.close()
 
 
@@ -5369,7 +5369,7 @@ class TestSeverityBackground:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_tree.topLevelItem(0)
+        top_item = window.result_tree.topLevelItem(0)
         assert top_item is not None
         expected_bg = _SEVERITY_BACKGROUNDS[Severity.CRITICAL]
         for col in range(top_item.columnCount()):
@@ -5388,11 +5388,11 @@ class TestSeverityBackground:
         window = MainWindow()
         window._last_report = report
         window._switch_stage(WorkflowStage.RESULTS)
-        idx = window._group_mode_combo.findData("severity")
-        window._group_mode_combo.setCurrentIndex(idx)
+        idx = window.group_mode_combo.findData("severity")
+        window.group_mode_combo.setCurrentIndex(idx)
         window._refresh_result_tree()
 
-        top_item = window._result_tree.topLevelItem(0)
+        top_item = window.result_tree.topLevelItem(0)
         assert top_item is not None
         assert not (top_item.flags() & Qt.ItemIsSelectable)
         window.close()
@@ -5416,7 +5416,7 @@ class TestDetailPreviewFallback:
 
         window = MainWindow()
         window._detail_show_result(result)
-        text = window._detail_preview.toPlainText()
+        text = window.detail_preview.toPlainText()
         assert "无内容关键词可高亮" in text
         assert "路径规则" in text
         window.close()

@@ -1,5 +1,101 @@
 # GUI 全面拆分与精简计划
 
+## 执行进度（截至本会话）
+
+### 已完成
+
+- **Phase 1（对话框多继承）**：已完成并提交 `a11d51d`。`detail_dialog.py`、`rule_editor.py` 均改为多继承，`_bind_widgets` 移除，99 处测试引用已更新。
+- **Phase 2 源码重构（部分）**：`main_window.py` 已改为 `class MainWindow(QMainWindow, Ui_MainWindow)`，`_bind_widgets` 已移除，大部分 UI 部件名已去下划线。`test_gui.py` 中 `window._ui.` 已全部移除（0 处）。
+
+### 待完成（本会话剩余工作）
+
+#### Phase 2 收尾：源码遗漏修复 + 测试批量更新
+
+**源码遗漏（必须先修）**——main_window.py 中以下 UI 部件名未改完：
+
+| 当前（错误） | 应改为 | 出现行 |
+|--------------|--------|--------|
+| `self._detail_hits_table` | `self.detail_hits_table` | 423, 424, 425, 426, 1355, 1393, 1399, 1402, 1405, 1413, 1417 |
+| `self._load_rules_btn` | `self.load_rules_btn` | 511, 567 |
+| `self._load_rules_action` | `self.load_rules_action` | 512, 586, 745 |
+| `self._edit_rule_btn` | `self.edit_rule_btn` | 515, 573 |
+| `self._edit_rules_action` | `self.edit_rules_action` | 516, 587, 746 |
+| `self._rules_tree` | `self.rules_tree` | 1626, 1636 |
+| `self.__detail_open_location_btn`（双下划线 bug） | `self.detail_open_location_btn` | 578 |
+| `self.__skipped_dirs_list`（双下划线 bug） | `self.skipped_dirs_list` | 1059, 1201, 1205, 1208, 1209, 1211, 1212 |
+
+修复方式：对每个部件名用 `Edit replace_all` 批量替换。双下划线需先替换 `self.__xxx` → `self.xxx`。
+
+**测试批量更新**——test_gui.py 中约 319 处需改：
+
+- 38 个 UI 部件 `window._xxx` → `window.xxx`（如 `window._result_tree` 58 处、`window._scan_btn` 26 处等，详见下方完整清单）
+- 1 个特殊改名 `window._splitter` → `window.results_splitter`（1 处）
+- 6 处 `window._ui` → `window`（`hasattr(window._ui, "xxx")` 断言，第 1411, 1475, 1476, 1486, 1487, 1488 行）
+
+**不改的引用**（业务方法/状态属性，保持下划线）：
+- 业务方法：`window._on_xxx`、`window._populate_results`、`window._switch_stage`、`window._set_use_builtin`、`window._refresh_xxx`、`window._update_xxx`、`window._reload_xxx`、`window._build_xxx`、`window._pause_scan`、`window._resume_scan`、`window._cleanup_worker`、`window._detail_show_result`、`window._detail_clear`、`window._reset_scan_ui`、`window._format_report`（类方法）、`window._shortcut_prev/next/remove_rule`、`window._add_scan_path_history`、`window._build_scan_roots`、`window._reload_and_refresh`、`window._scroll_to_current_detail_hit`、`window._highlight_current_detail_hit`、`window._update_detail_nav_label`
+- 业务状态属性：`window._config`、`window._ruleset`、`window._rules_paths`、`window._scan_state`、`window._worker`、`window._cache`、`window._scan_root`、`window._last_report`、`window._scan_mode`、`window._drive_buttons`、`window._workflow_stage`、`window._detail_hit_positions`、`window._detail_current_hit_index`、`window._detail_current_result`、`window._use_builtin`、`window._selected_drive`、`window._header_button_group`
+
+**测试改动完整清单**（按出现次数降序，共 319 处）：
+
+| 旧引用 | 新引用 | 处数 |
+|--------|--------|------|
+| `window._result_tree` | `window.result_tree` | 58 |
+| `window._scan_btn` | `window.scan_btn` | 26 |
+| `window._rules_file_list` | `window.rules_file_list` | 15 |
+| `window._main_stack` | `window.main_stack` | 14 |
+| `window._group_mode_combo` | `window.group_mode_combo` | 14 |
+| `window._rules_tree` | `window.rules_tree` | 14 |
+| `window._skipped_dirs_list` | `window.skipped_dirs_list` | 12 |
+| `window._detail_hits_table` | `window.detail_hits_table` | 12 |
+| `window._pause_resume_btn` | `window.pause_resume_btn` | 11 |
+| `window._scan_mode_combo` | `window.scan_mode_combo` | 10 |
+| `window._progress` | `window.progress` | 10 |
+| `window._rule_filter_combo` | `window.rule_filter_combo` | 10 |
+| `window._path_combo` | `window.path_combo` | 9 |
+| `window._detail_action_stack` | `window.detail_action_stack` | 7 |
+| `window._stats_label` | `window.stats_label` | 7 |
+| `window._path_filter_input` | `window.path_filter_input` | 7 |
+| `window._detail_nav_label` | `window.detail_nav_label` | 7 |
+| `window._view_results_btn` | `window.view_results_btn` | 7 |
+| `window._matched_files_list` | `window.matched_files_list` | 6 |
+| `window._sidebar` | `window.sidebar` | 6 |
+| `window._detail_main_stack` | `window.detail_main_stack` | 6 |
+| `window._ui` | `window` | 6 |
+| `window._current_file_label` | `window.current_file_label` | 5 |
+| `window._scan_action` | `window.scan_action` | 4 |
+| `window._export_json_action` | `window.export_json_action` | 3 |
+| `window._export_csv_action` | `window.export_csv_action` | 3 |
+| `window._rescan_btn` | `window.rescan_btn` | 3 |
+| `window._settings_action` | `window.settings_action` | 3 |
+| `window._edit_rule_btn` | `window.edit_rule_btn` | 3 |
+| `window._tab_stack` | `window.tab_stack` | 3 |
+| `window._target_stack` | `window.target_stack` | 3 |
+| `window._detail_preview` | `window.detail_preview` | 3 |
+| `window._detail_prev_btn` | `window.detail_prev_btn` | 2 |
+| `window._detail_next_btn` | `window.detail_next_btn` | 2 |
+| `window._edit_rules_action` | `window.edit_rules_action` | 2 |
+| `window._detail_info_label` | `window.detail_info_label` | 2 |
+| `window._splitter` | `window.results_splitter` | 1 |
+| `window._cancel_btn` | `window.cancel_btn` | 1 |
+| `window._load_rules_action` | `window.load_rules_action` | 1 |
+| `window._export_btn` | `window.export_btn` | 1 |
+
+**注意**：`window._load_rules_btn` 在测试中是否出现需确认（源码中有但测试统计未列出，可能 0 处）。
+
+#### Phase 2 验证与提交
+
+```bash
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyrefly check
+uv run pytest -m "not slow" --cov=fuscan --cov-fail-under=95
+```
+
+通过后提交：`refactor: main_window 改为多继承模式，移除 _bind_widgets`
+
+---
+
 ## 背景与目标
 
 main_window.py 2032 行、main_window_ui.py 780 行过于臃肿。3 个 GUI 模块（main_window / detail_dialog / rule_editor）均采用组合模式（`self._ui = Ui_X()`）+ `_bind_widgets` 冗余绑定（main_window 77 行、detail_dialog 6 行、rule_editor 2 行）。settings_dialog.py 已改为多继承模式（`class X(QDialog, Ui_X)`）作为参考样板。
