@@ -52,7 +52,6 @@ try:
         QProgressBar,
         QPushButton,
         QShortcut,
-        QTableWidget,
         QTableWidgetItem,
         QTextEdit,
         QTreeWidgetItem,
@@ -83,7 +82,6 @@ except ImportError:  # pragma: no cover
         QMenu,
         QMessageBox,
         QPushButton,
-        QTableWidget,
         QTableWidgetItem,
         QTextEdit,
         QTreeWidgetItem,
@@ -393,7 +391,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性、layout stretch 与信号槽连接。"""
-        # 状态栏：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）
+        self._setup_status_bar()
+        self._setup_results_tree()
+        self._setup_detail_table()
+        self._setup_comboboxes()
+        self._setup_splitters()
+        self._setup_layouts()
+        self._setup_icons()
+        self._setup_button_groups()
+        self._setup_sidebar()
+        self._connect_signals()
+        self._setup_context_menus()
+        self._setup_shortcuts()
+        # 初始阶段：配置页
+        self._switch_stage(WorkflowStage.SETUP)
+
+    def _setup_status_bar(self) -> None:
+        """创建状态栏组件：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）。"""
         self.stats_label = QLabel("就绪")
         self.stats_label.setObjectName("stats_label")
         self.statusBar().addWidget(self.stats_label, 1)
@@ -412,30 +426,38 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
 
-        # 结果树列宽
+    def _setup_results_tree(self) -> None:
+        """设置结果树列宽（.ui 不支持每列独立宽度）。"""
         self.result_tree.setColumnWidth(0, 400)
         self.result_tree.setColumnWidth(1, 150)
         self.result_tree.setColumnWidth(2, 80)
         self.result_tree.setColumnWidth(3, 60)
         self.result_tree.setColumnWidth(4, 60)
 
-        # 详情区命中表
+    def _setup_detail_table(self) -> None:
+        """设置详情区命中表：全列拉伸 + 行点击信号（editTriggers/selectionBehavior 已在 .ui 中声明）。"""
         self.detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.detail_hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.detail_hits_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.detail_hits_table.cellClicked.connect(self._on_detail_hits_row_clicked)
 
-        # QComboBox 初始项
+    def _setup_comboboxes(self) -> None:
+        """填充 QComboBox 初始项（带 userData，.ui 不便表达）。"""
         self.rule_filter_combo.addItem("全部规则", "")
         self.group_mode_combo.addItem("不分组", "flat")
         self.group_mode_combo.addItem("按规则", "rule")
         self.group_mode_combo.addItem("按严重等级", "severity")
 
-        # QSplitter 伸缩比例（左:右 = 2:3）
+    def _setup_splitters(self) -> None:
+        """设置 QSplitter 伸缩比例与初始尺寸（.ui 不支持 setStretchFactor）。"""
+        # results_splitter: 结果列表 : 详情区 = 2:3
         self.results_splitter.setStretchFactor(0, 2)
         self.results_splitter.setStretchFactor(1, 3)
+        # sidebar_splitter: sidebar(0) / main_stack(1) 初始比例 220:1060
+        self.sidebar_splitter.setStretchFactor(0, 0)
+        self.sidebar_splitter.setStretchFactor(1, 1)
+        self.sidebar_splitter.setSizes([220, 1060])
 
-        # layout 伸缩因子（.ui 不支持 stretch vector）
+    def _setup_layouts(self) -> None:
+        """设置各 layout 伸缩因子（.ui 不支持 stretch vector）。"""
         # 配置页：target_group 自然尺寸 + setup_action_bar 紧随其后 + 底部弹簧填充剩余空间
         self.setup_layout.setStretch(0, 0)
         self.setup_layout.setStretch(1, 0)
@@ -453,9 +475,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # history_tab_layout: history_label(0) / history_list(1)
         self.history_tab_layout.setStretch(0, 0)
         self.history_tab_layout.setStretch(1, 1)
-        # sidebar_splitter: sidebar(0) / main_stack(1) 初始比例 220:1060
-        self.sidebar_splitter.setStretchFactor(0, 0)
-        self.sidebar_splitter.setStretchFactor(1, 1)
         # filter_layout: path_filter_input / rule_filter_combo / group_mode_combo
         self.filter_layout.setStretch(0, 2)
         self.filter_layout.setStretch(1, 1)
@@ -473,11 +492,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.detail_nonempty_main_layout.setStretch(4, 2)
         self.detail_nonempty_main_layout.setStretch(5, 0)
 
-        # 空白详情面板居中（.ui 中 QVBoxLayout 不支持 alignment 属性）
-        self.detail_empty_main_layout.insertStretch(0)
-        self.detail_empty_main_layout.addStretch()
-
-        # 加载图标并为扫描控制按钮设置
+    def _setup_icons(self) -> None:
+        """加载主题图标并设置到各按钮、菜单 actions 与下拉项。"""
+        # 主色变体（浅色背景）
         self._icon_scan = _load_themed_icon(_ICON_SCAN, theme.COLOR_PRIMARY)
         self._icon_pause = _load_themed_icon(_ICON_PAUSE, theme.COLOR_PRIMARY)
         self._icon_rescan = _load_themed_icon(_ICON_RESCAN, theme.COLOR_PRIMARY)
@@ -502,15 +519,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._icon_load_list_on_primary = _load_themed_icon(_ICON_LOAD_LIST, theme.COLOR_TEXT_ON_PRIMARY)
         self._icon_settings_on_primary = _load_themed_icon(_ICON_SETTINGS, theme.COLOR_TEXT_ON_PRIMARY)
         self._icon_about_on_primary = _load_themed_icon(_ICON_ABOUT, theme.COLOR_TEXT_ON_PRIMARY)
+        # 应用到扫描控制按钮
         self.scan_btn.setIcon(self._icon_scan)
-        # 扫描模式下拉项图标
         self.scan_mode_combo.setItemIcon(0, self._icon_all_disk)
         self.scan_mode_combo.setItemIcon(1, self._icon_disk)
         self.scan_mode_combo.setItemIcon(2, self._icon_folder)
-        # 加载规则按钮图标
+        # 加载规则按钮与菜单
         self.load_rules_btn.setIcon(self._icon_load_list)
         self.load_rules_action.setIcon(self._icon_load_list)
-        # 菜单 actions 图标
         self.scan_action.setIcon(self._icon_scan)
         self.edit_rule_btn.setIcon(self._icon_edit)
         self.edit_rules_action.setIcon(self._icon_edit)
@@ -522,22 +538,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.rescan_btn.setIcon(self._icon_rescan)
         self.cancel_btn.setIcon(self._icon_stop)
         self.pause_resume_btn.setIcon(self._icon_pause)
-
-        # 头部栏按钮图标（深色背景用白色变体，rule-12 HeaderBar）
+        # 头部栏按钮（深色背景用白色变体，rule-12 HeaderBar）
         self.tab_scan_btn.setIcon(self._icon_scan_on_primary)
         self.tab_rules_btn.setIcon(self._icon_load_list_on_primary)
         self.tab_history_btn.setIcon(self._icon_history_on_primary)
         self.settings_btn.setIcon(self._icon_settings_on_primary)
         self.about_btn.setIcon(self._icon_about_on_primary)
 
+    def _setup_button_groups(self) -> None:
+        """初始化头部 Tab 按钮互斥组与盘符按钮组。"""
         # 头部 Tab 按钮互斥组（id 0=扫描 / 1=规则 / 2=历史）
         self._header_button_group = QButtonGroup(self)
         self._header_button_group.setExclusive(True)
         self._header_button_group.addButton(self.tab_scan_btn, 0)
         self._header_button_group.addButton(self.tab_rules_btn, 1)
         self._header_button_group.addButton(self.tab_history_btn, 2)
+        # 盘符按钮组（平铺选择，替代下拉）
+        self._drive_button_group = QButtonGroup(self)
+        self._drive_button_group.setExclusive(True)
+        self._drive_button_group.buttonClicked.connect(self._on_drive_selected)
+        self._refresh_drive_buttons()
 
-        # 侧边栏阶段项（深色背景用白色变体；配置 / 扫描中 / 结果）
+    def _setup_sidebar(self) -> None:
+        """填充侧边栏阶段项（深色背景用白色变体；配置 / 扫描中 / 结果）。"""
         self.sidebar.blockSignals(True)
         self.sidebar.clear()
         self.sidebar.addItem(QListWidgetItem(self._icon_folder_on_primary, "配置"))
@@ -546,43 +569,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.sidebar.setCurrentRow(0)
         self.sidebar.blockSignals(False)
 
-        # 侧边栏分隔器初始尺寸（220:剩余）
-        self.sidebar_splitter.setSizes([220, 1060])
-
-        # 初始化盘符按钮组（平铺选择，替代下拉）
-        self._drive_button_group = QButtonGroup(self)
-        self._drive_button_group.setExclusive(True)
-        self._drive_button_group.buttonClicked.connect(self._on_drive_selected)
-        self._refresh_drive_buttons()
-
-        # 信号槽连接
+    def _connect_signals(self) -> None:
+        """连接所有信号槽（按钮、actions、worker、头部栏与侧边栏）。"""
+        # 扫描控制
         self.scan_btn.clicked.connect(self._on_scan)
         self.view_results_btn.clicked.connect(self._on_view_results)
         self.pause_resume_btn.clicked.connect(self._on_pause_resume)
         self.cancel_btn.clicked.connect(self._on_cancel_scan)
         self.rescan_btn.clicked.connect(self._on_rescan)
+        # 扫描目标
         self.scan_mode_combo.currentIndexChanged.connect(self._on_scan_mode_changed)
         self.path_combo.currentIndexChanged.connect(self._on_path_selected)
         self.select_path_btn.clicked.connect(self._on_select_path)
+        # 规则
         self.load_rules_btn.clicked.connect(self._on_load_rules)
+        self.edit_rule_btn.clicked.connect(self._on_edit_rules)
+        # 结果树
         self.result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
         self.result_tree.itemSelectionChanged.connect(self._on_result_selection_changed)
+        # 筛选
         self.path_filter_input.textChanged.connect(self._refresh_result_tree)
         self.rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
         self.group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
-        self.edit_rule_btn.clicked.connect(self._on_edit_rules)
+        # 历史
         self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
+        # 详情区
         self.export_btn.clicked.connect(self._on_export_menu)
         self.detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
         self.detail_next_btn.clicked.connect(self._on_next_detail_hit)
         self.detail_open_location_btn.clicked.connect(self._on_open_file_location)
-        # 头部栏与侧边栏信号槽（rule-12 HeaderBar + Sidebar）
+        # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
         self._header_button_group.idClicked.connect(self._on_header_tab_changed)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
         self.settings_btn.clicked.connect(self._on_settings)
         self.about_btn.clicked.connect(self._on_about)
-
-        # actions 信号槽
+        # actions
         self.load_rules_action.triggered.connect(self._on_load_rules)
         self.edit_rules_action.triggered.connect(self._on_edit_rules)
         self.export_csv_action.triggered.connect(lambda: self._on_export("csv"))
@@ -592,13 +613,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.scan_action.triggered.connect(self._on_scan)
         self.about_action.triggered.connect(self._on_about)
         self.settings_action.triggered.connect(self._on_settings)
-
-        # 右键菜单与快捷键
-        self._setup_context_menus()
-        self._setup_shortcuts()
-
-        # 初始阶段：配置页
-        self._switch_stage(WorkflowStage.SETUP)
 
     def _setup_context_menus(self) -> None:
         """为结果树和规则文件列表配置右键菜单策略。"""

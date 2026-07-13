@@ -450,20 +450,28 @@ class Ui_MainWindow(object):
         self.detail_empty_main.setObjectName(u"detail_empty_main")
         self.detail_empty_main_layout = QVBoxLayout(self.detail_empty_main)
         self.detail_empty_main_layout.setObjectName(u"detail_empty_main_layout")
+        self.detail_empty_top_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.detail_empty_main_layout.addItem(self.detail_empty_top_spacer)
+
         self.detail_empty_hint = QLabel(self.detail_empty_main)
         self.detail_empty_hint.setObjectName(u"detail_empty_hint")
-        sizePolicy6 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        sizePolicy6.setHorizontalStretch(0)
-        sizePolicy6.setVerticalStretch(0)
-        sizePolicy6.setHeightForWidth(self.detail_empty_hint.sizePolicy().hasHeightForWidth())
-        self.detail_empty_hint.setSizePolicy(sizePolicy6)
+        sizePolicy5.setHeightForWidth(self.detail_empty_hint.sizePolicy().hasHeightForWidth())
+        self.detail_empty_hint.setSizePolicy(sizePolicy5)
         self.detail_empty_hint.setAlignment(Qt.AlignCenter)
 
         self.detail_empty_main_layout.addWidget(self.detail_empty_hint)
 
+        self.detail_empty_bottom_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.detail_empty_main_layout.addItem(self.detail_empty_bottom_spacer)
+
         self.detail_main_stack.addWidget(self.detail_empty_main)
         self.detail_nonempty_main = QFrame()
         self.detail_nonempty_main.setObjectName(u"detail_nonempty_main")
+        sizePolicy6 = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        sizePolicy6.setHorizontalStretch(0)
+        sizePolicy6.setVerticalStretch(0)
         sizePolicy6.setHeightForWidth(self.detail_nonempty_main.sizePolicy().hasHeightForWidth())
         self.detail_nonempty_main.setSizePolicy(sizePolicy6)
         self.detail_nonempty_main_layout = QVBoxLayout(self.detail_nonempty_main)
@@ -496,6 +504,8 @@ class Ui_MainWindow(object):
         __qtablewidgetitem4 = QTableWidgetItem()
         self.detail_hits_table.setHorizontalHeaderItem(4, __qtablewidgetitem4)
         self.detail_hits_table.setObjectName(u"detail_hits_table")
+        self.detail_hits_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.detail_hits_table.setSelectionBehavior(QAbstractItemView.SelectRows)
 
         self.detail_nonempty_main_layout.addWidget(self.detail_hits_table)
 

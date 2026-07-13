@@ -16,6 +16,7 @@ ui: ## 编译 .ui 文件到 _ui.py (pyside2-uic)
 	pyside2-uic src/fuscan/gui/main_window.ui -o src/fuscan/gui/main_window_ui.py
 	pyside2-uic src/fuscan/gui/detail_dialog.ui -o src/fuscan/gui/detail_dialog_ui.py
 	pyside2-uic src/fuscan/gui/rule_editor.ui -o src/fuscan/gui/rule_editor_ui.py
+	pyside2-uic src/fuscan/gui/settings_dialog.ui -o src/fuscan/gui/settings_dialog_ui.py
 
 build b: ## 构建分发包 (wheel + sdist)
 	uv build
