@@ -423,6 +423,59 @@ class TestScannerConcurrency:
         assert report.stats.total_files == 0
         assert report.stats.matched_files == 0
 
+    def test_pipelined_large_fileset_triggers_drain(self, tmp_path: Path) -> None:
+        """流水线扫描文件数超过 drain 阈值（500）时应正确收集全部结果。
+
+        验证 _drain_futures 在 walk 过程中非阻塞收集已完成 future 后，
+        最终统计与单线程一致。
+        """
+        for i in range(600):
+            (tmp_path / f"secret_{i}.txt").write_text(f"password_{i}", encoding="utf-8")
+
+        rs = _build_ruleset(
+            _filename_rule("fn", "secret"),
+            _content_rule("ct", "password"),
+        )
+
+        seq_scanner = Scanner(rs)
+        seq_report = seq_scanner.scan(tmp_path)
+
+        con_scanner = Scanner(rs, max_workers=4)
+        con_report = con_scanner.scan(tmp_path)
+
+        assert con_report.stats.total_files == 600
+        assert con_report.stats.scanned_files == seq_report.stats.scanned_files == 600
+        assert con_report.stats.matched_files == seq_report.stats.matched_files == 600
+        # 命中文件集合一致（顺序可能不同，按路径排序比较）
+        seq_paths = sorted(str(r.path) for r in seq_report.hits)
+        con_paths = sorted(str(r.path) for r in con_report.hits)
+        assert seq_paths == con_paths
+
+    def test_pipelined_drain_error_handling(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """流水线 drain 阶段 _scan_entry 抛异常应计 error 并继续。
+
+        600 文件触发 drain 阈值，首个 future 抛异常后由 drain 非阻塞收集，
+        ``future.result()`` 重抛被 ``except Exception`` 捕获。
+        """
+        for i in range(600):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("r", "f"))
+        scanner = Scanner(rs, max_workers=4)
+
+        original_scan_entry = scanner._scan_entry
+        call_count = {"n": 0}
+
+        def fake_scan_entry(entry):  # type: ignore[no-untyped-def]
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("模拟 drain 阶段失败")
+            return original_scan_entry(entry)
+
+        monkeypatch.setattr(scanner, "_scan_entry", fake_scan_entry)
+        report = scanner.scan(tmp_path)
+        assert report.stats.errors >= 1
+        assert report.stats.scanned_files >= 1
+
 
 class TestScannerProgress:
     """扫描进度回调测试。"""
@@ -482,6 +535,25 @@ class TestScannerProgress:
         report = scanner.scan(tmp_path)
         assert report.stats.matched_files == 1
 
+    def test_matched_files_not_collected_without_callback(self, tmp_path: Path) -> None:
+        """无 on_progress 回调时不应收集 matched_files 列表（优化 3：进度上报减负）。
+
+        通过访问私有属性验证：当未注册 on_progress 时，命中文件的 (path, rule) 对
+        不应被追加到 self._matched_files，避免大扫描量时的无谓列表增长与截断开销。
+        """
+        for i in range(5):
+            (tmp_path / f"secret_{i}.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(
+            _filename_rule("fn", "secret"),
+            _content_rule("ct", "password"),
+        )
+        scanner = Scanner(rs)  # 无 on_progress
+        report = scanner.scan(tmp_path)
+        # 统计仍正确（命中数不受影响）
+        assert report.stats.matched_files == 5
+        # 但内部收集列表应为空（无回调时跳过收集）
+        assert scanner._matched_files == []
+
     def test_progress_callback_final_force(self, tmp_path: Path) -> None:
         """最终进度应被强制发送（跳过节流）。"""
         for i in range(5):
@@ -539,6 +611,49 @@ class TestScannerProgress:
         assert any(".git" in d for d in last.skipped_dirs)
         # app.py 命中应收集到 matched_files
         assert any(path.endswith("app.py") for path, _ in last.matched_files)
+
+    def test_pipelined_drain_collects_matched_files_with_callback(self, tmp_path: Path) -> None:
+        """流水线 drain 阶段有 on_progress 时应收集 matched_files（覆盖 drain guard True 分支）。
+
+        600 文件触发 drain 阈值，drain 收集命中 future 时执行
+        ``if self._on_progress is not None:`` True 分支，追加 matched_files。
+        """
+        for i in range(600):
+            (tmp_path / f"secret_{i}.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(
+            _filename_rule("fn", "secret"),
+            _content_rule("ct", "password"),
+        )
+        received: list[ProgressInfo] = []
+        scanner = Scanner(rs, max_workers=4, on_progress=received.append, progress_interval=0.0)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 600
+        # drain 阶段应收集到 matched_files（含路径与规则名）
+        assert len(scanner._matched_files) > 0
+        assert any(rule == "fn" for _, rule in scanner._matched_files)
+
+    def test_archive_phase_collects_matched_files_with_callback(self, tmp_path: Path) -> None:
+        """压缩包扫描阶段有 on_progress 时应收集 matched_files（覆盖 archive guard True 分支）。
+
+        scan_archives=True + on_progress 回调，zip 内条目命中时执行
+        ``if self._on_progress is not None:`` True 分支。
+        """
+        import zipfile
+
+        zip_path = tmp_path / "archive.zip"
+        with zipfile.ZipFile(str(zip_path), "w") as zf:
+            zf.writestr("secret.txt", "password")
+
+        rs = _build_ruleset(
+            _filename_rule("fn", "secret"),
+            _content_rule("ct", "password"),
+        )
+        received: list[ProgressInfo] = []
+        scanner = Scanner(rs, scan_archives=True, on_progress=received.append, progress_interval=0.0)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files >= 1
+        # archive 阶段应收集到 matched_files
+        assert len(scanner._matched_files) > 0
 
 
 class TestScannerControl:
@@ -650,6 +765,27 @@ class TestScannerControl:
         assert report is not None
         assert not report.cancelled
         assert report.stats.matched_files == 20
+
+    def test_pipelined_cancel_during_walk(self, tmp_path: Path) -> None:
+        """流水线 walk 阶段取消应中断扫描（覆盖 walk 循环 _check_control break）。
+
+        250 文件使 walk 阶段 ``total % 200 == 0`` 触发进度回调，
+        回调中调用 cancel，下一次 walk 迭代 ``_check_control()`` 返回 True 并 break。
+        """
+        for i in range(250):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(
+            _build_ruleset(_filename_rule("r", "f")),
+            max_workers=4,
+            progress_interval=0.0,
+        )
+
+        def cancel_on_first_progress(_info: ProgressInfo) -> None:
+            scanner.cancel()
+
+        scanner._on_progress = cancel_on_first_progress
+        report = scanner.scan(tmp_path)
+        assert report.cancelled
 
 
 class TestScannerExtraCoverage:

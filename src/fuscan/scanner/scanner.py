@@ -11,12 +11,12 @@ import hashlib
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
 from fuscan.extractors import extract_content
-from fuscan.rules.model import Rule, RuleSet
+from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, HashingContentProvider, MatchContext
 from fuscan.scanner.matchers import Matcher, build_matcher
 from fuscan.scanner.result import ProgressInfo, RuleHit, ScanReport, ScanResult, ScanStats
@@ -68,6 +68,24 @@ def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
     return content, hashlib.sha256(data).hexdigest()
 
 
+def _spec_needs_content(spec: MatchSpec) -> bool:
+    """递归检查 MatchSpec 是否包含 CONTENT 目标。
+
+    用于缓存模式：若所有适用规则均不需要内容，可跳过文件 I/O。
+    """
+    from fuscan.rules.model import AndMatch, LeafMatch, NotMatch, OrMatch
+
+    if isinstance(spec, LeafMatch):
+        return spec.target == MatchTarget.CONTENT
+    if isinstance(spec, AndMatch):
+        return any(_spec_needs_content(c) for c in spec.children)
+    if isinstance(spec, OrMatch):
+        return any(_spec_needs_content(c) for c in spec.children)
+    if isinstance(spec, NotMatch):
+        return _spec_needs_content(spec.child)
+    return False
+
+
 class Scanner:
     """扫描器：对目录或单文件应用规则集，产出扫描报告。
 
@@ -112,6 +130,10 @@ class Scanner:
         )
         self._scan_archives = scan_archives
         self._max_workers = max_workers
+        # 预计算每个规则是否需要文件内容（含 CONTENT 目标），供缓存模式跳过 I/O
+        self._content_rule_names: frozenset[str] = frozenset(
+            rule.name for rule in ruleset.rules if _spec_needs_content(rule.match)
+        )
         # 缓存模式：登记规则集并构造带哈希的编译列表
         self._cache: CacheStore | None = cache
         self._rule_hashes: dict[str, str] = {}
@@ -189,34 +211,18 @@ class Scanner:
     def scan(self, root: Path) -> ScanReport:
         """扫描根目录，返回完整报告。
 
-        ``max_workers > 1`` 时用线程池并发扫描文件，压缩包内条目始终顺序扫描。
-        ``on_progress`` 回调在遍历和扫描阶段按时间节流反馈进度。
+        ``max_workers > 1`` 时用流水线线程池扫描（walk 与 scan 并行），
+        压缩包内条目始终顺序扫描。``on_progress`` 回调在遍历和扫描阶段按时间节流反馈进度。
         """
         self._progress_start = time.perf_counter()
         # 重置每次扫描的收集列表，避免跨多次 scan() 累积
         self._skipped_dirs = []
         self._matched_files = []
 
-        # 阶段 1：遍历收集待扫描 entry（单线程，I/O 轻量）
+        results: list[ScanResult] = []
         entries: list[FileEntry] = []
         total = 0
         skipped = 0
-        for entry in self._walker.walk(root):
-            if self._check_control():
-                break
-            total += 1
-            if not self._should_scan(entry):
-                skipped += 1
-                continue
-            entries.append(entry)
-            if total % 200 == 0:
-                self._emit_progress(str(entry.path), 0, 0, 0)
-
-        self._progress_total = total
-        self._progress_skipped = skipped
-
-        # 阶段 2：扫描文件（单线程或并发）
-        results: list[ScanResult] = []
         scanned = 0
         matched = 0
         errors = 0
@@ -224,8 +230,23 @@ class Scanner:
 
         if not self.is_cancelled:
             if self._max_workers and self._max_workers > 1:
-                scanned, matched, errors, matches = self._scan_concurrent(entries, results)
+                # 流水线模式：walk 与 scan 并行
+                total, skipped, scanned, matched, errors, matches, entries = self._scan_pipelined(root, results)
             else:
+                # 阶段 1：遍历收集待扫描 entry（单线程，I/O 轻量）
+                for entry in self._walker.walk(root):
+                    if self._check_control():
+                        break
+                    total += 1
+                    if not self._should_scan(entry):
+                        skipped += 1
+                        continue
+                    entries.append(entry)
+                    if total % 200 == 0:
+                        self._emit_progress(str(entry.path), 0, 0, 0)
+                self._progress_total = total
+                self._progress_skipped = skipped
+                # 阶段 2：顺序扫描
                 scanned, matched, errors, matches = self._scan_sequential(entries, results)
 
         # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
@@ -312,8 +333,9 @@ class Scanner:
                 if result.has_hit:
                     matched += 1
                     matches += result.total_match_count
-                    for hit in result.hits:
-                        self._matched_files.append((str(entry.path), hit.rule_name))
+                    if self._on_progress is not None:
+                        for hit in result.hits:
+                            self._matched_files.append((str(entry.path), hit.rule_name))
                 errors += result.errors
                 results.append(result)
             except Exception:
@@ -323,22 +345,50 @@ class Scanner:
             self._emit_progress(str(entry.path), scanned, matched, errors, matches)
         return scanned, matched, errors, matches
 
-    def _scan_concurrent(
+    def _scan_pipelined(
         self,
-        entries: list[FileEntry],
+        root: Path,
         results: list[ScanResult],
-    ) -> tuple[int, int, int, int]:
-        """多线程并发扫描，返回 (scanned, matched, errors, matches)。
+    ) -> tuple[int, int, int, int, int, int, list[FileEntry]]:
+        """流水线扫描：walk 与 scan 并行。
 
-        每个文件的提取+匹配作为独立任务提交到线程池，
-        通过 as_completed 收集结果。_scan_entry 无共享可变状态，线程安全。
+        walk 线程遍历目录时即时 ``pool.submit``，使文件遍历 I/O 与内容读取 I/O 重叠。
+        每 500 个在途 future 执行一次非阻塞 drain，控制 ``future_to_entry`` 字典增长；
+        walk 结束后用 :func:`as_completed` 阻塞等待全部剩余 future。
+        ``entries`` 列表同步收集，供后续 :meth:`_scan_archive_phase` 使用。
+
+        :return: ``(total, skipped, scanned, matched, errors, matches, entries)``
         """
+        total = 0
+        skipped = 0
         scanned = 0
         matched = 0
         errors = 0
         matches = 0
+        entries: list[FileEntry] = []
+        future_to_entry: dict[Future[ScanResult], FileEntry] = {}
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            future_to_entry = {pool.submit(self._scan_entry, entry): entry for entry in entries}
+            for entry in self._walker.walk(root):
+                if self._check_control():
+                    break
+                total += 1
+                if not self._should_scan(entry):
+                    skipped += 1
+                    continue
+                entries.append(entry)
+                future = pool.submit(self._scan_entry, entry)
+                future_to_entry[future] = entry
+                if len(future_to_entry) >= 500:
+                    d_scanned, d_matched, d_errors, d_matches = self._drain_futures(future_to_entry, results)
+                    scanned += d_scanned
+                    matched += d_matched
+                    errors += d_errors
+                    matches += d_matches
+                if total % 200 == 0:
+                    self._emit_progress(str(entry.path), scanned, matched, errors, matches)
+            self._progress_total = total
+            self._progress_skipped = skipped
+            # 阻塞收集剩余 future
             for future in as_completed(future_to_entry):
                 if self._check_control():
                     for f in future_to_entry:
@@ -351,14 +401,48 @@ class Scanner:
                     if result.has_hit:
                         matched += 1
                         matches += result.total_match_count
-                        for hit in result.hits:
-                            self._matched_files.append((str(entry.path), hit.rule_name))
+                        if self._on_progress is not None:
+                            for hit in result.hits:
+                                self._matched_files.append((str(entry.path), hit.rule_name))
                     errors += result.errors
                     results.append(result)
                 except Exception:
                     errors += 1
                     logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
                 self._emit_progress(str(entry.path), scanned, matched, errors, matches)
+        return total, skipped, scanned, matched, errors, matches, entries
+
+    def _drain_futures(
+        self,
+        future_to_entry: dict[Future[ScanResult], FileEntry],
+        results: list[ScanResult],
+    ) -> tuple[int, int, int, int]:
+        """非阻塞收集已完成 future，返回 ``(scanned, matched, errors, matches)`` 增量。
+
+        遍历 ``future_to_entry`` 中已 :meth:`Future.done` 的项，pop 并收集结果，
+        不阻塞调用方。仅在 walk 线程调用，与 worker 线程无共享可变状态竞争。
+        """
+        scanned = 0
+        matched = 0
+        errors = 0
+        matches = 0
+        done = [f for f in future_to_entry if f.done()]
+        for future in done:
+            entry = future_to_entry.pop(future)
+            scanned += 1
+            try:
+                result = future.result()
+                if result.has_hit:
+                    matched += 1
+                    matches += result.total_match_count
+                    if self._on_progress is not None:
+                        for hit in result.hits:
+                            self._matched_files.append((str(entry.path), hit.rule_name))
+                errors += result.errors
+                results.append(result)
+            except Exception:
+                errors += 1
+                logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
         return scanned, matched, errors, matches
 
     def _scan_archive_phase(
@@ -393,8 +477,9 @@ class Scanner:
                 if ar.has_hit:
                     matched += 1
                     matches += ar.total_match_count
-                    for hit in ar.hits:
-                        self._matched_files.append((str(ar.path), hit.rule_name))
+                    if self._on_progress is not None:
+                        for hit in ar.hits:
+                            self._matched_files.append((str(ar.path), hit.rule_name))
                 errors += ar.errors
                 results.append(ar)
             self._emit_progress(
@@ -473,10 +558,21 @@ class Scanner:
     def _scan_entry_cached(self, entry: FileEntry) -> ScanResult:
         """缓存模式扫描：先查缓存，命中直接复用，未命中走匹配器并写入缓存。
 
+        若所有适用规则均为 filename/path 类型（不含 CONTENT 目标），
+        则跳过文件 I/O 直接走 :meth:`_scan_entry_uncached`，避免无谓的哈希计算。
         一次 I/O 同时取内容和文件哈希（:func:`default_extract_content_with_hash`），
         静态闭包包装内容传给 :class:`MatchContext`，避免改 MatchContext 接口。
         """
         assert self._cache is not None  # 仅类型收窄，调用方已保证非 None
+        # 检查是否有内容规则适用此扩展名
+        has_content_rule = any(
+            rule.name in self._content_rule_names
+            for rule, _, _ in self._compiled_with_hash
+            if not rule.file_extensions or entry.extension in rule.file_extensions
+        )
+        if not has_content_rule:
+            # 无内容规则：跳过文件 I/O，直接走匹配器（filename/path 不需读文件）
+            return self._scan_entry_uncached(entry)
         content, file_hash = self._hashing_content_provider(entry)
 
         def _static_provider(_fe: FileEntry) -> str:
