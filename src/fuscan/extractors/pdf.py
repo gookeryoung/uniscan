@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 from pathlib import Path
 
@@ -33,20 +34,29 @@ class PdfExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 PDF 文本内容，加密文档返回空字符串。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 PDF 文本，加密文档返回空字符串。"""
+        try:
             from pypdf import PdfReader
             from pypdf.errors import PdfReadError
         except ImportError as exc:
             raise ExtractorError("pypdf 未安装，无法提取 PDF") from exc
 
         try:
-            reader = PdfReader(str(path))
+            reader = PdfReader(io.BytesIO(data))
         except PdfReadError as exc:
-            raise ExtractorError(f"PDF 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"PDF 解析失败: {exc}") from exc
         except Exception as exc:
-            raise ExtractorError(f"PDF 打开失败: {path}: {exc}") from exc
+            raise ExtractorError(f"PDF 打开失败: {exc}") from exc
 
         if reader.is_encrypted:
-            logger.info("PDF 已加密，跳过: %s", path)
+            logger.info("PDF 已加密，跳过")
             return ""
 
         return self._extract_pages(reader)

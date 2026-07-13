@@ -41,9 +41,14 @@ class IniExtractor(Extractor):
     @override
     def extract(self, path: Path) -> str:
         try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
+            data = path.read_bytes()
         except OSError as exc:
             raise ExtractorError(f"INI 文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        text = data.decode("utf-8", errors="ignore")
 
         lines = []
         for line in text.splitlines():

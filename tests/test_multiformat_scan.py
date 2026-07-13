@@ -429,11 +429,20 @@ class TestEdgeCases:
         assert report.stats.matched_files == 0
         assert report.stats.scanned_files == 1
 
-    def test_large_file_skipped(self, tmp_path: Path) -> None:
-        """大于 50MB 的文件应跳过内容读取（返回空内容）。"""
+    def test_large_file_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """超过 max_size 的文件应跳过内容读取（返回空内容）。"""
+        from fuscan.extractors import default_registry
+        from fuscan.extractors.text import TextExtractor
+
+        # 临时降低 TextExtractor 的 max_size 到 1MB，避免写 100MB 文件
+        extractor = default_registry.get("txt")
+        assert isinstance(extractor, TextExtractor)
+        original_max_size = extractor._max_size
+        extractor._max_size = 1024 * 1024  # 1MB
+
         large = tmp_path / "large.txt"
-        # 写 51MB 文本（填充 'A'）
-        large.write_text("A" * (51 * 1024 * 1024 + 10), encoding="utf-8")
+        # 写 2MB 文本（填充 'A'），超过自定义 max_size
+        large.write_text("A" * (2 * 1024 * 1024), encoding="utf-8")
         rule = _leaf(MatchTarget.CONTENT, MatchMode.CONTAINS, "A", name="r")
         scanner = Scanner(_rs(rule))
         report = scanner.scan(tmp_path)
@@ -441,6 +450,7 @@ class TestEdgeCases:
         assert report.stats.matched_files == 0
         assert report.stats.scanned_files == 1
         assert report.stats.errors == 0
+        extractor._max_size = original_max_size
 
     def test_binary_file_scanned_without_error(self, tmp_path: Path) -> None:
         """二进制文件应被扫描，content 规则不命中（errors='ignore'）。"""

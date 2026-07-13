@@ -19,6 +19,7 @@ from fuscan.extractors.base import (
     ExtractorRegistry,
     default_registry,
     extract_content,
+    extract_content_from_bytes,
     get_extractor,
 )
 from fuscan.extractors.odf import OdtExtractor
@@ -47,6 +48,7 @@ __all__ = [
     "XlsxExtractor",
     "default_registry",
     "extract_content",
+    "extract_content_from_bytes",
     "get_extractor",
     "register_all",
 ]

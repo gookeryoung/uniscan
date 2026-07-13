@@ -6,6 +6,8 @@ PDF/ODT/ODS 等较难动态生成的格式，使用 mock 或跳过。
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -22,9 +24,24 @@ from fuscan.extractors import (
     XlsxExtractor,
     default_registry,
     extract_content,
+    extract_content_from_bytes,
     get_extractor,
 )
 from fuscan.extractors.spreadsheet import OdsExtractor
+
+
+def _make_ooxml_zip(entry_name: str, content: str = "fake") -> bytes:
+    """创建包含指定条目的有效 ZIP，用于测试 OOXML 类型检测。
+
+    :param entry_name: ZIP 内部条目名（如 ``word/document.xml``）
+    :param content: 条目内容（默认 ``"fake"``，用于触发解析失败）
+    :return: ZIP 文件字节
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(entry_name, content)
+    return buf.getvalue()
+
 
 # ---------------------------------------------------------------------------
 # Fixture 工厂
@@ -496,64 +513,74 @@ class TestWpsExtractor:
         assert "值 secret" in content
 
     def test_wps_invalid_docx_raises(self, tmp_path: Path) -> None:
-        """损坏的 OOXML WPS 文件应抛出 ExtractorError。"""
+        """有效的 ZIP 但 docx 内容损坏时应抛出 ExtractorError。"""
         path = tmp_path / "bad.wps"
-        path.write_bytes(b"PK\x03\x04 corrupted content")
+        path.write_bytes(_make_ooxml_zip("word/document.xml", "corrupt xml"))
         with pytest.raises(ExtractorError, match="WPS 文字文档解析失败"):
             WpsExtractor().extract(path)
 
     def test_wps_invalid_et_raises(self, tmp_path: Path) -> None:
-        """损坏的 OOXML ET 文件应抛出 ExtractorError。"""
+        """有效的 ZIP 但 xlsx 内容损坏时应抛出 ExtractorError。"""
         path = tmp_path / "bad.et"
-        path.write_bytes(b"PK\x03\x04 corrupted content")
+        path.write_bytes(_make_ooxml_zip("xl/workbook.xml", "corrupt xml"))
         with pytest.raises(ExtractorError, match="WPS 表格解析失败"):
             WpsExtractor().extract(path)
 
     def test_wps_invalid_dps_raises(self, tmp_path: Path) -> None:
-        """损坏的 OOXML DPS 文件应抛出 ExtractorError。"""
+        """有效的 ZIP 但 pptx 内容损坏时应抛出 ExtractorError。"""
         path = tmp_path / "bad.dps"
-        path.write_bytes(b"PK\x03\x04 corrupted content")
+        path.write_bytes(_make_ooxml_zip("ppt/presentation.xml", "corrupt xml"))
         with pytest.raises(ExtractorError, match="WPS 演示解析失败"):
             WpsExtractor().extract(path)
 
-    def test_wps_is_ooxml_nonexistent(self, tmp_path: Path) -> None:
-        """文件不存在时 _is_ooxml 返回 False。"""
-        path = tmp_path / "nonexistent.wps"
-        assert WpsExtractor()._is_ooxml(path) is False
+    def test_wps_corrupt_zip_returns_empty(self, tmp_path: Path) -> None:
+        """ZIP 头存在但 ZIP 损坏时应返回空字符串（无法判定子类型）。"""
+        path = tmp_path / "corrupt.wps"
+        path.write_bytes(b"PK\x03\x04 corrupted content")
+        assert WpsExtractor().extract(path) == ""
+
+    def test_wps_detect_ooxml_type_bad_zip_returns_none(self) -> None:
+        """_detect_ooxml_type 对损坏的 ZIP 数据返回 None。"""
+        assert WpsExtractor()._detect_ooxml_type(b"PK\x03\x04 corrupted") is None
+
+    def test_wps_detect_ooxml_type_unknown_returns_none(self) -> None:
+        """_detect_ooxml_type 对未知 OOXML 子类型返回 None。"""
+        data = _make_ooxml_zip("unknown/entry.xml")
+        assert WpsExtractor()._detect_ooxml_type(data) is None
+
+    def test_wps_detect_ooxml_type_docx(self) -> None:
+        """_detect_ooxml_type 正确识别 docx 子类型。"""
+        data = _make_ooxml_zip("word/document.xml")
+        assert WpsExtractor()._detect_ooxml_type(data) == "docx"
+
+    def test_wps_detect_ooxml_type_xlsx(self) -> None:
+        """_detect_ooxml_type 正确识别 xlsx 子类型。"""
+        data = _make_ooxml_zip("xl/workbook.xml")
+        assert WpsExtractor()._detect_ooxml_type(data) == "xlsx"
+
+    def test_wps_detect_ooxml_type_pptx(self) -> None:
+        """_detect_ooxml_type 正确识别 pptx 子类型。"""
+        data = _make_ooxml_zip("ppt/presentation.xml")
+        assert WpsExtractor()._detect_ooxml_type(data) == "pptx"
 
 
 class TestWpsExtractorErrorPaths:
     """WPS 提取器异常路径覆盖。"""
 
-    def test_extract_unknown_extension_returns_empty(self, tmp_path: Path) -> None:
-        """未知扩展名（但以 ZIP 头开头）应返回空字符串。"""
+    def test_extract_corrupt_zip_returns_empty(self, tmp_path: Path) -> None:
+        """ZIP 头存在但内容损坏时应返回空字符串（无法判定子类型）。"""
         path = tmp_path / "file.unknown"
         path.write_bytes(b"PK\x03\x04 fake content")
-        # supported_extensions 不含 unknown，但 extract 内部按 ext 分发
-        # 由于 ext 不匹配 wps/et/dps，走到 return ""
+        # ZIP 头存在但非有效 ZIP，_detect_ooxml_type 返回 None，走 return ""
         extractor = WpsExtractor()
-        # _is_ooxml 返回 True，但 ext 不匹配任何分支
         result = extractor.extract(path)
         assert result == ""
-
-    def test_temp_with_ext_os_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """_temp_with_ext 在 copyfile 失败时应抛出 OSError 并清理临时文件。"""
-        path = tmp_path / "test.wps"
-        path.write_bytes(b"PK\x03\x04 fake")
-
-        extractor = WpsExtractor()
-
-        def fake_copyfile(src: Path, dst: Path) -> None:
-            raise OSError("模拟复制失败")
-
-        monkeypatch.setattr("fuscan.extractors.wps.shutil.copyfile", fake_copyfile)
-        with pytest.raises(OSError, match="模拟复制失败"):
-            extractor._temp_with_ext(path, "docx")
 
     def test_extract_as_docx_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """python-docx 未安装时 _extract_as_docx 应抛出 ExtractorError。"""
         path = tmp_path / "test.wps"
-        path.write_bytes(b"PK\x03\x04 fake")
+        # 用有效 ZIP（含 word/document.xml）让类型检测返回 docx，触发后续 import
+        path.write_bytes(_make_ooxml_zip("word/document.xml"))
         import builtins
 
         original_import = builtins.__import__
@@ -570,7 +597,7 @@ class TestWpsExtractorErrorPaths:
     def test_extract_as_xlsx_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """openpyxl 未安装时 _extract_as_xlsx 应抛出 ExtractorError。"""
         path = tmp_path / "test.et"
-        path.write_bytes(b"PK\x03\x04 fake")
+        path.write_bytes(_make_ooxml_zip("xl/workbook.xml"))
         import builtins
 
         original_import = builtins.__import__
@@ -587,7 +614,7 @@ class TestWpsExtractorErrorPaths:
     def test_extract_as_pptx_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """python-pptx 未安装时 _extract_as_pptx 应抛出 ExtractorError。"""
         path = tmp_path / "test.dps"
-        path.write_bytes(b"PK\x03\x04 fake")
+        path.write_bytes(_make_ooxml_zip("ppt/presentation.xml"))
         import builtins
 
         original_import = builtins.__import__
@@ -972,3 +999,338 @@ class TestScannerWithExtractors:
         scanner = Scanner(rs)
         result = scanner.scan_file(xlsx_file)
         assert result.has_hit
+
+
+# ---------------------------------------------------------------------------
+# extract_from_bytes：各提取器从内存字节提取（消除双重 I/O）
+# ---------------------------------------------------------------------------
+
+
+class TestExtractFromBytes:
+    """各提取器 extract_from_bytes 与 extract(path) 结果一致性。"""
+
+    def test_text_extract_from_bytes_matches_path(self, text_file: Path) -> None:
+        """TextExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        data = text_file.read_bytes()
+        extractor = TextExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(text_file)
+
+    def test_text_extract_from_bytes_empty(self) -> None:
+        """空字节返回空字符串。"""
+        assert TextExtractor().extract_from_bytes(b"") == ""
+
+    def test_text_extract_from_bytes_max_size(self) -> None:
+        """超过 max_size 的字节返回空字符串。"""
+        extractor = TextExtractor(max_size=10)
+        assert extractor.extract_from_bytes(b"x" * 100) == ""
+
+    def test_text_extract_from_bytes_gbk(self, gbk_file: Path) -> None:
+        """GBK 编码字节应正确解码。"""
+        data = gbk_file.read_bytes()
+        content = TextExtractor().extract_from_bytes(data)
+        assert "密码" in content
+        assert "password123" in content
+
+    def test_docx_extract_from_bytes_matches_path(self, docx_file: Path) -> None:
+        """DocxExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        data = docx_file.read_bytes()
+        extractor = DocxExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(docx_file)
+
+    def test_pptx_extract_from_bytes_matches_path(self, pptx_file: Path) -> None:
+        """PptxExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        data = pptx_file.read_bytes()
+        extractor = PptxExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(pptx_file)
+
+    def test_xlsx_extract_from_bytes_matches_path(self, xlsx_file: Path) -> None:
+        """XlsxExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        data = xlsx_file.read_bytes()
+        extractor = XlsxExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(xlsx_file)
+
+    def test_pdf_extract_from_bytes_matches_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PdfExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        path = tmp_path / "fake.pdf"
+        path.write_bytes(b"fake pdf content")
+
+        class FakePage:
+            def extract_text(self) -> str:
+                return "页面文本 password"
+
+        class FakeReader:
+            def __init__(self) -> None:
+                self.is_encrypted = False
+                self.pages = [FakePage()]
+
+        class FakePdfModule:
+            PdfReader = staticmethod(lambda _: FakeReader())
+
+            class errors:
+                class PdfReadError(Exception):
+                    pass
+
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pypdf", FakePdfModule)
+        monkeypatch.setitem(sys.modules, "pypdf.errors", type("errors", (), {"PdfReadError": Exception}))
+
+        data = path.read_bytes()
+        extractor = PdfExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(path)
+
+    def test_odt_extract_from_bytes_matches_path(self, tmp_path: Path) -> None:
+        """OdtExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        from odf.opendocument import OpenDocumentText
+        from odf.text import P
+
+        doc = OpenDocumentText()
+        doc.text.addElement(P(text="odt password 内容"))
+        path = tmp_path / "test.odt"
+        doc.save(str(path))
+
+        data = path.read_bytes()
+        extractor = OdtExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(path)
+
+    def test_ods_extract_from_bytes_matches_path(self, tmp_path: Path) -> None:
+        """OdsExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        from odf.opendocument import OpenDocumentSpreadsheet
+        from odf.table import Table, TableCell, TableRow
+        from odf.text import P
+
+        doc = OpenDocumentSpreadsheet()
+        table = Table(name="数据")
+        row = TableRow()
+        cell = TableCell()
+        cell.addElement(P(text="ods_password"))
+        row.addElement(cell)
+        table.addElement(row)
+        doc.spreadsheet.addElement(table)
+        path = tmp_path / "test.ods"
+        doc.save(str(path))
+
+        data = path.read_bytes()
+        extractor = OdsExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(path)
+
+    def test_wps_extract_from_bytes_matches_path(self, tmp_path: Path) -> None:
+        """WpsExtractor 从 bytes 提取与从 path 提取结果一致。"""
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("wps bytes password")
+        path = tmp_path / "test.wps"
+        doc.save(str(path))
+
+        data = path.read_bytes()
+        extractor = WpsExtractor()
+        assert extractor.extract_from_bytes(data) == extractor.extract(path)
+
+    def test_wps_extract_from_bytes_non_zip(self) -> None:
+        """非 ZIP 格式（旧版二进制）返回空字符串。"""
+        assert WpsExtractor().extract_from_bytes(b"\xd0\xcf\x11\xe0 old binary") == ""
+
+
+class TestExtractContentFromBytes:
+    """extract_content_from_bytes 模块函数测试。"""
+
+    def test_extract_text_from_bytes(self, text_file: Path) -> None:
+        """按扩展名从字节提取文本。"""
+        data = text_file.read_bytes()
+        content = extract_content_from_bytes(data, "txt")
+        assert "hello password world" in content
+
+    def test_extract_docx_from_bytes(self, docx_file: Path) -> None:
+        """按扩展名从字节提取 docx。"""
+        data = docx_file.read_bytes()
+        content = extract_content_from_bytes(data, "docx")
+        assert "段落一 含 password" in content
+
+    def test_extract_unknown_extension_returns_empty(self) -> None:
+        """未知扩展名返回空字符串。"""
+        assert extract_content_from_bytes(b"content", "xyz") == ""
+
+    def test_extract_extension_case_insensitive(self, text_file: Path) -> None:
+        """扩展名大小写不敏感。"""
+        data = text_file.read_bytes()
+        content = extract_content_from_bytes(data, "TXT")
+        assert "hello password world" in content
+
+    def test_extract_extension_with_dot(self, text_file: Path) -> None:
+        """扩展名带点前缀也能正确处理。"""
+        data = text_file.read_bytes()
+        content = extract_content_from_bytes(data, ".txt")
+        assert "hello password world" in content
+
+
+# ---------------------------------------------------------------------------
+# 大文件流式读取
+# ---------------------------------------------------------------------------
+
+
+class TestLargeFileStreaming:
+    """TextExtractor 大文件流式读取与编码检测。"""
+
+    def test_large_utf8_file_streaming(self, tmp_path: Path) -> None:
+        """超过 10MB 的 UTF-8 文件应流式解码。"""
+        # 构造略大于 10MB 的 UTF-8 文件
+        line = "password 行内容 " * 10 + "\n"
+        repeat = (10 * 1024 * 1024 // len(line.encode("utf-8"))) + 1
+        path = tmp_path / "large.txt"
+        path.write_text(line * repeat, encoding="utf-8")
+        assert path.stat().st_size > 10 * 1024 * 1024
+
+        content = TextExtractor().extract(path)
+        assert "password" in content
+        assert content.count("\n") == repeat
+
+    def test_large_gbk_file_streaming(self, tmp_path: Path) -> None:
+        """超过 10MB 的 GBK 文件应流式解码。"""
+        line = "密码 password 内容\n"
+        repeat = (10 * 1024 * 1024 // len(line.encode("gbk"))) + 1
+        path = tmp_path / "large_gbk.txt"
+        path.write_bytes((line * repeat).encode("gbk"))
+        assert path.stat().st_size > 10 * 1024 * 1024
+
+        content = TextExtractor().extract(path)
+        assert "password" in content
+        assert "密码" in content
+
+    def test_large_utf8_bom_file_streaming(self, tmp_path: Path) -> None:
+        """超过 10MB 的 UTF-8 BOM 文件应流式解码。"""
+        line = "password bom 内容\n"
+        repeat = (10 * 1024 * 1024 // len(line.encode("utf-8"))) + 1
+        path = tmp_path / "large_bom.txt"
+        path.write_bytes(b"\xef\xbb\xbf" + (line * repeat).encode("utf-8"))
+        assert path.stat().st_size > 10 * 1024 * 1024
+
+        content = TextExtractor().extract(path)
+        assert "password" in content
+
+    def test_large_utf16_file_streaming(self, tmp_path: Path) -> None:
+        """超过 10MB 的 UTF-16 LE BOM 文件应流式解码。"""
+        line = "password utf16 内容\n"
+        repeat = (10 * 1024 * 1024 // len(line.encode("utf-16-le"))) + 1
+        path = tmp_path / "large_utf16.txt"
+        path.write_bytes(b"\xff\xfe" + (line * repeat).encode("utf-16-le"))
+        assert path.stat().st_size > 10 * 1024 * 1024
+
+        content = TextExtractor().extract(path)
+        assert "password" in content
+
+    def test_large_file_crlf_normalized(self, tmp_path: Path) -> None:
+        """大文件的 CRLF 行尾应规范化为 LF。"""
+        line = "password line\r\n"
+        repeat = (10 * 1024 * 1024 // len(line.encode("utf-8"))) + 1
+        path = tmp_path / "large_crlf.txt"
+        path.write_bytes((line * repeat).encode("utf-8"))
+        assert path.stat().st_size > 10 * 1024 * 1024
+
+        content = TextExtractor().extract(path)
+        assert "\r\n" not in content
+        assert "password line\n" in content
+
+    def test_large_file_read_os_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """大文件读取 OSError 时抛出 ExtractorError。"""
+        path = tmp_path / "large.txt"
+        path.write_bytes(b"x" * (10 * 1024 * 1024 + 1))
+
+        original_open = Path.open
+
+        def mock_open(self: Path, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if self == path:
+                raise OSError("模拟读取失败")
+            return original_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", mock_open)
+        with pytest.raises(ExtractorError, match="文件读取失败"):
+            TextExtractor().extract(path)
+
+    def test_detect_encoding_utf8_bom(self) -> None:
+        """_detect_encoding_from_header 识别 UTF-8 BOM。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"\xef\xbb\xbfcontent") == "utf-8-sig"
+
+    def test_detect_encoding_utf16_le_bom(self) -> None:
+        """_detect_encoding_from_header 识别 UTF-16 LE BOM。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"\xff\xfecontent") == "utf-16"
+
+    def test_detect_encoding_utf16_be_bom(self) -> None:
+        """_detect_encoding_from_header 识别 UTF-16 BE BOM。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"\xfe\xffcontent") == "utf-16"
+
+    def test_detect_encoding_utf32_le_bom(self) -> None:
+        """_detect_encoding_from_header 识别 UTF-32 LE BOM。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"\xff\xfe\x00\x00content") == "utf-32"
+
+    def test_detect_encoding_utf32_be_bom(self) -> None:
+        """_detect_encoding_from_header 识别 UTF-32 BE BOM。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"\x00\x00\xfe\xffcontent") == "utf-32"
+
+    def test_detect_encoding_plain_utf8(self) -> None:
+        """_detect_encoding_from_header 对纯 UTF-8（无 BOM）返回 utf-8。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header("纯 UTF-8 内容 password".encode()) == "utf-8"
+
+    def test_detect_encoding_gbk(self) -> None:
+        """_detect_encoding_from_header 对 GBK 字节返回 gbk。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header("中文 GBK 内容密码".encode("gbk")) == "gbk"
+
+    def test_detect_encoding_binary_returns_none(self) -> None:
+        """_detect_encoding_from_header 对非文本字节返回 None。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        # 0x80 不是任何 BOM 前缀，也不是有效的 UTF-8 起始字节或 GBK 引导字节
+        assert _detect_encoding_from_header(b"\x80\x81\x82\x83\x84\x85") is None
+
+    def test_detect_encoding_empty(self) -> None:
+        """_detect_encoding_from_header 对空字节返回 utf-8（空字节可被任意编码解码）。"""
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(b"") == "utf-8"
+
+    def test_large_bytes_decode_skips_charset_normalizer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """大 bytes（>10MB）用文件头检测编码，跳过 charset-normalizer。"""
+        # 构造 >10MB 的 UTF-8 bytes
+        data = ("password 内容\n" * 800000).encode("utf-8")
+        assert len(data) > 10 * 1024 * 1024
+
+        called = False
+
+        def fake_from_bytes(data: bytes):
+            nonlocal called
+            called = True
+            raise AssertionError("charset-normalizer 不应被调用")
+
+        monkeypatch.setattr("charset_normalizer.from_bytes", fake_from_bytes)
+        content = TextExtractor().extract_from_bytes(data)
+        assert "password" in content
+        assert called is False
+
+    def test_large_bytes_unknown_encoding_fallback_to_charset_normalizer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """大 bytes 文件头无法确定编码时回退到 charset-normalizer。"""
+        # 构造 >10MB 的非 UTF-8/GBK 字节（0x80 不是任何 BOM/UTF-8/GBK 引导字节）
+        data = b"\x80\x81\x82\x83" * (3 * 1024 * 1024)
+        assert len(data) > 10 * 1024 * 1024
+
+        from fuscan.extractors.text import _detect_encoding_from_header
+
+        assert _detect_encoding_from_header(data[:65536]) is None
+
+        # 应回退到 charset-normalizer
+        content = TextExtractor().extract_from_bytes(data)
+        assert isinstance(content, str)
+        assert len(content) > 0

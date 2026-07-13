@@ -6,6 +6,7 @@ PPTX 使用 python-pptx 提取幻灯片文本框、表格、备注。
 
 from __future__ import annotations
 
+import io
 import logging
 from pathlib import Path
 
@@ -31,14 +32,23 @@ class DocxExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 DOCX 段落、表格与页眉页脚文本。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 DOCX 文本。"""
+        try:
             from docx import Document
         except ImportError as exc:
             raise ExtractorError("python-docx 未安装，无法提取 DOCX") from exc
 
         try:
-            doc = Document(str(path))
+            doc = Document(io.BytesIO(data))
         except Exception as exc:
-            raise ExtractorError(f"DOCX 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"DOCX 解析失败: {exc}") from exc
 
         parts: list[str] = []
 
@@ -76,14 +86,23 @@ class PptxExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 PPTX 幻灯片文本框、表格与备注文本。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 PPTX 文本。"""
+        try:
             from pptx import Presentation
         except ImportError as exc:
             raise ExtractorError("python-pptx 未安装，无法提取 PPTX") from exc
 
         try:
-            prs = Presentation(str(path))
+            prs = Presentation(io.BytesIO(data))
         except Exception as exc:
-            raise ExtractorError(f"PPTX 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"PPTX 解析失败: {exc}") from exc
 
         parts: list[str] = []
         for slide_index, slide in enumerate(prs.slides, 1):

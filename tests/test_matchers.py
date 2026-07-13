@@ -723,3 +723,148 @@ class TestMatchTarget:
         result = matcher.matches(ctx)
         assert result.matched is True
         assert result.target == ""
+
+
+class TestContainsOptimization:
+    """CONTAINS 大小写不敏感优化测试。
+
+    优化点：不区分大小写时用 ``re.finditer(re.escape(pattern), text, re.IGNORECASE)``
+    替代 ``text.lower().count(pattern.lower())``，避免对整个大文本做 ``lower()``
+    创建临时字符串。
+    """
+
+    def test_contains_case_insensitive_multiple_variants(self, tmp_path: Path) -> None:
+        """不区分大小写时统计 Password/PASSWORD/password 等所有变体。"""
+        path = tmp_path / "file.txt"
+        content = "Password=abc\nPASSWORD=def\npassword=ghi\nPaSsWoRd=xyz"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="password",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 4
+
+    def test_contains_case_sensitive_counts_exact_only(self, tmp_path: Path) -> None:
+        """区分大小写时只统计精确匹配。"""
+        path = tmp_path / "file.txt"
+        content = "Password=abc\npassword=def\nPASSWORD=ghi"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="password",
+            case_sensitive=True,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1
+
+    def test_contains_empty_pattern_no_match(self) -> None:
+        """空 pattern 不应匹配（str.count 会返回 len+1，语义错误）。
+
+        LeafMatch 模型层已禁止空 pattern，此处直接测试 _apply_contains 防御逻辑。
+        """
+        from fuscan.scanner.matchers import _apply_contains
+
+        result = _apply_contains("some content", "", case_sensitive=False)
+        assert result.matched is False
+
+    def test_contains_empty_pattern_no_match_case_sensitive(self) -> None:
+        """空 pattern 区分大小写时也不应匹配。"""
+        from fuscan.scanner.matchers import _apply_contains
+
+        result = _apply_contains("some content", "", case_sensitive=True)
+        assert result.matched is False
+
+    def test_contains_regex_special_chars_escaped(self, tmp_path: Path) -> None:
+        """pattern 含正则特殊字符时应按字面量匹配，而非正则解释。"""
+        path = tmp_path / "file.txt"
+        # pattern 含 . * + ? 等，应作为字面量
+        content = "key.a.b\nkey.a.b\nother*x"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="key.a.b",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 2  # "key.a.b" 出现 2 次，"other*x" 不匹配
+
+    def test_contains_regex_special_chars_case_insensitive(self, tmp_path: Path) -> None:
+        """含正则特殊字符的 pattern 不区分大小写时仍按字面量匹配。"""
+        path = tmp_path / "file.txt"
+        content = "KEY.A.B\nkey.a.b\nKey.A.B"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="key.a.b",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 3
+
+    def test_contains_non_overlapping_count(self, tmp_path: Path) -> None:
+        """CONTAINS 统计非重叠出现次数（与 str.count 语义一致）。"""
+        path = tmp_path / "file.txt"
+        # "aa" 在 "aaaa" 中非重叠出现 2 次（位置 0 和 2）
+        content = "aaaa"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="aa",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 2
+
+    def test_contains_no_match_returns_default_count(self, tmp_path: Path) -> None:
+        """CONTAINS 未命中时 match_count 应为默认值 1。"""
+        path = tmp_path / "file.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="missing",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_count == 1
+
+    def test_contains_large_text_case_insensitive(self, tmp_path: Path) -> None:
+        """大文本不区分大小写 CONTAINS 计数正确（验证 re.finditer 路径）。"""
+        path = tmp_path / "large.txt"
+        # 构造 1000 个混合大小写的 pattern 出现
+        parts = []
+        for _ in range(500):
+            parts.append("Password")
+        for _ in range(500):
+            parts.append("PASSWORD")
+        content = "\n".join(parts)
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="password",
+            case_sensitive=False,
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content=content)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_count == 1000

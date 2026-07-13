@@ -15,7 +15,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
-from fuscan.extractors import extract_content
+from fuscan.extractors import extract_content, extract_content_from_bytes
 from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, HashingContentProvider, MatchContext
 from fuscan.scanner.matchers import Matcher, build_matcher
@@ -44,9 +44,9 @@ def default_extract_content(entry: FileEntry) -> str:
 
 
 def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
-    """带哈希的内容提供器：读字节算 SHA-256，再调提取器。
+    """带哈希的内容提供器：读字节算 SHA-256，再从同一份字节提取内容。
 
-    复用同一份 I/O：先读字节，算哈希，再调 :func:`extract_content`。
+    一次 ``read_bytes`` 既算哈希又提取内容，避免提取器内部重复读磁盘。
     缓存模式下，``Scanner`` 用此函数替代 :func:`default_extract_content`，
     使文件哈希计算与内容提取共享一次磁盘 I/O。
 
@@ -60,12 +60,13 @@ def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
     except OSError:
         logger.debug("读取文件失败: %s", entry.path, exc_info=True)
         return "", hashlib.sha256(b"").hexdigest()
+    file_hash = hashlib.sha256(data).hexdigest()
     try:
-        content = extract_content(entry.path)
+        content = extract_content_from_bytes(data, entry.extension)
     except Exception:
         logger.debug("提取器提取失败，回退到纯文本: %s", entry.path, exc_info=True)
         content = data.decode("utf-8", errors="ignore")
-    return content, hashlib.sha256(data).hexdigest()
+    return content, file_hash
 
 
 def _spec_needs_content(spec: MatchSpec) -> bool:

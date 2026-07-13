@@ -2,7 +2,8 @@
 
 设计要点：
 
-- :class:`Extractor` 抽象基类定义 ``extract(path)`` 接口与 ``supported_extensions`` 属性
+- :class:`Extractor` 抽象基类定义 ``extract(path)`` 与 ``extract_from_bytes(data)``
+  两套接口：前者从磁盘路径提取，后者从内存字节提取（避免双重 I/O）
 - :class:`ExtractorRegistry` 按扩展名分发，支持注册与查找
 - 依赖第三方库的提取器在 ``extract`` 方法内部懒加载 import，避免模块导入时强依赖
 - :func:`get_extractor` 提供默认注册表查询，未注册返回 ``None``（由调用方回退到纯文本）
@@ -20,6 +21,7 @@ __all__ = [
     "ExtractorRegistry",
     "default_registry",
     "extract_content",
+    "extract_content_from_bytes",
     "get_extractor",
 ]
 
@@ -31,7 +33,12 @@ class ExtractorError(Exception):
 
 
 class Extractor(ABC):
-    """文件内容提取器抽象基类。"""
+    """文件内容提取器抽象基类。
+
+    子类须实现 :meth:`extract`（从路径提取）与 :meth:`extract_from_bytes`
+    （从内存字节提取）。后者用于缓存模式：调用方一次 ``read_bytes`` 既算哈希
+    又提取内容，避免双重磁盘 I/O。
+    """
 
     @property
     @abstractmethod
@@ -45,6 +52,15 @@ class Extractor(ABC):
         :param path: 文件路径
         :return: 提取的文本内容
         :raises ExtractorError: 提取失败（依赖缺失、文件损坏、加密等）
+        """
+
+    @abstractmethod
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取文本内容，避免重复读磁盘。
+
+        :param data: 文件完整字节内容
+        :return: 提取的文本内容
+        :raises ExtractorError: 提取失败
         """
 
 
@@ -92,6 +108,21 @@ class ExtractorRegistry:
             return ""
         return extractor.extract(path)
 
+    def extract_from_bytes(self, data: bytes, extension: str) -> str:
+        """按扩展名从内存字节提取文件内容。
+
+        :param data: 文件完整字节内容
+        :param extension: 扩展名（不含点，小写）
+        :return: 提取的文本；无提取器时返回空字符串
+        :raises ExtractorError: 提取失败
+        """
+        normalized = extension.lower().lstrip(".")
+        extractor = self.get(normalized)
+        if extractor is None:
+            logger.debug("扩展名 %s 无注册提取器，返回空内容", normalized)
+            return ""
+        return extractor.extract_from_bytes(data)
+
 
 default_registry = ExtractorRegistry()
 
@@ -102,5 +133,18 @@ def get_extractor(extension: str) -> Extractor | None:
 
 
 def extract_content(path: Path, extension: str | None = None) -> str:
-    """使用默认注册表提取文件内容。"""
+    """使用默认注册表从磁盘路径提取文件内容。"""
     return default_registry.extract(path, extension=extension)
+
+
+def extract_content_from_bytes(data: bytes, extension: str) -> str:
+    """使用默认注册表从内存字节提取文件内容。
+
+    用于缓存模式：调用方一次 ``read_bytes`` 后既算哈希又提取内容，
+    避免提取器内部重复读磁盘。
+
+    :param data: 文件完整字节内容
+    :param extension: 扩展名（不含点，小写）
+    :return: 提取的文本；无提取器时返回空字符串
+    """
+    return default_registry.extract_from_bytes(data, extension)

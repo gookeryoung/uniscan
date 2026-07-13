@@ -1097,3 +1097,86 @@ class TestScannerCache:
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
         assert file_hash == hashlib.sha256(b"").hexdigest()
+
+    def test_default_extract_content_with_hash_single_io(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """default_extract_content_with_hash 只读一次磁盘（消除双重 I/O）。"""
+        import hashlib
+
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.scanner import default_extract_content_with_hash
+
+        path = tmp_path / "a.txt"
+        path.write_bytes(b"password content")
+        entry = FileEntry.from_path(path)
+
+        call_count = 0
+        original_read_bytes = Path.read_bytes
+
+        def counting_read_bytes(self: Path) -> bytes:
+            nonlocal call_count
+            if self == path:
+                call_count += 1
+            return original_read_bytes(self)
+
+        monkeypatch.setattr(Path, "read_bytes", counting_read_bytes)
+        content, file_hash = default_extract_content_with_hash(entry)
+        assert call_count == 1, "read_bytes 应只调用一次（消除双重 I/O）"
+        assert "password" in content
+        assert file_hash == hashlib.sha256(b"password content").hexdigest()
+
+    def test_default_extract_content_with_hash_oversize_returns_empty(self, tmp_path: Path) -> None:
+        """超过 50MB 的文件返回空内容和空哈希。"""
+        import hashlib
+
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.scanner import default_extract_content_with_hash
+
+        path = tmp_path / "big.txt"
+        # 写入 50MB+1 字节
+        path.write_bytes(b"x" * (50 * 1024 * 1024 + 1))
+        entry = FileEntry.from_path(path)
+        content, file_hash = default_extract_content_with_hash(entry)
+        assert content == ""
+        assert file_hash == hashlib.sha256(b"").hexdigest()
+
+    def test_default_extract_content_with_hash_read_os_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """read_bytes 失败时返回空内容和空哈希。"""
+        import hashlib
+
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.scanner import default_extract_content_with_hash
+
+        path = tmp_path / "a.txt"
+        path.write_bytes(b"content")
+        entry = FileEntry.from_path(path)
+
+        def mock_read_bytes(self: Path) -> bytes:
+            if self == path:
+                raise OSError("模拟读取失败")
+            return b""
+
+        monkeypatch.setattr(Path, "read_bytes", mock_read_bytes)
+        content, file_hash = default_extract_content_with_hash(entry)
+        assert content == ""
+        assert file_hash == hashlib.sha256(b"").hexdigest()
+
+    def test_default_extract_content_with_hash_extractor_error_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """提取器抛异常时回退到 UTF-8 解码。"""
+        from fuscan.scanner.context import FileEntry
+        from fuscan.scanner.scanner import default_extract_content_with_hash
+
+        path = tmp_path / "a.txt"
+        path.write_bytes(b"password content")
+        entry = FileEntry.from_path(path)
+
+        def mock_extract_from_bytes(data: bytes, extension: str) -> str:
+            raise RuntimeError("模拟提取器失败")
+
+        monkeypatch.setattr("fuscan.scanner.scanner.extract_content_from_bytes", mock_extract_from_bytes)
+        content, file_hash = default_extract_content_with_hash(entry)
+        assert "password content" in content  # 回退到 UTF-8 解码
+        assert len(file_hash) == 64  # 哈希仍正确计算

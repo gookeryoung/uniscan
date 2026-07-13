@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 from pathlib import Path
 
@@ -30,15 +31,24 @@ class OdtExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 ODT 文档的段落与标题文本。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 ODT 文档文本。"""
+        try:
             from odf.opendocument import load
             from odf.text import H, P
         except ImportError as exc:
             raise ExtractorError("odfpy 未安装，无法提取 ODT") from exc
 
         try:
-            doc = load(str(path))
+            doc = load(io.BytesIO(data))
         except Exception as exc:
-            raise ExtractorError(f"ODT 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"ODT 解析失败: {exc}") from exc
 
         parts: list[str] = []
         # 提取段落 (P) 和标题 (H)

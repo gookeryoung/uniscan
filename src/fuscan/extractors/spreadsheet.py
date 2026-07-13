@@ -6,6 +6,7 @@ ODS 使用 odfpy 提取表格内容。
 
 from __future__ import annotations
 
+import io
 import logging
 from pathlib import Path
 
@@ -38,14 +39,23 @@ class XlsxExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 XLSX 工作簿所有工作表的单元格文本。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 XLSX 工作簿文本。"""
+        try:
             from openpyxl import load_workbook
         except ImportError as exc:
             raise ExtractorError("openpyxl 未安装，无法提取 XLSX") from exc
 
         try:
-            wb = load_workbook(str(path), read_only=True, data_only=True)
+            wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         except Exception as exc:
-            raise ExtractorError(f"XLSX 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"XLSX 解析失败: {exc}") from exc
 
         parts: list[str] = []
         try:
@@ -92,15 +102,24 @@ class OdsExtractor(Extractor):
     def extract(self, path: Path) -> str:
         """提取 ODS 表格所有行的单元格文本。"""
         try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise ExtractorError(f"文件读取失败: {path}: {exc}") from exc
+        return self.extract_from_bytes(data)
+
+    @override
+    def extract_from_bytes(self, data: bytes) -> str:
+        """从内存字节提取 ODS 表格文本。"""
+        try:
             from odf.opendocument import load
             from odf.table import TableCell, TableRow
         except ImportError as exc:
             raise ExtractorError("odfpy 未安装，无法提取 ODS") from exc
 
         try:
-            doc = load(str(path))
+            doc = load(io.BytesIO(data))
         except Exception as exc:
-            raise ExtractorError(f"ODS 解析失败: {path}: {exc}") from exc
+            raise ExtractorError(f"ODS 解析失败: {exc}") from exc
 
         parts: list[str] = []
         for row in doc.getElementsByType(TableRow):
