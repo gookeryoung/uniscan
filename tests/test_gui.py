@@ -5179,7 +5179,7 @@ class TestSettingsDialog:
         accepted_called: list[bool] = []
         monkeypatch.setattr(dialog, "accept", lambda: accepted_called.append(True))
 
-        dialog._on_accept()
+        dialog.on_accept()
 
         assert config.max_workers == 16
         assert accepted_called == [True]

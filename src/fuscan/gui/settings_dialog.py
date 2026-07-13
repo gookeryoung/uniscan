@@ -35,7 +35,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
 
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的信号槽连接。"""
-        self.button_box.accepted.connect(self._on_accept)
+        self.button_box.accepted.connect(self.on_accept)
         self.button_box.rejected.connect(self.reject)
 
     def _load_config(self) -> None:
@@ -69,7 +69,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):
         path_text = self.cache_path_edit.text().strip()
         self.config.cache_path = path_text or None
 
-    def _on_accept(self) -> None:
+    def on_accept(self) -> None:
         """确定按钮：保存配置并关闭对话框。"""
         self._save_config()
         self.accept()
