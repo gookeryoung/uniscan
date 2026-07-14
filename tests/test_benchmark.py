@@ -1,6 +1,7 @@
 """扫描性能基准回归测试（slow）。
 
 验证扫描吞吐量与缓存收益的数量级正确性，阈值保守以适应 CI 性能波动。
+测试文件使用 ``benchmarks/sample_files.py`` 动态生成，覆盖纯文本与二进制格式。
 
 运行方式::
 
@@ -9,12 +10,12 @@
 
 from __future__ import annotations
 
-import random
 import time
 from pathlib import Path
 
 import pytest
 
+from benchmarks.sample_files import generate_files
 from fuscan.cache import CacheStore
 from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
 from fuscan.scanner import Scanner
@@ -22,34 +23,10 @@ from fuscan.scanner import Scanner
 # 测试文件数（保守，兼顾 CI 速度与统计意义）
 _FILE_COUNT = 500
 
-# 敏感数据样本
-_SECRETS = ("AKIAIOSFODNN7EXAMPLE", "password=secret123", "api_key=AKIAEXAMPLE1234")
-_FILLER = "the quick brown fox jumps over the lazy dog\n"
-
 
 def _generate_bench_files(root: Path, count: int, seed: int = 42) -> None:
-    """生成混合格式测试文件，约 30% 含敏感数据。
-
-    格式：.txt/.json/.yaml/.py/.xml/.csv/.md/.html，大小 1KB-30KB。
-    """
-    root.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(seed)
-    formats = (".txt", ".json", ".yaml", ".py", ".xml", ".csv", ".md", ".html")
-    for i in range(count):
-        ext = rng.choice(formats)
-        path = root / f"file_{i:05d}{ext}"
-        size = rng.randint(1024, 30 * 1024)
-        has_secret = rng.random() < 0.3
-        lines: list[str] = []
-        written = 0
-        if has_secret:
-            secret = rng.choice(_SECRETS)
-            lines.append(f"# {secret}\n")
-            written += len(secret) + 3
-        while written < size:
-            lines.append(_FILLER)
-            written += len(_FILLER)
-        path.write_text("".join(lines)[:size], encoding="utf-8")
+    """生成混合格式测试文件（纯文本 + 二进制），每个含 password 关键词。"""
+    generate_files(root, count, seed)
 
 
 def _content_ruleset() -> RuleSet:
@@ -156,3 +133,55 @@ class TestScanBenchmark:
             assert hit_ratio >= 0.95, f"缓存命中率 {hit_ratio:.1%} 低于阈值 95%"
         finally:
             cache.close()
+
+
+# ---------------------------------------------------------------------------
+# 提取器单格式速度基准
+# ---------------------------------------------------------------------------
+
+# 各格式单次提取耗时上限（毫秒），保守阈值以适应 CI 波动
+# 基于 4KB 内容在开发机上的实测均值 × 5-15 倍余量
+_EXTRACTOR_TIME_LIMITS_MS: dict[str, float] = {
+    "txt": 15.0,
+    "json": 15.0,
+    "yaml": 15.0,
+    "xml": 15.0,
+    "csv": 15.0,
+    "md": 15.0,
+    "html": 15.0,
+    "rtf": 50.0,
+    "docx": 30.0,
+    "xlsx": 30.0,
+    "pptx": 50.0,
+    "eml": 15.0,
+}
+
+# 基准测量迭代次数（取平均）
+_EXTRACTOR_ITERATIONS = 20
+
+
+@pytest.mark.slow
+class TestExtractorBenchmark:
+    """提取器单格式提取速度基准回归测试。"""
+
+    @pytest.mark.parametrize("ext", sorted(_EXTRACTOR_TIME_LIMITS_MS))
+    def test_extract_speed(self, ext: str) -> None:
+        """单格式 extract_from_bytes 平均耗时应在阈值内。"""
+        from benchmarks.sample_files import generate_sample_bytes
+        from fuscan.extractors import extract_content_from_bytes
+
+        data = generate_sample_bytes(ext, size_hint=4096)
+        assert len(data) > 0, f"格式 {ext} 生成的文件为空"
+
+        # 预热（首次提取可能触发库初始化）
+        extract_content_from_bytes(data, ext)
+
+        durations: list[float] = []
+        for _ in range(_EXTRACTOR_ITERATIONS):
+            start = time.perf_counter()
+            extract_content_from_bytes(data, ext)
+            durations.append((time.perf_counter() - start) * 1000)
+
+        avg_ms = sum(durations) / len(durations)
+        limit = _EXTRACTOR_TIME_LIMITS_MS[ext]
+        assert avg_ms <= limit, f"格式 {ext} 平均提取耗时 {avg_ms:.2f}ms 超过阈值 {limit:.1f}ms"

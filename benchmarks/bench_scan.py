@@ -1,6 +1,7 @@
 """fuscan 扫描性能基准脚本。
 
-生成可配置的测试文件集，运行多场景扫描并测量吞吐量（文件/秒、字节/秒）与缓存收益。
+生成可配置的混合格式测试文件集（纯文本 + 二进制），运行多场景扫描并测量
+吞吐量（文件/秒、字节/秒）与缓存收益。
 
 用法::
 
@@ -13,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import random
 import shutil
 import sys
 import tempfile
@@ -22,21 +22,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from fuscan.cache import CacheStore
-from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
-from fuscan.scanner import Scanner
+# 确保项目根目录在 sys.path 中，使 benchmarks 包可导入
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from benchmarks.sample_files import generate_files  # noqa: E402
+from fuscan.cache import CacheStore  # noqa: E402
+from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity  # noqa: E402
+from fuscan.scanner import Scanner  # noqa: E402
 
 __all__ = ["ScenarioResult", "format_json", "format_table", "generate_files", "main", "run_scenario"]
-
-# 敏感数据样本（约 30% 文件注入其一）
-_SECRETS: tuple[str, ...] = (
-    "AKIAIOSFODNN7EXAMPLE",
-    "password=secret123",
-    "api_key=AKIAEXAMPLE1234",
-)
-
-# 填充文本模板
-_FILLER = "the quick brown fox jumps over the lazy dog\n"
 
 
 def _build_ruleset() -> RuleSet:
@@ -59,43 +55,6 @@ def _build_ruleset() -> RuleSet:
         ),
     )
     return RuleSet(version="1.0", rules=rules)
-
-
-def _make_content(size: int, has_secret: bool, rng: random.Random) -> str:
-    """生成指定大小的填充文本，可选注入敏感数据。"""
-    lines: list[str] = []
-    written = 0
-    if has_secret:
-        secret = rng.choice(_SECRETS)
-        lines.append(f"# {secret}\n")
-        written += len(secret) + 3
-    while written < size:
-        lines.append(_FILLER)
-        written += len(_FILLER)
-    return "".join(lines)[:size]
-
-
-def generate_files(root: Path, count: int, seed: int = 42) -> list[Path]:
-    """生成混合格式测试文件，约 30% 含敏感数据。
-
-    :param root: 输出目录（自动创建）
-    :param count: 文件数量
-    :param seed: 随机种子（可复现）
-    :return: 生成文件路径列表
-    """
-    root.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(seed)
-    formats = (".txt", ".json", ".yaml", ".py", ".xml", ".csv", ".md", ".html")
-    paths: list[Path] = []
-    for i in range(count):
-        ext = rng.choice(formats)
-        path = root / f"file_{i:05d}{ext}"
-        size = rng.randint(1024, 30 * 1024)
-        has_secret = rng.random() < 0.3
-        content = _make_content(size, has_secret, rng)
-        path.write_text(content, encoding="utf-8")
-        paths.append(path)
-    return paths
 
 
 def _total_bytes(paths: list[Path]) -> int:

@@ -47,7 +47,7 @@ def _extract_utf16le_text(data: bytes) -> str:
         # ASCII 可打印字符（高字节为 0）
         if hi == 0 and 0x20 <= lo <= 0x7E:
             current.append(chr(lo))
-        # CJK 统一汉字（U+4E00-U+9FFF）
+        # CJK 统一汉字（U+4E00-U+9FFF）或全角标点（U+3000-U+30FF）
         elif 0x4E <= hi <= 0x9F or hi == 0x30:
             code = lo | (hi << 8)
             current.append(chr(code))
