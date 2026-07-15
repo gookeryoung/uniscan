@@ -9,7 +9,7 @@ alwaysApply: true
 
 - UI 仅在 `.ui` 定义，禁止 `.py` 内实现 UI 初始配置代码。
 - MVC 分层：UI、业务逻辑、数据访问分离；大数据量优先用 `QAbstractItemModel` 而非 `QTreeWidget`/`QListWidget` 便利类。
-- 用信号槽解耦控件；跨线程必走信号槽，槽建议加 `@Slot()` 装饰，禁止工作线程直接访问 UI。
+- 用信号槽解耦控件；跨线程必走信号槽，槽加 `@Slot()` 装饰，禁止工作线程直接访问 UI；槽内禁止耗时操作（数据库/网络），改走 `QThread`/`QRunnable`。
 - 信号过去时命名（`scan_finished`），槽用 `on_<信号>`；高频信号槽内节流；信号参数用 frozen dataclass。
 - 显示层格式化逻辑下沉到后端 `@dataclass` 方法，禁止 UI 层重复实现。
 - 系统集成：资源管理器定位封装公共方法（`explorer /select,` / `open -R` / `xdg-open`）失败 warning 不抛异常；打开外部 PDF/URL 用 `QDesktopServices.openUrl`，不内置渲染。
@@ -23,11 +23,11 @@ alwaysApply: true
 
 ## 控件与窗口生命周期
 
-- 复用控件（hide/show + 刷数据），禁止反复创建销毁。
-- 临时子对话框传 `parent` 时须设 `WA_DeleteOnClose`；长期复用窗口不设，用 hide/show。
+- 复用控件（hide/show + 刷数据），禁止反复创建销毁；长期复用窗口不设 `WA_DeleteOnClose`，仅临时子对话框传 `parent` 时设。
 - 资源在 `closeEvent` 释放，不依赖 GC；大文件预览（`QTextDocument`）按需加载，关闭即释放。
 
 ## 性能
 
 - 输入触发的列表重建用 `QTimer.singleShot(300ms)` 防抖；重置数据时 `stop()` 挂起 timer，避免重复刷新。
 - 批量插入 `QTreeWidget`/`QListWidget` 用 `setUpdatesEnabled(False)` + `try/finally`。
+- 避免重复连接信号槽，每个信号槽对每个信号只连接一次。

@@ -33,6 +33,7 @@ __all__ = [
     "CONTROL_HEIGHT",
     "CONTROL_HEIGHT_LG",
     "FONT_FAMILY",
+    "FONT_FAMILY_MONO",
     "FONT_SIZE_BODY",
     "FONT_SIZE_CAPTION",
     "FONT_SIZE_HEADING",
@@ -85,6 +86,7 @@ COLOR_SPLITTER_HOVER = "#808080"
 # ----------------------------- 排版令牌 -----------------------------
 
 FONT_FAMILY = '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif'
+FONT_FAMILY_MONO = '"Cascadia Code", "Consolas", "Courier New", monospace'
 FONT_SIZE_CAPTION = "11px"
 FONT_SIZE_SMALL = "12px"
 FONT_SIZE_BODY = "13px"
@@ -135,6 +137,7 @@ QSS_TOKENS: dict[str, str] = {
     "COLOR_SPLITTER": COLOR_SPLITTER,
     "COLOR_SPLITTER_HOVER": COLOR_SPLITTER_HOVER,
     "FONT_FAMILY": FONT_FAMILY,
+    "FONT_FAMILY_MONO": FONT_FAMILY_MONO,
     "FONT_SIZE_CAPTION": FONT_SIZE_CAPTION,
     "FONT_SIZE_SMALL": FONT_SIZE_SMALL,
     "FONT_SIZE_BODY": FONT_SIZE_BODY,

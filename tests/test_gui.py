@@ -3805,7 +3805,7 @@ class TestRuleEditor:
         dialog = RuleEditorDialog([rules_path])
         assert dialog.file_combo.count() == 1
         assert dialog.file_combo.itemText(0) == "rules.yaml"
-        content = dialog.editor.toPlainText()
+        content = dialog.rule_editor.toPlainText()
         assert "测试规则" in content
         dialog.close()
 
@@ -3820,9 +3820,9 @@ class TestRuleEditor:
             encoding="utf-8",
         )
         dialog = RuleEditorDialog([r1, r2])
-        assert "测试规则" in dialog.editor.toPlainText()
+        assert "测试规则" in dialog.rule_editor.toPlainText()
         dialog.file_combo.setCurrentIndex(1)
-        assert "规则二" in dialog.editor.toPlainText()
+        assert "规则二" in dialog.rule_editor.toPlainText()
         dialog.close()
 
     def test_save_writes_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3831,7 +3831,7 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog.editor.setPlainText(
+        dialog.rule_editor.setPlainText(
             'version: "1.0"\nrules:\n  - name: 新规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: test\n',
         )
 
@@ -3857,7 +3857,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         original = rules_path.read_text(encoding="utf-8")
         dialog = RuleEditorDialog([rules_path])
-        dialog.editor.setPlainText("invalid: yaml: content: [")
+        dialog.rule_editor.setPlainText("invalid: yaml: content: [")
 
         warned = {"called": False}
         monkeypatch.setattr(
@@ -3880,9 +3880,9 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog.editor.setPlainText("modified content")
+        dialog.rule_editor.setPlainText("modified content")
         dialog._on_reload()
-        assert "测试规则" in dialog.editor.toPlainText()
+        assert "测试规则" in dialog.rule_editor.toPlainText()
         dialog.close()
 
     def test_empty_rules_paths(self, qapp: QApplication) -> None:
@@ -3891,7 +3891,7 @@ class TestRuleEditor:
 
         dialog = RuleEditorDialog([])
         assert dialog.file_combo.count() == 0
-        assert not dialog.editor.isEnabled()
+        assert not dialog.rule_editor.isEnabled()
         dialog.close()
 
     def test_main_window_edit_and_save_reloads(
@@ -3927,7 +3927,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
         dialog._load_file_content(99)
-        assert dialog.editor.toPlainText() == ""
+        assert dialog.rule_editor.toPlainText() == ""
         dialog.close()
 
     def test_load_file_content_read_error(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3947,8 +3947,8 @@ class TestRuleEditor:
         finally:
             type(rules_path).read_text = monkeypatch_method  # type: ignore[method-assign]
 
-        assert "读取文件失败" in dialog.editor.toPlainText()
-        assert not dialog.editor.isEnabled()
+        assert "读取文件失败" in dialog.rule_editor.toPlainText()
+        assert not dialog.rule_editor.isEnabled()
         dialog.close()
 
     def test_save_invalid_index_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3974,7 +3974,7 @@ class TestRuleEditor:
 
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
-        dialog.editor.setPlainText("version: '1.0'\nrules: []\n")
+        dialog.rule_editor.setPlainText("version: '1.0'\nrules: []\n")
 
         warned = {"called": False}
         monkeypatch.setattr(
@@ -4012,7 +4012,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
         # 写入合法 YAML 但无效规则（缺少 match 字段）
-        dialog.editor.setPlainText('version: "1.0"\nrules:\n  - name: bad\n    severity: warning\n')
+        dialog.rule_editor.setPlainText('version: "1.0"\nrules:\n  - name: bad\n    severity: warning\n')
 
         warned = {"called": False}
         monkeypatch.setattr(

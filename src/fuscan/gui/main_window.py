@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 try:
-    from PySide2.QtCore import QByteArray, QPoint, QSize, Qt, QTimer, QUrl
+    from PySide2.QtCore import QByteArray, QFile, QPoint, QSize, Qt, QTimer, QUrl, Slot
     from PySide2.QtGui import (
         QColor,
         QDesktopServices,
@@ -63,7 +63,7 @@ try:
         QWidget,
     )
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QPoint, QSize, Qt, QUrl
+    from PySide6.QtCore import QPoint, QSize, Qt, QUrl, Slot
     from PySide6.QtGui import (
         QAction,
         QColor,
@@ -97,6 +97,7 @@ from fuscan import __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MAX_HISTORY, Config, load_config, save_config
 from fuscan.extractors import extract_content_with_fallback
+from fuscan.gui import resources_rc  # noqa: F401 注册 .qrc 资源（:/ 前缀图标）
 from fuscan.gui.detail_dialog import HitDetailDialog
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.preview_utils import (
@@ -155,34 +156,51 @@ def _apply_severity_to_table_item(item: QTableWidgetItem, severity: Severity) ->
     item.setBackground(_SEVERITY_BACKGROUNDS[severity])
 
 
-# 图标路径（assets/icons 目录下）
-_ICONS_DIR = Path(__file__).parent.parent / "assets" / "icons"
-# 用户手册 PDF 路径（assets/docs 目录下，随包分发）
+# 图标路径（.qrc 资源系统，:/ 前缀引用编译嵌入的资源）
+# 用户手册 PDF 路径（assets/docs 目录下，随包分发；PDF 由外部阅读器打开，不入 .qrc）
 _MANUAL_PDF = Path(__file__).parent.parent / "assets" / "docs" / "fuscan-用户手册.pdf"
-_ICON_ABOUT = str(_ICONS_DIR / "about.svg")
-_ICON_ALL_DISK = str(_ICONS_DIR / "all_disk.svg")
-_ICON_DISK = str(_ICONS_DIR / "disk.svg")
-_ICON_EDIT = str(_ICONS_DIR / "edit.svg")
-_ICON_EXPORT = str(_ICONS_DIR / "export.svg")
-_ICON_EXPORT_CSV = str(_ICONS_DIR / "export_csv.svg")
-_ICON_EXPORT_JSON = str(_ICONS_DIR / "export_json.svg")
-_ICON_FOLDER = str(_ICONS_DIR / "folder.svg")
-_ICON_HARD_DISK = str(_ICONS_DIR / "hard_disk.svg")
-_ICON_HISTORY = str(_ICONS_DIR / "history.svg")
-_ICON_LOAD_LIST = str(_ICONS_DIR / "load_list.svg")
-_ICON_MANUAL = str(_ICONS_DIR / "manual.svg")
-_ICON_PAUSE = str(_ICONS_DIR / "pause.svg")
-_ICON_RESCAN = str(_ICONS_DIR / "rescan.svg")
-_ICON_SCAN = str(_ICONS_DIR / "scan.svg")
-_ICON_SETTINGS = str(_ICONS_DIR / "settings.svg")
-_ICON_STOP = str(_ICONS_DIR / "stop.svg")
-_ICON_SEARCH = str(_ICONS_DIR / "search.svg")
+_ICON_ABOUT = ":/icons/about.svg"
+_ICON_ALL_DISK = ":/icons/all_disk.svg"
+_ICON_DISK = ":/icons/disk.svg"
+_ICON_EDIT = ":/icons/edit.svg"
+_ICON_EXPORT = ":/icons/export.svg"
+_ICON_EXPORT_CSV = ":/icons/export_csv.svg"
+_ICON_EXPORT_JSON = ":/icons/export_json.svg"
+_ICON_FOLDER = ":/icons/folder.svg"
+_ICON_HARD_DISK = ":/icons/hard_disk.svg"
+_ICON_HISTORY = ":/icons/history.svg"
+_ICON_LOAD_LIST = ":/icons/load_list.svg"
+_ICON_MANUAL = ":/icons/manual.svg"
+_ICON_PAUSE = ":/icons/pause.svg"
+_ICON_RESCAN = ":/icons/rescan.svg"
+_ICON_SCAN = ":/icons/scan.svg"
+_ICON_SETTINGS = ":/icons/settings.svg"
+_ICON_STOP = ":/icons/stop.svg"
+_ICON_SEARCH = ":/icons/search.svg"
 
 
 # 主题图标渲染分辨率（高分辨率保证 DPI 缩放下清晰）
 _ICON_RENDER_SIZE = 128
 # 移除 SVG 中所有 fill="..." 属性的正则
 _SVG_FILL_RE = re.compile(r'\sfill="[^"]*"')
+
+
+def _read_svg_text(svg_path: str) -> str:
+    """读取 SVG 文本，支持 .qrc 资源路径（``:/`` 前缀）与磁盘路径。
+
+    :param svg_path: ``:/icons/xxx.svg`` 资源路径或磁盘绝对路径
+    :returns: SVG 文件文本
+    :raises OSError: 文件打开或读取失败
+    """
+    if svg_path.startswith(":"):
+        file = QFile(svg_path)
+        if not file.open(QFile.ReadOnly | QFile.Text):
+            raise OSError(f"无法打开 Qt 资源: {svg_path}")
+        try:
+            return bytes(file.readAll()).decode("utf-8")
+        finally:
+            file.close()
+    return Path(svg_path).read_text(encoding="utf-8")
 
 
 def _load_themed_icon(svg_path: str, color: str) -> QIcon:
@@ -192,12 +210,12 @@ def _load_themed_icon(svg_path: str, color: str) -> QIcon:
     ``fill="<color>"`` 作为默认填充色;(3) 通过 QSvgRenderer 渲染到透明 QPixmap
     后构造 QIcon。主题色变更时需重新调用本函数重建图标。
 
-    :param svg_path: SVG 文件绝对路径
+    :param svg_path: SVG 资源路径（``:/icons/xxx.svg``）或磁盘绝对路径
     :param color: 主题色 hex 字符串（如 ``theme.COLOR_PRIMARY``）
     :returns: 已着色的 QIcon，渲染失败时回退到原始文件加载
     """
     try:
-        text = Path(svg_path).read_text(encoding="utf-8")
+        text = _read_svg_text(svg_path)
         # 移除所有 fill 属性，确保主题色统一覆盖原图标颜色
         text = _SVG_FILL_RE.sub("", text)
         # 在首个 <svg ...> 开标签内注入 fill 属性作为默认填充
@@ -1078,6 +1096,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.pause_resume_btn.setText("暂停扫描")
         self.stats_label.setText("扫描中...")
 
+    @Slot(object)
     def _on_scan_cancelled(self, report: ScanReport) -> None:
         """扫描被取消后的回调：有结果切结果页，无结果切配置页。"""
         self._last_report = report
@@ -1109,6 +1128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._worker.deleteLater()
         self._worker = None
 
+    @Slot(object)
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
         """扫描实时进度回调：更新进度条、当前文件、状态栏汇总与两个列表。
 
@@ -1192,6 +1212,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.matched_files_list.scrollToBottom()
         self._last_matched_files = new_files
 
+    @Slot(object)
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调：填充结果并切换到结果页。"""
         self._last_report = report
@@ -1202,6 +1223,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stats_label.setText(report.summary())
         self._switch_stage(WorkflowStage.RESULTS)
 
+    @Slot(str)
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调：切回配置页并提示。"""
         self._reset_scan_ui()

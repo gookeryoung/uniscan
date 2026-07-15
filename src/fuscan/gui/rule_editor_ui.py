@@ -43,11 +43,10 @@ class Ui_RuleEditorDialog:
 
         self.main_layout.addWidget(self.empty_label)
 
-        self.editor = QTextEdit(RuleEditorDialog)
-        self.editor.setObjectName("editor")
-        self.editor.setStyleSheet("font-family: Consolas, 'Courier New', monospace; font-size: 13px;")
+        self.rule_editor = QTextEdit(RuleEditorDialog)
+        self.rule_editor.setObjectName("rule_editor")
 
-        self.main_layout.addWidget(self.editor)
+        self.main_layout.addWidget(self.rule_editor)
 
         self.btn_layout = QHBoxLayout()
         self.btn_layout.setObjectName("btn_layout")
@@ -89,7 +88,7 @@ class Ui_RuleEditorDialog:
                 "RuleEditorDialog", "\uff08\u672a\u52a0\u8f7d\u4efb\u4f55\u89c4\u5219\u6587\u4ef6\uff09", None
             )
         )
-        self.editor.setProperty("fontFamily", QCoreApplication.translate("RuleEditorDialog", "Consolas", None))
+        self.rule_editor.setProperty("fontFamily", QCoreApplication.translate("RuleEditorDialog", "Consolas", None))
         # if QT_CONFIG(tooltip)
         self.reload_btn.setToolTip(
             QCoreApplication.translate(

@@ -805,7 +805,7 @@ QTableWidget#hit_hits_table {
 /* ========== RuleEditorDialog 样式 ========== */
 
 QTextEdit#rule_editor {
-    font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+    font-family: ${FONT_FAMILY_MONO};
     font-size: ${FONT_SIZE_BODY};
     background: ${COLOR_BG_CARD};
     border: 1px solid ${COLOR_BORDER};

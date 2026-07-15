@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 from typing import Sequence
 
 try:
@@ -50,8 +49,8 @@ __all__ = ["HitDetailDialog"]
 
 logger = logging.getLogger(__name__)
 
-# 命中详情对话框窗口图标（assets/icons/target.svg）
-_ICON_TARGET = str(Path(__file__).parent.parent / "assets" / "icons" / "target.svg")
+# 命中详情对话框窗口图标（.qrc 资源系统，:/ 前缀引用编译嵌入的 target.svg）
+_ICON_TARGET = ":/icons/target.svg"
 
 
 class HitDetailDialog(QDialog, Ui_HitDetailDialog):

@@ -39,10 +39,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QTextEdit" name="editor">
-     <property name="styleSheet">
-      <string notr="true">font-family: Consolas, 'Courier New', monospace; font-size: 13px;</string>
-     </property>
+    <widget class="QTextEdit" name="rule_editor">
      <property name="fontFamily" stdset="0">
       <string>Consolas</string>
      </property>

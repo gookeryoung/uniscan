@@ -68,7 +68,7 @@ class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):
         # 无规则文件时的空态处理
         if not self._rules_paths:
             self.empty_label.setVisible(True)
-            self.editor.setEnabled(False)
+            self.rule_editor.setEnabled(False)
             self.reload_btn.setEnabled(False)
             self.save_btn.setEnabled(False)
             return
@@ -88,18 +88,18 @@ class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):
     def _load_file_content(self, index: int) -> None:
         """加载指定索引的文件内容到编辑器。"""
         if index < 0 or index >= len(self._rules_paths):
-            self.editor.setPlainText("")
+            self.rule_editor.setPlainText("")
             return
         path = self._rules_paths[index]
         try:
             content = path.read_text(encoding="utf-8")
         except OSError as exc:
             logger.warning("读取规则文件失败 %s", path, exc_info=True)
-            self.editor.setPlainText(f"读取文件失败: {exc}")
-            self.editor.setEnabled(False)
+            self.rule_editor.setPlainText(f"读取文件失败: {exc}")
+            self.rule_editor.setEnabled(False)
             return
-        self.editor.setPlainText(content)
-        self.editor.setEnabled(True)
+        self.rule_editor.setPlainText(content)
+        self.rule_editor.setEnabled(True)
 
     def _on_reload(self) -> None:
         """放弃修改，从文件重新加载。"""
@@ -112,7 +112,7 @@ class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):
         if idx < 0 or idx >= len(self._rules_paths):
             return
         path = self._rules_paths[idx]
-        content = self.editor.toPlainText()
+        content = self.rule_editor.toPlainText()
 
         # 验证 YAML 语法
         try:
