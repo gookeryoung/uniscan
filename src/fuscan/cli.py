@@ -21,12 +21,8 @@
 from __future__ import annotations
 
 import argparse
-import csv
-import io
-import json
 import logging
 import sys
-from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
@@ -395,79 +391,12 @@ def _cmd_cache(args: argparse.Namespace) -> int:
 
 
 def _format_report(report: ScanReport, fmt: str) -> str:
-    """按指定格式渲染扫描报告。"""
+    """按指定格式渲染扫描报告（委托给 ScanReport 的数据层方法）。"""
     if fmt == "json":
-        return _format_json(report)
+        return report.to_json()
     if fmt == "csv":
-        return _format_csv(report)
-    return _format_text(report)
-
-
-def _format_text(report: ScanReport) -> str:
-    """渲染文本格式报告。"""
-    lines: list[str] = []
-    lines.append(f"扫描路径: {report.root}")
-    lines.append(
-        f"统计: 总计 {report.stats.total_files} | 已扫描 {report.stats.scanned_files} | "
-        f"命中 {report.stats.matched_files} | 条数 {report.stats.total_matches} | "
-        f"跳过 {report.stats.skipped_files} | "
-        f"错误 {report.stats.errors} | 耗时 {report.stats.duration_seconds:.2f}s"
-    )
-    lines.append("")
-
-    if not report.hits:
-        lines.append("未发现命中项。")
-        return "\n".join(lines)
-
-    lines.append(f"命中项 ({len(report.hits)}):")
-    for result in report.hits:
-        try:
-            rel = result.path.relative_to(report.root)
-        except ValueError:
-            rel = result.path
-        lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
-        for hit in result.hits:
-            lines.append(f"    [{hit.severity.value}] {hit.rule_name} (条数 {hit.match_count}): {hit.detail}")
-    return "\n".join(lines)
-
-
-def _format_json(report: ScanReport) -> str:
-    """渲染 JSON 格式报告。"""
-    data = {
-        "root": str(report.root),
-        "stats": asdict(report.stats),
-        "hits": [
-            {
-                "path": str(result.path),
-                "size": result.size,
-                "max_severity": result.max_severity.value,
-                "match_count": result.total_match_count,
-                "rules": [asdict(hit) for hit in result.hits],
-            }
-            for result in report.hits
-        ],
-    }
-    return json.dumps(data, ensure_ascii=False, indent=2)
-
-
-def _format_csv(report: ScanReport) -> str:
-    """渲染 CSV 格式报告。"""
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(["path", "size", "severity", "rule", "match_count", "detail"])
-    for result in report.hits:
-        for hit in result.hits:
-            writer.writerow(
-                [
-                    str(result.path),
-                    result.size,
-                    hit.severity.value,
-                    hit.rule_name,
-                    hit.match_count,
-                    hit.detail,
-                ]
-            )
-    return buf.getvalue()
+        return report.to_csv()
+    return report.to_text()
 
 
 def _write_output(content: str, output_file: Path | None) -> None:

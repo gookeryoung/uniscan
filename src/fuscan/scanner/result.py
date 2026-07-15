@@ -1,7 +1,15 @@
-"""扫描结果数据结构。"""
+"""扫描结果数据结构。
+
+除 ``MatchResult``/``ProgressInfo`` 外，``ScanResult``/``ScanStats``/``ScanReport``
+均提供数据层方法（``rule_names``/``filter``/``group_by_*``/``to_*``/``summary``），
+将"如何序列化、如何筛选、如何分组"下沉到 dataclass，CLI/GUI 仅做展示，
+避免展示层重复实现相同逻辑。
+"""
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -100,6 +108,21 @@ class ScanResult:
         """该文件所有命中规则的匹配文本条数之和。"""
         return sum(h.match_count for h in self.hits)
 
+    @property
+    def rule_names(self) -> tuple[str, ...]:
+        """该文件命中的规则名（按出现顺序去重）。"""
+        seen: set[str] = set()
+        names: list[str] = []
+        for h in self.hits:
+            if h.rule_name not in seen:
+                seen.add(h.rule_name)
+                names.append(h.rule_name)
+        return tuple(names)
+
+    def summary(self) -> str:
+        """返回简洁摘要：``N 条规则 / M 处匹配``。"""
+        return f"{len(self.hits)} 条规则 / {self.total_match_count} 处匹配"
+
 
 @dataclass(frozen=True)
 class ScanStats:
@@ -114,10 +137,28 @@ class ScanStats:
     # 所有命中规则的匹配文本条数总和（区别于 matched_files 的命中文件数）
     total_matches: int = 0
 
+    def summary(self, *, cancelled: bool = False) -> str:
+        """返回状态栏摘要文本。
+
+        :param cancelled: 是否在摘要前缀"已取消"，GUI/CLI 取消场景共用。
+        """
+        prefix = "已取消" if cancelled else "完成"
+        return (
+            f"{prefix}: 总计 {self.total_files} | 扫描 {self.scanned_files} | "
+            f"跳过 {self.skipped_files} | 命中 {self.matched_files} | "
+            f"条数 {self.total_matches} | 错误 {self.errors} | "
+            f"耗时 {self.duration_seconds:.2f}s"
+        )
+
 
 @dataclass(frozen=True)
 class ScanReport:
-    """完整扫描报告。"""
+    """完整扫描报告。
+
+    提供数据层操作（``filter``/``group_by_*``/``to_*``/``rule_names``/``summary``），
+    将序列化、筛选、分组逻辑下沉到 dataclass，CLI/GUI 仅做展示，
+    避免展示层重复实现相同逻辑。
+    """
 
     root: Path
     results: tuple[ScanResult, ...] = field(default_factory=tuple)
@@ -129,20 +170,125 @@ class ScanReport:
         """仅返回有命中的结果。"""
         return tuple(r for r in self.results if r.has_hit)
 
-    @classmethod
-    def to_json(cls, report: ScanReport) -> str:
+    @property
+    def rule_names(self) -> tuple[str, ...]:
+        """所有命中结果涉及的规则名（按首次出现顺序去重）。"""
+        seen: set[str] = set()
+        names: list[str] = []
+        for r in self.hits:
+            for name in r.rule_names:
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
+        return tuple(names)
+
+    def summary(self) -> str:
+        """返回状态栏摘要文本（自动识别 ``cancelled`` 标志）。"""
+        return self.stats.summary(cancelled=self.cancelled)
+
+    def filter(self, path_query: str = "", rule_name: str = "") -> ScanReport:
+        """按路径子串与规则名筛选，返回新的 ScanReport（不修改原对象）。
+
+        - ``path_query``：大小写不敏感的路径子串，空字符串跳过路径过滤
+        - ``rule_name``：规则名精确匹配；非空时仅保留该规则命中，
+          且每个 ScanResult 的 hits 被过滤为仅该规则的命中
+
+        stats 不变（仍代表整体扫描统计），仅 results 被过滤。
+        """
+        query = path_query.strip().lower()
+        if not query and not rule_name:
+            return self
+        filtered: list[ScanResult] = []
+        for sr in self.hits:
+            if query and query not in str(sr.path).lower():
+                continue
+            if rule_name:
+                matching_hits = tuple(h for h in sr.hits if h.rule_name == rule_name)
+                if not matching_hits:
+                    continue
+                filtered.append(ScanResult(path=sr.path, size=sr.size, hits=matching_hits, errors=sr.errors))
+            else:
+                filtered.append(sr)
+        return ScanReport(
+            root=self.root,
+            results=tuple(filtered),
+            stats=self.stats,
+            cancelled=self.cancelled,
+        )
+
+    def group_by_rule(self) -> dict[str, list[tuple[ScanResult, RuleHit]]]:
+        """按规则名分组：``{规则名: [(ScanResult, RuleHit), ...]}``。
+
+        同一文件若被同一规则多次命中（理论上不会，但保留兼容）会重复出现；
+        同一规则在不同文件的命中分别作为列表项。
+        """
+        groups: dict[str, list[tuple[ScanResult, RuleHit]]] = {}
+        for sr in self.hits:
+            for hit in sr.hits:
+                groups.setdefault(hit.rule_name, []).append((sr, hit))
+        return groups
+
+    def group_by_severity(self) -> dict[Severity, list[ScanResult]]:
+        """按文件最高严重等级分组：``{Severity: [ScanResult, ...]}``。"""
+        groups: dict[Severity, list[ScanResult]] = {}
+        for sr in self.hits:
+            groups.setdefault(sr.max_severity, []).append(sr)
+        return groups
+
+    def to_json(self) -> str:
         """将扫描报告转换为 JSON 字符串。"""
         data = {
-            "root": str(report.root),
-            "stats": asdict(report.stats),
+            "root": str(self.root),
+            "stats": asdict(self.stats),
+            "cancelled": self.cancelled,
             "hits": [
                 {
                     "path": str(r.path),
                     "size": r.size,
                     "max_severity": r.max_severity.value,
+                    "match_count": r.total_match_count,
                     "rules": [asdict(h) for h in r.hits],
                 }
-                for r in report.hits
+                for r in self.hits
             ],
         }
         return json.dumps(data, ensure_ascii=False, indent=2)
+
+    def to_csv(self) -> str:
+        """将扫描报告转换为 CSV 字符串（每行一条规则命中）。"""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["path", "size", "severity", "rule", "match_count", "detail"])
+        for r in self.hits:
+            for hit in r.hits:
+                writer.writerow(
+                    [
+                        str(r.path),
+                        r.size,
+                        hit.severity.value,
+                        hit.rule_name,
+                        hit.match_count,
+                        hit.detail,
+                    ]
+                )
+        return buf.getvalue()
+
+    def to_text(self) -> str:
+        """将扫描报告转换为可读文本（含路径、统计与逐文件命中详情）。"""
+        lines: list[str] = []
+        lines.append(f"扫描路径: {self.root}")
+        lines.append(f"统计: {self.stats.summary(cancelled=self.cancelled)}")
+        lines.append("")
+        if not self.hits:
+            lines.append("未发现命中项。")
+            return "\n".join(lines)
+        lines.append(f"命中项 ({len(self.hits)}):")
+        for result in self.hits:
+            try:
+                rel = result.path.relative_to(self.root)
+            except ValueError:
+                rel = result.path
+            lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
+            for hit in result.hits:
+                lines.append(f"    [{hit.severity.value}] {hit.rule_name} (条数 {hit.match_count}): {hit.detail}")
+        return "\n".join(lines)

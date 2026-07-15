@@ -566,8 +566,7 @@ class TestCliErrorPaths:
         assert "这是一个描述信息" in out
 
     def test_format_text_path_not_relative_to_root(self) -> None:
-        """命中路径不在扫描根下时 _format_text 回退到绝对路径。"""
-        from fuscan.cli import _format_text
+        """命中路径不在扫描根下时 to_text 回退到绝对路径。"""
         from fuscan.rules.model import Severity
         from fuscan.scanner.result import RuleHit, ScanReport, ScanResult, ScanStats
 
@@ -582,7 +581,7 @@ class TestCliErrorPaths:
             ),
             stats=ScanStats(total_files=1, scanned_files=1, matched_files=1),
         )
-        text = _format_text(report)
+        text = report.to_text()
         assert "D:/other/path/file.txt" in text or "D:\\other\\path\\file.txt" in text
 
     def test_configure_logging_verbose_levels(self, monkeypatch: pytest.MonkeyPatch) -> None:

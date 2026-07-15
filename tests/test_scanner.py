@@ -20,7 +20,7 @@ from fuscan.rules.model import (
     Severity,
 )
 from fuscan.scanner import Scanner, ScanReport, ScanResult
-from fuscan.scanner.result import ProgressInfo
+from fuscan.scanner.result import ProgressInfo, ScanStats
 
 
 def _build_ruleset(*rules: Rule) -> RuleSet:
@@ -291,10 +291,80 @@ class TestScanResult:
         )
         assert result.total_match_count == 2
 
+    def test_rule_names_dedup_preserves_order(self) -> None:
+        """rule_names 应按首次出现顺序去重。"""
+        from fuscan.scanner.result import RuleHit
+
+        result = ScanResult(
+            path=Path("/x"),
+            size=0,
+            hits=(
+                RuleHit("r1", Severity.INFO, "d1"),
+                RuleHit("r2", Severity.CRITICAL, "d2"),
+                RuleHit("r1", Severity.WARNING, "d3"),
+            ),
+        )
+        assert result.rule_names == ("r1", "r2")
+
+    def test_rule_names_empty(self) -> None:
+        """无命中时 rule_names 为空元组。"""
+        result = ScanResult(path=Path("/x"), size=0, hits=())
+        assert result.rule_names == ()
+
+    def test_summary_format(self) -> None:
+        """summary 应返回 ``N 条规则 / M 处匹配``。"""
+        from fuscan.scanner.result import RuleHit
+
+        result = ScanResult(
+            path=Path("/x"),
+            size=0,
+            hits=(
+                RuleHit("r1", Severity.INFO, "d1", match_count=3),
+                RuleHit("r2", Severity.CRITICAL, "d2", match_count=2),
+            ),
+        )
+        assert result.summary() == "2 条规则 / 5 处匹配"
+
+    def test_summary_empty(self) -> None:
+        """无命中时 summary 仍应返回 0 计数。"""
+        result = ScanResult(path=Path("/x"), size=0, hits=())
+        assert result.summary() == "0 条规则 / 0 处匹配"
+
+
+class TestScanStats:
+    def test_summary_default_complete(self) -> None:
+        """summary 默认前缀为"完成"。"""
+
+        stats = ScanStats(
+            total_files=10,
+            scanned_files=8,
+            matched_files=3,
+            skipped_files=2,
+            errors=1,
+            duration_seconds=1.5,
+            total_matches=5,
+        )
+        s = stats.summary()
+        assert s.startswith("完成:")
+        assert "总计 10" in s
+        assert "扫描 8" in s
+        assert "跳过 2" in s
+        assert "命中 3" in s
+        assert "条数 5" in s
+        assert "错误 1" in s
+        assert "耗时 1.50s" in s
+
+    def test_summary_cancelled_prefix(self) -> None:
+        """cancelled=True 时前缀为"已取消"。"""
+
+        stats = ScanStats(total_files=1, scanned_files=1, duration_seconds=0.0)
+        assert stats.summary(cancelled=True).startswith("已取消:")
+        assert stats.summary(cancelled=False).startswith("完成:")
+
 
 class TestScanReport:
     def test_hits_filters_matched(self, tmp_path: Path) -> None:
-        from fuscan.scanner.result import RuleHit, ScanStats
+        from fuscan.scanner.result import RuleHit
 
         results = (
             ScanResult(path=tmp_path / "a", size=0, hits=(RuleHit("r", Severity.INFO, "d"),)),
@@ -303,6 +373,199 @@ class TestScanReport:
         report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
         assert len(report.hits) == 1
         assert report.hits[0].path == tmp_path / "a"
+
+    def _build_report(self, tmp_path: Path) -> ScanReport:
+        """构造测试报告：3 个文件命中 2 条规则，分属 WARNING/CRITICAL 两个等级。"""
+        from fuscan.scanner.result import RuleHit
+
+        (tmp_path / "secret.txt").mkdir(parents=True, exist_ok=True)
+        results = (
+            ScanResult(
+                path=tmp_path / "secret.txt" / "a.txt",
+                size=10,
+                hits=(
+                    RuleHit("敏感文件名", Severity.WARNING, "d1", match_count=1),
+                    RuleHit("密钥内容", Severity.CRITICAL, "d2", match_count=2),
+                ),
+            ),
+            ScanResult(
+                path=tmp_path / "secret.txt" / "b.txt",
+                size=20,
+                hits=(RuleHit("密钥内容", Severity.CRITICAL, "d3", match_count=3),),
+            ),
+            ScanResult(path=tmp_path / "clean.txt", size=0, hits=()),
+        )
+        stats = ScanStats(
+            total_files=3,
+            scanned_files=3,
+            matched_files=2,
+            skipped_files=0,
+            errors=0,
+            duration_seconds=0.5,
+            total_matches=6,
+        )
+        return ScanReport(root=tmp_path, results=results, stats=stats)
+
+    def test_rule_names_dedup(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        # 两个文件均命中"密钥内容"，应去重
+        assert report.rule_names == ("敏感文件名", "密钥内容")
+
+    def test_rule_names_empty(self, tmp_path: Path) -> None:
+        report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
+        assert report.rule_names == ()
+
+    def test_summary_uses_stats_and_cancelled_flag(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        s = report.summary()
+        assert s.startswith("完成:")
+        assert "命中 2" in s
+
+        cancelled_report = ScanReport(
+            root=report.root,
+            results=report.results,
+            stats=report.stats,
+            cancelled=True,
+        )
+        assert cancelled_report.summary().startswith("已取消:")
+
+    def test_filter_no_args_returns_self(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        assert report.filter() is report
+
+    def test_filter_by_path_query(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        filtered = report.filter(path_query="a.txt")
+        assert len(filtered.hits) == 1
+        assert filtered.hits[0].path.name == "a.txt"
+        # stats 不变
+        assert filtered.stats is report.stats
+
+    def test_filter_path_case_insensitive(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        assert len(report.filter(path_query="A.TXT").hits) == 1
+
+    def test_filter_by_rule_name_keeps_only_matching_hits(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        filtered = report.filter(rule_name="密钥内容")
+        # 两个文件均命中"密钥内容"
+        assert len(filtered.hits) == 2
+        # a.txt 原本有 2 条规则命中，过滤后仅保留"密钥内容"
+        a = next(r for r in filtered.hits if r.path.name == "a.txt")
+        assert len(a.hits) == 1
+        assert a.hits[0].rule_name == "密钥内容"
+        assert a.total_match_count == 2
+
+    def test_filter_combined_path_and_rule(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        filtered = report.filter(path_query="b.txt", rule_name="密钥内容")
+        assert len(filtered.hits) == 1
+        assert filtered.hits[0].path.name == "b.txt"
+
+    def test_filter_no_match_returns_empty_hits(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        assert report.filter(path_query="nonexistent").hits == ()
+
+    def test_filter_does_not_mutate_original(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        original_hits_count = len(report.hits)
+        report.filter(rule_name="密钥内容")
+        # 原报告 hits 不应被修改
+        assert len(report.hits) == original_hits_count
+        a = next(r for r in report.hits if r.path.name == "a.txt")
+        assert len(a.hits) == 2
+
+    def test_group_by_rule(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        groups = report.group_by_rule()
+        assert set(groups.keys()) == {"敏感文件名", "密钥内容"}
+        # "密钥内容"在 a.txt 和 b.txt 各命中一次，共 2 项
+        assert len(groups["密钥内容"]) == 2
+        # "敏感文件名"只在 a.txt 命中
+        assert len(groups["敏感文件名"]) == 1
+        sr, hit = groups["敏感文件名"][0]
+        assert sr.path.name == "a.txt"
+        assert hit.rule_name == "敏感文件名"
+
+    def test_group_by_severity(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        groups = report.group_by_severity()
+        # 两个命中文件 max_severity 都是 CRITICAL（a.txt 含 CRITICAL，b.txt 仅 CRITICAL）
+        assert set(groups.keys()) == {Severity.CRITICAL}
+        assert len(groups[Severity.CRITICAL]) == 2
+
+    def test_group_by_severity_distinguishes_levels(self, tmp_path: Path) -> None:
+        from fuscan.scanner.result import RuleHit
+
+        results = (
+            ScanResult(path=tmp_path / "warn.txt", size=0, hits=(RuleHit("r", Severity.WARNING, "d"),)),
+            ScanResult(path=tmp_path / "crit.txt", size=0, hits=(RuleHit("r", Severity.CRITICAL, "d"),)),
+        )
+        report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
+        groups = report.group_by_severity()
+        assert set(groups.keys()) == {Severity.WARNING, Severity.CRITICAL}
+
+    def test_to_json_contains_expected_fields(self, tmp_path: Path) -> None:
+        import json as _json
+
+        report = self._build_report(tmp_path)
+        data = _json.loads(report.to_json())
+        assert data["root"] == str(tmp_path)
+        assert data["stats"]["matched_files"] == 2
+        assert data["cancelled"] is False
+        assert len(data["hits"]) == 2
+        first = data["hits"][0]
+        assert first["max_severity"] == "critical"
+        assert first["match_count"] == 3  # 1 + 2
+        assert len(first["rules"]) == 2
+
+    def test_to_json_cancelled_flag(self, tmp_path: Path) -> None:
+        import json as _json
+
+        report = ScanReport(
+            root=tmp_path,
+            results=self._build_report(tmp_path).results,
+            stats=ScanStats(),
+            cancelled=True,
+        )
+        assert _json.loads(report.to_json())["cancelled"] is True
+
+    def test_to_csv_header_and_rows(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        csv_text = report.to_csv()
+        lines = csv_text.strip().splitlines()
+        assert lines[0] == "path,size,severity,rule,match_count,detail"
+        # 3 条命中：a.txt 2 条 + b.txt 1 条
+        assert len(lines) - 1 == 3
+        # 第一条数据应包含 a.txt 路径
+        assert "a.txt" in lines[1]
+
+    def test_to_csv_empty_hits_only_header(self, tmp_path: Path) -> None:
+
+        report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
+        csv_text = report.to_csv()
+        assert csv_text.strip() == "path,size,severity,rule,match_count,detail"
+
+    def test_to_text_contains_root_and_hits(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        text = report.to_text()
+        assert str(tmp_path) in text
+        assert "命中项 (2)" in text
+        assert "敏感文件名" in text
+        assert "密钥内容" in text
+
+    def test_to_text_no_hits(self, tmp_path: Path) -> None:
+
+        report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
+        text = report.to_text()
+        assert "未发现命中项" in text
+
+    def test_to_text_relative_path(self, tmp_path: Path) -> None:
+        report = self._build_report(tmp_path)
+        text = report.to_text()
+        # 命中项路径应以 root 为相对基准显示
+        assert "secret.txt" in text
+        assert str(tmp_path) not in text.split("命中项")[1]
 
 
 class TestScannerErrorHandling:

@@ -18,11 +18,9 @@
 
 from __future__ import annotations
 
-import csv
 import datetime
 import enum
 import html
-import io
 import logging
 import re
 import subprocess
@@ -1020,11 +1018,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._last_report = report
         self._reset_scan_ui()
         self._populate_results(report)
-        stats = report.stats
-        self.stats_label.setText(
-            f"已取消: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
-            f"命中 {stats.matched_files} | 条数 {stats.total_matches} | 耗时 {stats.duration_seconds:.2f}s"
-        )
+        # 显式以 cancelled=True 渲染摘要，避免依赖 report.cancelled 字段
+        # （scanner.scan 直接返回的 report 默认 cancelled=False）
+        self.stats_label.setText(report.stats.summary(cancelled=True))
         if len(report.hits) > 0:
             self._switch_stage(WorkflowStage.RESULTS)
         else:
@@ -1140,12 +1136,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self._populate_results(report)
 
-        stats = report.stats
-        self.stats_label.setText(
-            f"完成: 总计 {stats.total_files} | 扫描 {stats.scanned_files} | "
-            f"跳过 {stats.skipped_files} | 命中 {stats.matched_files} | "
-            f"条数 {stats.total_matches} | 错误 {stats.errors} | 耗时 {stats.duration_seconds:.2f}s"
-        )
+        self.stats_label.setText(report.summary())
         self._switch_stage(WorkflowStage.RESULTS)
 
     def _on_scan_failed(self, error: str) -> None:
@@ -1610,14 +1601,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.rule_filter_combo.blockSignals(True)
         self.rule_filter_combo.clear()
         self.rule_filter_combo.addItem("全部规则", "")
-        rule_names: list[str] = []
-        seen = set()
-        for result in report.hits:
-            for hit in result.hits:
-                if hit.rule_name not in seen:
-                    seen.add(hit.rule_name)
-                    rule_names.append(hit.rule_name)
-        for name in sorted(rule_names):
+        for name in sorted(report.rule_names):
             self.rule_filter_combo.addItem(name, name)
         # 恢复之前选中的规则
         if current_rule:
@@ -1632,54 +1616,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self._last_report is None:
             return
 
-        path_filter = self.path_filter_input.text().strip().lower()
+        path_filter = self.path_filter_input.text().strip()
         rule_filter = self.rule_filter_combo.currentData() or ""
         group_mode = self.group_mode_combo.currentData() or "flat"
 
-        # 筛选 + 收集命中
-        filtered = self._filter_results(self._last_report, path_filter, rule_filter)
+        # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
+        filtered_report = self._last_report.filter(path_query=path_filter, rule_name=rule_filter)
 
         if group_mode == "rule":
-            self._populate_grouped_by_rule(filtered)
+            self._populate_grouped_by_rule(filtered_report)
         elif group_mode == "severity":
-            self._populate_grouped_by_severity(filtered)
+            self._populate_grouped_by_severity(filtered_report)
         else:
-            self._populate_flat(filtered)
+            self._populate_flat(filtered_report)
 
-    def _filter_results(
-        self,
-        report: ScanReport,
-        path_filter: str,
-        rule_filter: str,
-    ) -> list[ScanResult]:
-        """按路径与规则筛选结果，返回符合条件的 ScanResult 列表。
-
-        路径筛选为大小写不敏感子串匹配；规则筛选时仅保留包含该规则命中的文件，
-        且每个 ScanResult 的 hits 被过滤为仅匹配规则的命中。
-        """
-        result: list[ScanResult] = []
-        for sr in report.hits:
-            if path_filter and path_filter not in str(sr.path).lower():
-                continue
-            if rule_filter:
-                matching_hits = tuple(h for h in sr.hits if h.rule_name == rule_filter)
-                if not matching_hits:
-                    continue
-                result.append(ScanResult(path=sr.path, size=sr.size, hits=matching_hits, errors=sr.errors))
-            else:
-                result.append(sr)
-        return result
-
-    def _populate_flat(self, results: list[ScanResult]) -> None:
+    def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
-        for sr in results:
+        for sr in report.hits:
             file_item = QTreeWidgetItem([
                 str(sr.path),
                 "",
                 "",
                 str(len(sr.hits)),
                 str(sr.total_match_count),
-                f"{len(sr.hits)} 条规则 / {sr.total_match_count} 处匹配",
+                sr.summary(),
             ])
             file_item.setData(0, Qt.UserRole, sr)
             _apply_severity_to_tree_item(file_item, 2, sr.max_severity)
@@ -1703,12 +1663,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 file_item.addChild(child)
             self.result_tree.addTopLevelItem(file_item)
 
-    def _populate_grouped_by_rule(self, results: list[ScanResult]) -> None:
+    def _populate_grouped_by_rule(self, report: ScanReport) -> None:
         """按规则分组：规则名为顶层项，文件为子项。"""
-        rule_map: dict[str, list[tuple[ScanResult, RuleHit]]] = {}
-        for sr in results:
-            for hit in sr.hits:
-                rule_map.setdefault(hit.rule_name, []).append((sr, hit))
+        rule_map = report.group_by_rule()
 
         for rule_name in sorted(rule_map.keys()):
             entries = rule_map[rule_name]
@@ -1741,12 +1698,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 top.addChild(child)
             self.result_tree.addTopLevelItem(top)
 
-    def _populate_grouped_by_severity(self, results: list[ScanResult]) -> None:
+    def _populate_grouped_by_severity(self, report: ScanReport) -> None:
         """按严重等级分组：等级为顶层项，文件为子项。"""
-        severity_map: dict[Severity, list[ScanResult]] = {}
-        for sr in results:
-            sev = sr.max_severity
-            severity_map.setdefault(sev, []).append(sr)
+        severity_map = report.group_by_severity()
 
         for severity in sorted(severity_map.keys(), key=lambda s: _SEVERITY_RANK[s], reverse=True):
             entries = severity_map[severity]
@@ -1772,7 +1726,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     "",
                     str(len(sr.hits)),
                     str(sr.total_match_count),
-                    f"{len(sr.hits)} 条规则 / {sr.total_match_count} 处匹配",
+                    sr.summary(),
                 ])
                 _apply_severity_to_tree_item(child, 2, sr.max_severity)
                 child.setData(0, Qt.UserRole, sr)
@@ -1805,18 +1759,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @staticmethod
     def _format_report(report: ScanReport, fmt: str) -> str:
-        """格式化报告为字符串。"""
+        """格式化报告为字符串（委托给 ScanReport 的数据层方法）。"""
         if fmt == "json":
-            return ScanReport.to_json(report)
-
+            return report.to_json()
         # CSV
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["path", "size", "severity", "rule", "detail"])
-        for r in report.hits:
-            for hit in r.hits:
-                writer.writerow([str(r.path), r.size, hit.severity.value, hit.rule_name, hit.detail])
-        return buf.getvalue()
+        return report.to_csv()
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         """关闭时保存配置、释放缓存并终止后台线程。"""
