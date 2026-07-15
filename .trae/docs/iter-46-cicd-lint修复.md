@@ -104,37 +104,61 @@ CI lint job（ruff check + ruff format check + pyrefly check）与 test job（py
 
 ### 问题
 
-CI run 017ffe1 lint job 的 Pyrefly check 步骤失败（ruff check / ruff format check 均通过）。根因：pyrefly 在 ubuntu + Python 3.8 查询 Python 解释器时用 ctypes 调用 libpython C API，ubuntu 的 Python 3.8（deadsnakes PPA）无共享库 `libpython3.8.so`，ctypes 加载失败。本地 Windows + Python 3.8 无此问题（Windows Python 自带共享库）。
+CI run 017ffe1 / 4331d6e lint job 的 Pyrefly check 步骤失败（ruff check / ruff format check 均通过）。根因：pyrefly 在 ubuntu + Python 3.8 查询 Python 解释器时用 ctypes 调用 libpython C API，uv 安装的 python-build-standalone Linux build 的 `libpython3.8.so` 不在动态链接搜索路径，ctypes 加载失败。本地 Windows + Python 3.8 无此问题（Windows Python 自带共享库 DLL）。
 
-### 修复方案
+### 失败方案：lint job 改用 Python 3.11（commit e695714，已回退）
 
-lint job 显式指定 Python 3.11（commit e695714）：
+Python 3.11 在 ubuntu 有 `libpython3.11.so`，ctypes 正常。但 `pyproject.toml` 标记 `PySide2; python_version <= '3.10'` / `PySide6; python_version >= '3.11'`，Python 3.11 装 PySide6 不装 PySide2，导致：
+1. `from PySide2.QtWidgets import QApplication` 报 `missing-import`（PySide2 未安装）
+2. `from PySide6.QtWidgets import QApplication  # pyrefly: ignore[missing-import]` 的 ignore 注释变 `unused-ignore`（PySide6 实际可 import）
+3. PySide6 API 与 PySide2 存在差异（如 `Qt.AA_EnableHighDpiScaling` 在 PySide6 已移除），报新的 `missing-attribute`
+
+本地用 `.venv-py311` 复现确认引入大量新错误，方案不可行，已回退。
+
+### 采用方案：`--site-package-path` + `--skip-interpreter-query`（commit b2d97ff）
+
+pyrefly 提供 `--site-package-path`（显式指定 site-packages）、`--python-platform`（显式指定平台）、`--skip-interpreter-query`（跳过查询解释器）三个命令行选项。三者配合可完全避免 ctypes 调用：
 
 ```yaml
-- name: Set up Python 3.11
-  run: uv python install 3.11
-- name: Sync dependencies
-  run: uv sync --frozen --extra lint --python 3.11
+- name: Pyrefly check
+  run: |
+    SITE_PACKAGES=$(uv run python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+    uv run pyrefly check --site-package-path "$SITE_PACKAGES" --python-platform linux --skip-interpreter-query
 ```
+
+- `uv run python -c "import sysconfig; ..."` 动态获取 site-packages 路径（直接运行 Python 解释器，不涉及 pyrefly 的 ctypes 调用）
+- `--site-package-path` 显式指定 site-packages，pyrefly 无需查询解释器获取
+- `--python-platform linux` 显式指定平台（pyrefly.toml 未配置 python-platform，不指定会触发查询）
+- `--skip-interpreter-query` 兜底，确保不查询解释器
+- `python-version = "3.8"` 已在 pyrefly.toml 配置，无需命令行重复
 
 ### 方案选型依据
 
 | 方案 | 评估 | 是否采用 |
 |------|------|---------|
-| lint job 用 Python 3.11 | ubuntu 3.11 自带 libpython3.11.so，ctypes 正常；代码已有 `# pyrefly: ignore[missing-import]` 处理 PySide2 import（3.11 装 PySide6）；pyrefly.toml `python-version="3.8"` 仍按 3.8 语法检查 | 采用 |
-| pyrefly.toml 配置 site-package-path | 跨平台路径问题，Windows/Linux 路径不同无法统一配置 | 未采用 |
-| CI 安装 libpython3.8 | 需 sudo + deadsnakes PPA 依赖，且 Python 3.8 已 EOL | 未采用 |
+| `--site-package-path` + `--skip-interpreter-query` | 完全避免 ctypes；动态获取路径跨平台兼容；本地验证 0 errors (435 suppressed) | 采用 |
+| lint job 用 Python 3.11 | 引入 PySide6 API 差异错误（unused-ignore + missing-attribute），需大量新 suppress | 未采用（已回退） |
+| pyrefly.toml 配置 site-package-path | 路径跨平台不同（Windows `.venv\Lib\site-packages` vs Linux `.venv/lib/python3.8/site-packages`），无法静态配置 | 未采用 |
+| CI 安装 libpython3.8 | uv 装的 python-build-standalone 不受 apt 影响；需额外 sudo 步骤 | 未采用 |
 | 升级 pyrefly | uv.lock 锁定 1.1.1，升级需 `uv lock --upgrade-package` | 未采用 |
 
-### PySide2 import 兼容性
+### 本地验证
 
-Python 3.11 下 `uv sync --extra lint` 装 PySide6（pyproject.toml 标记 `python_version >= '3.11'`），不装 PySide2。代码采用双兼容 `try: from PySide2... except ImportError: from PySide6...`，所有 PySide2/PySide6 import 行已有 `# pyrefly: ignore[missing-import]` 注释（iter-46 suppress 处理），pyrefly 不会报 missing-import。其他 PySide API stub 限制错误也均有对应 `# pyrefly: ignore[规则码]` 注释。
+用 `--python-platform windows` 本地复现 CI 行为：
+
+```powershell
+$sitePackages = uv run python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
+uv run pyrefly check --site-package-path $sitePackages --python-platform windows --skip-interpreter-query
+# 结果：0 errors (435 suppressed, 55 warnings not shown)，退出码 0
+```
+
+注意：`site.getsitepackages()[0]` 返回 `.venv`（venv 根）而非 site-packages，必须用 `sysconfig.get_path('purelib')` 获取正确路径。
 
 ## 遗留事项
 
 - 435 个 `# pyrefly: ignore[规则码]` 注释为技术债。未来 PySide2 stub 改进或迁移 PySide6 后，可用 `uv run pyrefly suppress --remove-unused` 清理失效注释。
 - `benchmarks/sample_files.py` 被 suppress 修改，但不在 `ruff check src tests` 范围。若后续 benchmarks 纳入 lint，需单独验证。
-- lint job 用 Python 3.11 而非项目最低支持版本 3.8，理论上存在"本地 3.8 pyrefly 通过但 CI 3.11 报错"的盲区。但 pyrefly.toml `python-version="3.8"` 确保语法按 3.8 检查，且 Python 3.11 对 3.8 语法完全兼容，风险可忽略。
+- CI pyrefly check 用命令行参数覆盖配置（`--site-package-path` / `--python-platform` / `--skip-interpreter-query`），本地 `uv run pyrefly check` 不传参（查询解释器）。两者行为略有差异但结果一致（0 errors）。若本地也需避免查询解释器，可用相同命令行参数。
 
 ## 下一轮计划
 
