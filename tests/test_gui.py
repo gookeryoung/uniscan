@@ -3356,6 +3356,8 @@ class TestResultFilterAndGroup:
         assert window.result_tree.topLevelItemCount() == 2  # secret.txt + key.txt
 
         window.path_filter_input.setText("secret")
+        # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
+        window._refresh_result_tree()
         assert window.result_tree.topLevelItemCount() == 1
         assert "secret.txt" in window.result_tree.topLevelItem(0).text(0)
         window.close()
@@ -3366,6 +3368,8 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
         window.path_filter_input.setText("SECRET")
+        # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
+        window._refresh_result_tree()
         assert window.result_tree.topLevelItemCount() == 1
         window.close()
 
@@ -3390,6 +3394,8 @@ class TestResultFilterAndGroup:
         window._populate_results(report)
 
         window.path_filter_input.setText("key.txt")
+        # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
+        window._refresh_result_tree()
         idx = window.rule_filter_combo.findData("密钥内容")
         window.rule_filter_combo.setCurrentIndex(idx)
         assert window.result_tree.topLevelItemCount() == 1
@@ -3402,6 +3408,8 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
         window.path_filter_input.setText("nonexistent_path")
+        # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
+        window._refresh_result_tree()
         assert window.result_tree.topLevelItemCount() == 0
         window.close()
 
@@ -3411,9 +3419,49 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
         window.path_filter_input.setText("secret")
+        # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
+        window._refresh_result_tree()
         assert window.result_tree.topLevelItemCount() == 1
         window.path_filter_input.setText("")
+        window._refresh_result_tree()
         assert window.result_tree.topLevelItemCount() == 2
+        window.close()
+
+    def test_path_filter_throttled_by_timer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """需求9：路径输入应通过 QTimer 节流，textChanged 后不立即刷新结果树。"""
+        window = MainWindow()
+        report = _build_multi_hit_report(tmp_path)
+        window._populate_results(report)
+        assert window.result_tree.topLevelItemCount() == 2
+
+        # 验证 timer 配置：singleShot、300ms
+        assert window._result_filter_timer.isSingleShot()
+        assert window._result_filter_timer.interval() == 300
+
+        # textChanged 触发 _schedule_result_refresh，仅启动 timer 不立即刷新
+        window.path_filter_input.setText("secret")
+        assert window._result_filter_timer.isActive()
+        # timer 未到期前结果树保持原样
+        assert window.result_tree.topLevelItemCount() == 2
+
+        # 模拟 timer 到期：直接调用槽函数（timeout 信号连接的目标）
+        window._result_filter_timer.stop()
+        window._refresh_result_tree()
+        assert window.result_tree.topLevelItemCount() == 1
+        window.close()
+
+    def test_populate_results_stops_pending_filter_timer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """需求9：_populate_results 应停止挂起的节流 timer，避免与立即刷新重复触发。"""
+        window = MainWindow()
+        report = _build_multi_hit_report(tmp_path)
+        window._populate_results(report)
+        # 启动节流 timer 模拟用户正在输入
+        window._result_filter_timer.start()
+        assert window._result_filter_timer.isActive()
+
+        # 新扫描完成调用 _populate_results，应停止挂起的 timer
+        window._populate_results(report)
+        assert not window._result_filter_timer.isActive()
         window.close()
 
     def test_group_by_rule(self, qapp: QApplication, tmp_path: Path) -> None:

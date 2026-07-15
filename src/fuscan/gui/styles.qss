@@ -689,18 +689,28 @@ QTableWidget#detail_hits_table {
 }
 
 /* ========== 分割器 ========== */
+/* 需求8：默认柔和灰始终可见，hover 时加深一档；vertical 适配详情区右侧竖线 */
 
 QSplitter::handle {
-    background: transparent;
+    background: ${COLOR_SPLITTER};
 }
 
 QSplitter::handle:horizontal {
-    width: 4px;
-    background: transparent;
+    width: 2px;
+    background: ${COLOR_SPLITTER};
 }
 
 QSplitter::handle:horizontal:hover {
-    background: ${COLOR_BORDER};
+    background: ${COLOR_SPLITTER_HOVER};
+}
+
+QSplitter::handle:vertical {
+    height: 2px;
+    background: ${COLOR_SPLITTER};
+}
+
+QSplitter::handle:vertical:hover {
+    background: ${COLOR_SPLITTER_HOVER};
 }
 
 /* ========== 滚动条 ========== */

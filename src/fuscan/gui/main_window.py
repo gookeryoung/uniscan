@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 try:
-    from PySide2.QtCore import QByteArray, QPoint, QSize, Qt, QUrl
+    from PySide2.QtCore import QByteArray, QPoint, QSize, Qt, QTimer, QUrl
     from PySide2.QtGui import (
         QColor,
         QDesktopServices,
@@ -273,6 +273,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._last_matched_files: tuple[tuple[str, str], ...] = ()
         # 初始 -1.0 确保首次回调不被节流（time.perf_counter 在新进程可能返回小值）
         self._last_list_update_time: float = -1.0
+        # 结果树筛选节流 timer（需求9）：避免每次按键触发全量重建导致 UI 卡滞
+        self._result_filter_timer: QTimer = QTimer(self)
+        self._result_filter_timer.setSingleShot(True)
+        self._result_filter_timer.setInterval(300)
+        self._result_filter_timer.timeout.connect(self._refresh_result_tree)
 
         self._configure_ui()
         self._apply_config()
@@ -521,8 +526,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 结果树
         self.result_tree.itemDoubleClicked.connect(self._on_result_double_clicked)
         self.result_tree.itemSelectionChanged.connect(self._on_result_selection_changed)
-        # 筛选
-        self.path_filter_input.textChanged.connect(self._refresh_result_tree)
+        # 筛选（需求9：路径输入节流 300ms，避免连续按键触发全量重建；combo 切换立即响应）
+        self.path_filter_input.textChanged.connect(self._schedule_result_refresh)
         self.rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
         self.group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
         # 历史
@@ -1711,6 +1716,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _populate_results(self, report: ScanReport) -> None:
         """填充结果树：存储报告、更新规则筛选下拉、刷新结果树。"""
+        # 取消挂起的节流刷新，避免与下方立即刷新重复触发（需求9）
+        self._result_filter_timer.stop()
         self._last_report = report
         self._update_rule_filter_options(report)
         self._refresh_result_tree()
@@ -1732,25 +1739,40 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.rule_filter_combo.setCurrentIndex(idx)
         self.rule_filter_combo.blockSignals(False)
 
+    def _schedule_result_refresh(self) -> None:
+        """节流触发结果树刷新（需求9）。
+
+        ``path_filter_input.textChanged`` 每次按键仅重置 timer，避免连续输入
+        时全量重建结果树导致 UI 卡滞。``rule_filter_combo`` /
+        ``group_mode_combo`` 的 ``currentIndexChanged`` 仍直接调用
+        :meth:`_refresh_result_tree`，因为这些是用户主动切换选择，需立即反馈。
+        """
+        self._result_filter_timer.start()
+
     def _refresh_result_tree(self) -> None:
         """根据当前筛选条件与分组模式刷新结果树。"""
-        self.result_tree.clear()
-        if self._last_report is None:
-            return
+        # 需求9：批量插入期间禁用重绘，避免每个 addTopLevelItem 触发一次重绘
+        self.result_tree.setUpdatesEnabled(False)
+        try:
+            self.result_tree.clear()
+            if self._last_report is None:
+                return
 
-        path_filter = self.path_filter_input.text().strip()
-        rule_filter = self.rule_filter_combo.currentData() or ""
-        group_mode = self.group_mode_combo.currentData() or "flat"
+            path_filter = self.path_filter_input.text().strip()
+            rule_filter = self.rule_filter_combo.currentData() or ""
+            group_mode = self.group_mode_combo.currentData() or "flat"
 
-        # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
-        filtered_report = self._last_report.filter(path_query=path_filter, rule_name=rule_filter)
+            # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
+            filtered_report = self._last_report.filter(path_query=path_filter, rule_name=rule_filter)
 
-        if group_mode == "rule":
-            self._populate_grouped_by_rule(filtered_report)
-        elif group_mode == "severity":
-            self._populate_grouped_by_severity(filtered_report)
-        else:
-            self._populate_flat(filtered_report)
+            if group_mode == "rule":
+                self._populate_grouped_by_rule(filtered_report)
+            elif group_mode == "severity":
+                self._populate_grouped_by_severity(filtered_report)
+            else:
+                self._populate_flat(filtered_report)
+        finally:
+            self.result_tree.setUpdatesEnabled(True)
 
     def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
