@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -21,10 +22,10 @@ pytestmark = pytest.mark.gui
 try:
     try:
         from PySide2.QtCore import Qt
-        from PySide2.QtWidgets import QApplication, QMenu
+        from PySide2.QtWidgets import QApplication, QListWidgetItem, QMenu, QMessageBox
     except ImportError:  # pragma: no cover
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QMenu
+        from PySide6.QtWidgets import QApplication, QListWidgetItem, QMenu, QMessageBox
 
     from fuscan.gui.detail_dialog import HitDetailDialog
     from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
@@ -4714,6 +4715,264 @@ class TestScanCallbacks:
         assert "10.0s" in stats_text
         # 速度 = 100 / 10.0 = 10 文件/s
         assert "10" in stats_text
+        window.close()
+
+    def test_setup_scan_stats_panel_initial_zeros(self, qapp: QApplication) -> None:
+        """_setup_scan_stats_panel 初始化后 scan_stats_label 应显示全零计数（需求6/7）。"""
+        window = MainWindow()
+        text = window.scan_stats_label.text()
+        # 四类计数初始均为 0
+        assert "已通过 0" in text
+        assert "命中 0" in text
+        assert "跳过 0" in text
+        assert "错误 0" in text
+        window.close()
+
+    def test_update_scan_stats_html_content(self, qapp: QApplication) -> None:
+        """_update_scan_stats 应在 HTML 中体现四类计数与颜色标识（需求6/7）。"""
+        window = MainWindow()
+        window._update_scan_stats(passed=80, matched=10, skipped=5, errors=3)
+        text = window.scan_stats_label.text()
+        # 颜色标识
+        assert "#28A745" in text  # 已通过 绿色
+        assert "#DC3545" in text  # 命中/错误 红色
+        assert "#FFC107" in text  # 跳过 黄色
+        # 计数
+        assert "已通过 80" in text
+        assert "命中 10" in text
+        assert "跳过 5" in text
+        assert "错误 3" in text
+        window.close()
+
+    def test_on_scan_progress_updates_scan_stats_panel(self, qapp: QApplication) -> None:
+        """_on_scan_progress 应同步刷新扫描中页分类统计面板（需求6/7）。
+
+        passed = scanned - matched - errors，需对负数兜底为 0。
+        """
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        info = ProgressInfo(
+            total=200,
+            scanned=100,
+            skipped=20,
+            matched=30,
+            errors=5,
+            current_file="/test/file.txt",
+            elapsed=10.0,
+        )
+        window._on_scan_progress(info)
+        text = window.scan_stats_label.text()
+        # passed = 100 - 30 - 5 = 65
+        assert "已通过 65" in text
+        assert "命中 30" in text
+        assert "跳过 20" in text
+        assert "错误 5" in text
+        window.close()
+
+    def test_on_scan_progress_scan_stats_passed_floor_zero(self, qapp: QApplication) -> None:
+        """scanned < matched + errors 时 passed 应兜底为 0（避免负数显示）。"""
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        info = ProgressInfo(
+            total=10,
+            scanned=3,
+            skipped=0,
+            matched=5,  # 异常场景：matched > scanned
+            errors=2,
+            current_file="/x",
+            elapsed=0.1,
+        )
+        window._on_scan_progress(info)
+        text = window.scan_stats_label.text()
+        assert "已通过 0" in text
+        window.close()
+
+    def test_on_scan_resets_scan_stats_panel(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_on_scan 启动扫描时应将统计面板重置为全零（需求6/7）。"""
+
+        class _FakeWorker:
+            """拦截 ScanWorker 实例化与信号连接，避免启动真实线程。"""
+
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                self.progress_info = _FakeSignal()
+                self.finished_report = _FakeSignal()
+                self.failed = _FakeSignal()
+                self.cancelled = _FakeSignal()
+
+            def start(self) -> None:
+                pass
+
+        class _FakeSignal:
+            def connect(self, slot: Any) -> None:
+                pass
+
+        monkeypatch.setattr("fuscan.gui.main_window.ScanWorker", _FakeWorker)
+
+        window = MainWindow()
+        window._ruleset = _build_ruleset()
+        window._scan_root = tmp_path
+        window._scan_mode = "folder"
+        # 先填充非零统计
+        window._update_scan_stats(passed=80, matched=10, skipped=5, errors=3)
+        assert "已通过 80" in window.scan_stats_label.text()
+
+        window._on_scan()
+        text = window.scan_stats_label.text()
+        # 启动扫描后应重置为 0
+        assert "已通过 0" in text
+        assert "命中 0" in text
+        assert "跳过 0" in text
+        assert "错误 0" in text
+        window.close()
+
+    def test_on_matched_file_double_clicked_open_location(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """双击命中文件项选择"打开"应调用 _open_path_in_explorer（需求5）。"""
+        window = MainWindow()
+        item = QListWidgetItem(f"{tmp_path / 'secret.txt'} → 敏感文件名")
+
+        # 拦截 QMessageBox.question 返回 Open
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.question",
+            lambda *_: QMessageBox.Open,
+        )
+        # 拦截 _open_path_in_explorer 避免真实调用 explorer
+        called: list[Path] = []
+        monkeypatch.setattr(window, "_open_path_in_explorer", called.append)
+
+        window._on_matched_file_double_clicked(item)
+        assert len(called) == 1
+        assert called[0] == tmp_path / "secret.txt"
+        window.close()
+
+    def test_on_matched_file_double_clicked_close_no_call(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """双击命中文件项选择"关闭"不应调用 _open_path_in_explorer（需求5）。"""
+        window = MainWindow()
+        item = QListWidgetItem("/some/path.txt → 规则A")
+
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.question",
+            lambda *_: QMessageBox.Close,
+        )
+        called: list[Path] = []
+        monkeypatch.setattr(window, "_open_path_in_explorer", called.append)
+
+        window._on_matched_file_double_clicked(item)
+        assert called == []
+        window.close()
+
+    def test_on_matched_file_double_clicked_no_arrow_returns_early(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """列表项不含 " → " 时应直接返回，不弹窗也不调用定位（需求5）。"""
+        window = MainWindow()
+        item = QListWidgetItem("无格式文本")
+
+        question_called = {"n": 0}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.question",
+            lambda *_: question_called.update(n=question_called["n"] + 1),
+        )
+        called: list[Path] = []
+        monkeypatch.setattr(window, "_open_path_in_explorer", called.append)
+
+        window._on_matched_file_double_clicked(item)
+        assert question_called["n"] == 0
+        assert called == []
+        window.close()
+
+    def test_on_matched_file_double_clicked_rsplit_path_with_arrow(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """路径中含 " → " 时应从右侧分割一次，正确提取路径与规则名（需求5）。"""
+        window = MainWindow()
+        # 极端场景：路径含 " → "
+        item = QListWidgetItem("/proj/a → b.txt → 敏感文件名")
+
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.question",
+            lambda *_: QMessageBox.Open,
+        )
+        captured: list[Path] = []
+        monkeypatch.setattr(window, "_open_path_in_explorer", captured.append)
+
+        window._on_matched_file_double_clicked(item)
+        assert len(captured) == 1
+        # 从右侧分割：路径 = "/proj/a → b.txt"，规则名 = "敏感文件名"
+        assert captured[0] == Path("/proj/a → b.txt")
+        window.close()
+
+    def test_open_path_in_explorer_win32(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_open_path_in_explorer 在 Windows 应调用 explorer /select, 命令。"""
+        window = MainWindow()
+        target = tmp_path / "secret.txt"
+        target.write_text("x", encoding="utf-8")
+
+        popen_calls: list[Any] = []
+        import subprocess as subprocess_mod
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(subprocess_mod, "Popen", lambda *args: popen_calls.append(args))
+
+        window._open_path_in_explorer(target)
+        assert len(popen_calls) == 1
+        assert popen_calls[0][0] == ["explorer", "/select,", str(target)]
+        window.close()
+
+    def test_open_path_in_explorer_failure_warns(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_open_path_in_explorer 调用失败时应弹 warning 提示而不抛异常。"""
+        window = MainWindow()
+        target = tmp_path / "missing.txt"
+
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *_: warned.update(called=True),
+        )
+        import subprocess as subprocess_mod
+
+        def raise_os(*args: Any, **kwargs: Any) -> None:
+            raise OSError("mocked failure")
+
+        monkeypatch.setattr(subprocess_mod, "Popen", raise_os)
+
+        window._open_path_in_explorer(target)
+        assert warned["called"]
+        window.close()
+
+    def test_on_open_file_location_delegates_to_open_path(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_on_open_file_location 应委托给 _open_path_in_explorer。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        item = window.result_tree.topLevelItem(0)
+        window.result_tree.setCurrentItem(item)
+        assert window._detail_current_result is not None
+
+        called: list[Path] = []
+        monkeypatch.setattr(window, "_open_path_in_explorer", called.append)
+        window._on_open_file_location()
+        assert len(called) == 1
+        assert called[0] == window._detail_current_result.path
         window.close()
 
     def test_on_scan_progress_throttles_list_update(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:

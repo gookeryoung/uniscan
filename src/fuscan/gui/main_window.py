@@ -288,6 +288,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._setup_comboboxes()
         self._setup_splitters()
         self._setup_layouts()
+        self._setup_scan_stats_panel()
         self._setup_icons()
         self._setup_button_groups()
         self._setup_sidebar()
@@ -382,6 +383,45 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.detail_nonempty_main_layout.setStretch(3, 0)
         self.detail_nonempty_main_layout.setStretch(4, 2)
         self.detail_nonempty_main_layout.setStretch(5, 0)
+
+    def _setup_scan_stats_panel(self) -> None:
+        """创建扫描中页的已扫描文件分类统计面板（需求6/7）。
+
+        在 ``lists_splitter`` 与 ``scanning_btn_row`` 之间插入一个 QLabel，
+        用 HTML 富文本显示四类计数与颜色标识：
+
+        - 绿色：已通过（已扫描且未命中且未错误的文件）
+        - 红色：命中
+        - 黄色：跳过
+        - 红色：错误
+
+        颜色标识使用 ``<span style="color: ...">`` 内联样式，避免引入 QSS 样式表。
+        """
+        self.scan_stats_label = QLabel()
+        self.scan_stats_label.setObjectName("scan_stats_label")
+        self.scan_stats_label.setAlignment(Qt.AlignCenter)
+        self.scan_stats_label.setTextFormat(Qt.RichText)
+        # 插入到 scanning_layout 的 index 1（lists_splitter=0, scanning_btn_row=1→2）
+        self.scanning_layout.insertWidget(1, self.scan_stats_label)
+        self._update_scan_stats(0, 0, 0, 0)
+
+    def _update_scan_stats(self, passed: int, matched: int, skipped: int, errors: int) -> None:
+        """更新扫描中页的分类统计面板。
+
+        :param passed: 已通过文件数（已扫描且未命中且未错误）
+        :param matched: 命中文件数
+        :param skipped: 跳过文件数
+        :param errors: 错误文件数
+        """
+        self.scan_stats_label.setText(
+            f'<span style="color: #28A745; font-weight: bold;">已通过 {passed}</span>'
+            f" &nbsp;|&nbsp; "
+            f'<span style="color: #DC3545; font-weight: bold;">命中 {matched}</span>'
+            f" &nbsp;|&nbsp; "
+            f'<span style="color: #FFC107; font-weight: bold;">跳过 {skipped}</span>'
+            f" &nbsp;|&nbsp; "
+            f'<span style="color: #DC3545; font-weight: bold;">错误 {errors}</span>'
+        )
 
     def _setup_icons(self) -> None:
         """加载主题图标并设置到各按钮、菜单 actions 与下拉项。"""
@@ -492,6 +532,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
         self.detail_next_btn.clicked.connect(self._on_next_detail_hit)
         self.detail_open_location_btn.clicked.connect(self._on_open_file_location)
+        # 扫描中页命中文件列表双击：弹出简化详情与定位按钮（需求5）
+        self.matched_files_list.itemDoubleClicked.connect(self._on_matched_file_double_clicked)
         # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
         self._header_button_group.idClicked.connect(self._on_header_tab_changed)
         self.sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
@@ -971,6 +1013,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._last_skipped_dirs = ()
         self._last_matched_files = ()
         self._last_list_update_time = -1.0
+        # 重置扫描中页的分类统计面板（需求6/7）
+        self._update_scan_stats(0, 0, 0, 0)
         self._switch_stage(WorkflowStage.SCANNING)
 
         cache, source_files = self._build_cache_context()
@@ -1089,6 +1133,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self._update_skipped_dirs_list(info.skipped_dirs)
         self._update_matched_files_list(info.matched_files)
+        # 同步刷新分类统计面板（需求6/7）：已通过 = 已扫描 - 命中 - 错误
+        passed = max(info.scanned - info.matched - info.errors, 0)
+        self._update_scan_stats(passed, info.matched, info.skipped, info.errors)
 
     def _update_skipped_dirs_list(self, new_dirs: tuple[str, ...]) -> None:
         """增量更新跳过目录列表。
@@ -1530,7 +1577,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """在文件管理器中打开所在目录。"""
         if self._detail_current_result is None:
             return
-        path = self._detail_current_result.path
+        self._open_path_in_explorer(self._detail_current_result.path)
+
+    def _open_path_in_explorer(self, path: Path) -> None:
+        """在文件管理器中打开指定文件所在目录并选中该文件。
+
+        跨平台实现：Windows 用 ``explorer /select,``、macOS 用 ``open -R``、
+        其他平台用 ``xdg-open`` 打开父目录。失败时弹提示但不抛异常。
+
+        :param path: 待定位的文件路径
+        """
         try:
             if sys.platform == "win32":
                 subprocess.Popen(["explorer", "/select,", str(path)])
@@ -1541,6 +1597,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         except (OSError, FileNotFoundError) as exc:
             logger.warning("打开文件位置失败: %s", exc, exc_info=True)
             QMessageBox.warning(self, "提示", f"打开文件位置失败:\n{exc}")
+
+    def _on_matched_file_double_clicked(self, item: QListWidgetItem) -> None:
+        """扫描中页命中文件列表双击：弹出简化详情并提供文件定位按钮（需求5）。
+
+        列表项格式为 ``"路径 → 规则名"``，从右侧分割一次以容忍路径中含 ``" → "`` 的
+        极端情况。用 ``QMessageBox.question`` 静态方法提供"打开"/"关闭"两个标准按钮，
+        选中"打开"时委托 :meth:`_open_path_in_explorer` 跨平台定位。
+        """
+        text = item.text()
+        if " → " not in text:
+            return
+        file_path_str, rule_name = text.rsplit(" → ", 1)
+        reply = QMessageBox.question(
+            self,
+            "命中详情",
+            f"文件路径:\n{file_path_str}\n\n命中规则: {rule_name}",
+            QMessageBox.Open | QMessageBox.Close,
+            QMessageBox.Close,
+        )
+        if reply == QMessageBox.Open:
+            self._open_path_in_explorer(Path(file_path_str))
 
     # ----------------------------- 辅助方法 -----------------------------
 
