@@ -176,6 +176,8 @@ _ICON_RESCAN = str(_ICONS_DIR / "rescan.svg")
 _ICON_SCAN = str(_ICONS_DIR / "scan.svg")
 _ICON_SETTINGS = str(_ICONS_DIR / "settings.svg")
 _ICON_STOP = str(_ICONS_DIR / "stop.svg")
+_ICON_SEARCH = str(_ICONS_DIR / "search.svg")
+
 
 # 主题图标渲染分辨率（高分辨率保证 DPI 缩放下清晰）
 _ICON_RENDER_SIZE = 128
@@ -399,6 +401,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._icon_export_csv = _load_themed_icon(_ICON_EXPORT_CSV, theme.COLOR_PRIMARY)
         self._icon_export_json = _load_themed_icon(_ICON_EXPORT_JSON, theme.COLOR_PRIMARY)
         self._icon_settings = _load_themed_icon(_ICON_SETTINGS, theme.COLOR_PRIMARY)
+        self._icon_search = _load_themed_icon(_ICON_SEARCH, theme.COLOR_PRIMARY)
         self._icon_about = _load_themed_icon(_ICON_ABOUT, theme.COLOR_PRIMARY)
         self._icon_stop = _load_themed_icon(_ICON_STOP, theme.COLOR_PRIMARY)
         # 深色背景（头部栏/侧边栏）专用白色变体
@@ -424,7 +427,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.export_json_action.setIcon(self._icon_export_json)
         self.settings_action.setIcon(self._icon_settings)
         self.manual_action.setIcon(self._icon_manual)
-        self.select_path_action.setIcon(self._icon_folder)
+        self.select_path_action.setIcon(self._icon_search)
         self.about_action.setIcon(self._icon_about)
         self.rescan_btn.setIcon(self._icon_rescan)
         self.cancel_btn.setIcon(self._icon_stop)
