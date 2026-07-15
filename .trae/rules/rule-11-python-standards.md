@@ -5,15 +5,17 @@ glob: "*.{py,pyi}"
 
 # Python 开发规范
 
-## 工具链（以 pyproject.toml 为准）
+## 工具链（独立配置文件，pyproject.toml 仅含项目元数据）
 
-| 工具 | 配置要点 |
-|------|---------|
-| ruff | `line-length=120`，`target-version="py38"` |
-| pyrefly | `preset="strict"`，`python-version="3.8"` |
-| pytest | `asyncio_default_fixture_loop_scope="function"`，marker `slow` |
-| coverage | `branch=true`，`fail_under=95`，`concurrency=["thread"]` |
-| pre-commit | ruff `--fix` + trailing-whitespace + end-of-file-fixer |
+| 工具 | 配置文件 | 配置要点 |
+|------|---------|---------|
+| ruff | `ruff.toml` | `line-length=120`，`target-version="py38"` |
+| pyrefly | `pyrefly.toml` | `preset="strict"`，`python-version="3.8"` |
+| pytest | `pytest.ini` | `asyncio_default_fixture_loop_scope="function"`，marker `slow` |
+| coverage | `.coveragerc` | `branch=true`，`fail_under=95`，`concurrency=thread` |
+| bump-my-version | `.bumpversion.toml` | `current_version` 同步 `pyproject.toml` 与 `__init__.py` |
+| uv | `uv.toml` | `required-version`，国内镜像源（可选） |
+| pre-commit | `.pre-commit-config.yaml` | ruff `--fix` + trailing-whitespace + end-of-file-fixer |
 
 验证（每次修改后）：
 

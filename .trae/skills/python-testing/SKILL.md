@@ -40,7 +40,7 @@ tests/
 要点：
 - 按类型分目录：`unit/` 快速隔离、`integration/` 多组件协作、`gui/` Qt 界面测试。
 - 每个目录可放 `conftest.py` 提供该层 fixture；根 `conftest.py` 只放跨目录共享的全局 fixture。
-- `tests/**` 忽略 `ARG001`/`ARG002`（见 pyproject.toml `[tool.ruff.lint.per-file-ignores]`）。
+- `tests/**` 忽略 `ARG001`/`ARG002`（见 `ruff.toml` `[lint.per-file-ignores]`）。
 
 ### 命名规范
 
@@ -59,17 +59,16 @@ def test_validate_non_empty_rejects_blank_string() -> None:
 
 ### 标记注册
 
-pyproject.toml 的 `[tool.pytest.ini_options]` 注册标记，配合 `--strict-markers` 在拼写错误时直接失败。
+`pytest.ini` 注册标记，配合 `--strict-markers` 在拼写错误时直接失败。
 
-```toml
-[tool.pytest.ini_options]
-addopts = ["-ra", "--strict-markers", "--strict-config"]
-asyncio_default_fixture_loop_scope = "function"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "gui: marks tests requiring Qt/GUI (deselect with '-m \"not gui\"')",
-]
-testpaths = ["tests"]
+```ini
+[pytest]
+addopts = -ra --strict-markers --strict-config
+asyncio_default_fixture_loop_scope = function
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    gui: marks tests requiring Qt/GUI (deselect with '-m "not gui"')
+testpaths = tests
 ```
 
 要点：
@@ -78,34 +77,38 @@ testpaths = ["tests"]
 - 新增标记必须在此注册，否则 `--strict-markers` 直接报错。
 - `--strict-config` 让解析阶段的配置错误也视为失败。
 
-## pyproject.toml 配置
+## 测试配置文件
 
-pytest 与 coverage 配置集中在 `pyproject.toml`，禁止散落 `pytest.ini`/`setup.cfg`。
+coopie 模板将 pytest 配置放 `pytest.ini`，coverage 配置放 `.coveragerc`，便于 `copier update` 时独立更新工具链而不影响 `pyproject.toml` 中的项目元数据。
 
-```toml
-[tool.pytest.ini_options]
-addopts = ["-ra", "--strict-markers", "--strict-config"]
-asyncio_default_fixture_loop_scope = "function"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "gui: marks tests requiring Qt/GUI (deselect with '-m \"not gui\"')",
-]
-testpaths = ["tests"]
+`pytest.ini`：
 
-[tool.coverage.run]
-branch      = true
-concurrency = ["thread"]
-omit        = ["tests/*"]
-source      = ["fuscan"]
+```ini
+[pytest]
+addopts = -ra --strict-markers --strict-config
+asyncio_default_fixture_loop_scope = function
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    gui: marks tests requiring Qt/GUI (deselect with '-m "not gui"')
+testpaths = tests
+```
 
-[tool.coverage.report]
+`.coveragerc`：
+
+```ini
+[run]
+branch = true
+concurrency = thread
+omit = tests/*
+source = fuscan
+
+[report]
 fail_under = 95
-exclude_lines = [
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
-    "pragma: no cover",
-    "raise NotImplementedError",
-]
+exclude_lines =
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+    pragma: no cover
+    raise NotImplementedError
 show_missing = true
 ```
 
@@ -515,25 +518,24 @@ def test_load_wraps_keyerror_as_storageerror() -> None:
 
 ## 覆盖率
 
-### 配置（pyproject.toml）
+### 配置（.coveragerc）
 
 branch 覆盖必开，`fail_under` 阈值不得低于上一次值。
 
-```toml
-[tool.coverage.run]
-branch      = true
-concurrency = ["thread"]
-omit        = ["tests/*"]
-source      = ["fuscan"]
+```ini
+[run]
+branch = true
+concurrency = thread
+omit = tests/*
+source = fuscan
 
-[tool.coverage.report]
+[report]
 fail_under = 95
-exclude_lines = [
-    "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
-    "pragma: no cover",
-    "raise NotImplementedError",
-]
+exclude_lines =
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+    pragma: no cover
+    raise NotImplementedError
 show_missing = true
 ```
 

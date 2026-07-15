@@ -5,7 +5,6 @@ author_email: gooker_young@qq.com
 author_name: gooker_young
 coverage_fail_under: 95
 description: 极速通用文件扫描器.
-initial_version: 0.1.0
 license: MIT
 max_python_version: '3.14'
 min_python_version: '3.8'
@@ -13,7 +12,6 @@ package_name: fuscan
 project_name: fuscan
 project_type: gui
 use_cicd: true
-use_cli: true
 use_docker: false
 use_docs: true
 use_domestic_mirrors: true
