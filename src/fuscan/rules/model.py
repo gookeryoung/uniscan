@@ -62,12 +62,17 @@ class Severity(str, Enum):
 
 @dataclass(frozen=True)
 class LeafMatch:
-    """叶子匹配条件：对文件名/内容/路径应用单字段匹配。"""
+    """叶子匹配条件：对文件名/内容/路径应用单字段匹配。
+
+    ``description`` 为该匹配项的可选描述，便于用户理解匹配规则含义，
+    在 GUI 详情表与导出结果中展示。空字符串表示未提供描述。
+    """
 
     target: MatchTarget
     mode: MatchMode
     pattern: str
     case_sensitive: bool = False
+    description: str = ""
 
     def __post_init__(self) -> None:
         if not self.pattern:
@@ -76,23 +81,35 @@ class LeafMatch:
 
 @dataclass(frozen=True)
 class AndMatch:
-    """逻辑与：所有子条件均命中才算命中。"""
+    """逻辑与：所有子条件均命中才算命中。
+
+    ``description`` 为该组合匹配项的可选描述，便于用户理解组合规则含义。
+    """
 
     children: tuple[MatchSpec, ...] = field(default_factory=tuple)
+    description: str = ""
 
 
 @dataclass(frozen=True)
 class OrMatch:
-    """逻辑或：任一子条件命中即算命中。"""
+    """逻辑或：任一子条件命中即算命中。
+
+    ``description`` 为该组合匹配项的可选描述，便于用户理解组合规则含义。
+    """
 
     children: tuple[MatchSpec, ...] = field(default_factory=tuple)
+    description: str = ""
 
 
 @dataclass(frozen=True)
 class NotMatch:
-    """逻辑非：子条件不命中才算命中。"""
+    """逻辑非：子条件不命中才算命中。
+
+    ``description`` 为该组合匹配项的可选描述，便于用户理解组合规则含义。
+    """
 
     child: MatchSpec
+    description: str = ""
 
 
 MatchSpec = Union[LeafMatch, AndMatch, OrMatch, NotMatch]

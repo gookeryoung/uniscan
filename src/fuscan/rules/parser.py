@@ -74,11 +74,19 @@ def _parse_leaf(match_type: str, data: Mapping[str, Any]) -> LeafMatch:
         raise RuleParseError(f"叶子匹配 ({match_type}) 缺少 pattern 字段")
 
     case_sensitive = bool(data.get("case_sensitive", False))
-    return LeafMatch(target=target, mode=mode, pattern=str(pattern), case_sensitive=case_sensitive)
+    description = str(data.get("description", ""))
+    return LeafMatch(
+        target=target,
+        mode=mode,
+        pattern=str(pattern),
+        case_sensitive=case_sensitive,
+        description=description,
+    )
 
 
 def _parse_composite(match_type: str, data: Mapping[str, Any]) -> MatchSpec:
     """解析逻辑组合匹配条件（and/or/not）。"""
+    description = str(data.get("description", ""))
     if match_type in ("and", "or"):
         children_raw = data.get("children")
         if not isinstance(children_raw, Sequence) or isinstance(children_raw, (str, bytes)):
@@ -86,13 +94,15 @@ def _parse_composite(match_type: str, data: Mapping[str, Any]) -> MatchSpec:
         children = tuple(parse_match(child) for child in children_raw)
         if not children:
             raise RuleParseError(f"{match_type} 匹配的 children 不能为空")
-        return AndMatch(children=children) if match_type == "and" else OrMatch(children=children)
+        if match_type == "and":
+            return AndMatch(children=children, description=description)
+        return OrMatch(children=children, description=description)
 
     # not
     child_raw = data.get("child")
     if child_raw is None:
         raise RuleParseError("not 匹配缺少 child 字段")
-    return NotMatch(child=parse_match(child_raw))
+    return NotMatch(child=parse_match(child_raw), description=description)
 
 
 def parse_rule(data: Any) -> Rule:

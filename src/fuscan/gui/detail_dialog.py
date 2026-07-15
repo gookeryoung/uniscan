@@ -131,6 +131,11 @@ class HitDetailDialog(QDialog, Ui_HitDetailDialog):
             if hit.target == "filename":
                 detail_text = f"{detail_text}（仅文件名）"
             self.hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
+            # 描述列：来自 MatchSpec.description，可为空
+            desc_item = QTableWidgetItem(hit.match_description)
+            if hit.match_description:
+                desc_item.setToolTip(hit.match_description)
+            self.hits_table.setItem(row, 5, desc_item)
 
     def _populate_preview(self) -> None:
         """填充内容预览，命中关键词高亮并定位到首个命中。"""

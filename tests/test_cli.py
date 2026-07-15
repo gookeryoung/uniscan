@@ -172,7 +172,7 @@ class TestScanCommand:
         assert rc == 0
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
-        assert lines[0] == "path,size,severity,rule,match_count,detail"
+        assert lines[0] == "path,size,severity,rule,description,match_count,detail"
         assert len(lines) >= 3  # 表头 + 2 条命中
 
     def test_scan_text_output_includes_match_count(

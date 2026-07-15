@@ -74,15 +74,24 @@ class LeafMatcher(Matcher):
     def matches(self, context: MatchContext) -> MatchResult:
         text = self._extract_text(context)
         result = _apply_leaf(text, self.spec, self._compiled, self._compiled_contains_ci)
-        if result.matched and not result.target:
+        if result.matched:
+            # 命中时填充 match_texts（单元素元组）与 match_description（来自 spec）
+            target = result.target or self.spec.target.value
+            match_texts = (result.match_text,) if result.match_text else ()
             return MatchResult(
                 matched=result.matched,
                 detail=result.detail,
                 match_text=result.match_text,
                 match_count=result.match_count,
-                target=self.spec.target.value,
+                target=target,
+                match_texts=match_texts,
+                match_description=self.spec.description,
             )
-        return result
+        # 未命中也填充 match_description，便于调用方区分组合规则的描述
+        return MatchResult(
+            matched=False,
+            match_description=self.spec.description,
+        )
 
     @abstractmethod
     def _extract_text(self, context: MatchContext) -> str:
@@ -117,10 +126,15 @@ class PathMatcher(LeafMatcher):
 
 
 class AndMatcher(Matcher):
-    """逻辑与：所有子匹配器均命中才算命中。"""
+    """逻辑与：所有子匹配器均命中才算命中。
 
-    def __init__(self, children: tuple[Matcher, ...]) -> None:
-        self.children = children
+    持有 :class:`AndMatch` spec 以读取 ``description``，并收集所有子匹配器
+    命中的文本到 ``match_texts``，便于 GUI 标记每个命中的内容（需求3）。
+    """
+
+    def __init__(self, spec: AndMatch) -> None:
+        self.spec = spec
+        self.children: tuple[Matcher, ...] = tuple(build_matcher(c) for c in spec.children)
 
     @override
     def matches(self, context: MatchContext) -> MatchResult:
@@ -130,18 +144,21 @@ class AndMatcher(Matcher):
         for child in self.children:
             result = child.matches(context)
             if not result.matched:
-                return MatchResult(matched=False)
+                return MatchResult(matched=False, match_description=self.spec.description)
             if result.detail:
                 details.append(result.detail)
-            if result.match_text:
-                match_texts.append(result.match_text)
+            match_texts.extend(result.match_texts)
             total_count += result.match_count
-        # 取首个子匹配文本作为高亮关键词，避免组合规则无关键词可高亮
+        # 去重保序，避免相同关键词在多个子匹配器中重复出现
+        unique_texts = _dedup_preserve_order(match_texts)
         return MatchResult(
             matched=True,
             detail=" AND ".join(details) if details else "全部命中",
-            match_text=match_texts[0] if match_texts else "",
+            match_text=unique_texts[0] if unique_texts else "",
             match_count=total_count,
+            target="",
+            match_texts=tuple(unique_texts),
+            match_description=self.spec.description,
         )
 
     @override
@@ -153,24 +170,47 @@ class AndMatcher(Matcher):
 
 
 class OrMatcher(Matcher):
-    """逻辑或：任一子匹配器命中即算命中。"""
+    """逻辑或：任一子匹配器命中即算命中。
 
-    def __init__(self, children: tuple[Matcher, ...]) -> None:
-        self.children = children
+    持有 :class:`OrMatch` spec 以读取 ``description``，并遍历所有子匹配器
+    收集命中的文本到 ``match_texts``（不止首个命中），便于 GUI 标记每个命中
+    的内容（需求3）。``match_count`` 为所有命中子匹配器的匹配条数之和。
+    ``target`` 透传首个命中子匹配器的目标类型，供 GUI 判断是否在内容预览中高亮。
+    """
+
+    def __init__(self, spec: OrMatch) -> None:
+        self.spec = spec
+        self.children: tuple[Matcher, ...] = tuple(build_matcher(c) for c in spec.children)
 
     @override
     def matches(self, context: MatchContext) -> MatchResult:
+        details: list[str] = []
+        match_texts: list[str] = []
+        total_count = 0
+        first_target = ""
+        any_matched = False
         for child in self.children:
             result = child.matches(context)
             if result.matched:
-                return MatchResult(
-                    matched=True,
-                    detail=result.detail or "任一命中",
-                    match_text=result.match_text,
-                    match_count=result.match_count,
-                    target=result.target,
-                )
-        return MatchResult(matched=False)
+                any_matched = True
+                if result.detail:
+                    details.append(result.detail)
+                match_texts.extend(result.match_texts)
+                total_count += result.match_count
+                if not first_target:
+                    first_target = result.target
+        if not any_matched:
+            return MatchResult(matched=False, match_description=self.spec.description)
+        unique_texts = _dedup_preserve_order(match_texts)
+        return MatchResult(
+            matched=True,
+            detail=" OR ".join(details) if details else "任一命中",
+            match_text=unique_texts[0] if unique_texts else "",
+            match_count=total_count,
+            target=first_target,
+            match_texts=tuple(unique_texts),
+            match_description=self.spec.description,
+        )
 
     @override
     def match_all(self, context: MatchContext) -> list[MatchResult]:
@@ -181,17 +221,41 @@ class OrMatcher(Matcher):
 
 
 class NotMatcherImpl(Matcher):
-    """逻辑非：子匹配器不命中才算命中。"""
+    """逻辑非：子匹配器不命中才算命中。
 
-    def __init__(self, child: Matcher) -> None:
-        self.child = child
+    持有 :class:`NotMatch` spec 以读取 ``description``。
+    """
+
+    def __init__(self, spec: NotMatch) -> None:
+        self.spec = spec
+        self.child: Matcher = build_matcher(spec.child)
 
     @override
     def matches(self, context: MatchContext) -> MatchResult:
         result = self.child.matches(context)
         if result.matched:
-            return MatchResult(matched=False, detail=f"NOT 子条件命中: {result.detail}")
-        return MatchResult(matched=True, detail="子条件未命中", match_count=1)
+            return MatchResult(
+                matched=False,
+                detail=f"NOT 子条件命中: {result.detail}",
+                match_description=self.spec.description,
+            )
+        return MatchResult(
+            matched=True,
+            detail="子条件未命中",
+            match_count=1,
+            match_description=self.spec.description,
+        )
+
+
+def _dedup_preserve_order(items: list[str]) -> list[str]:
+    """去重保序：剔除空字符串与重复项，保留首次出现顺序。"""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
 
 
 def _apply_regex(text: str, compiled: Pattern[str] | None) -> MatchResult:
@@ -294,14 +358,12 @@ def build_matcher(spec: MatchSpec) -> Matcher:
         raise TypeError(f"未知匹配目标: {spec.target}")
 
     if isinstance(spec, AndMatch):
-        children = tuple(build_matcher(c) for c in spec.children)
-        return AndMatcher(children)
+        return AndMatcher(spec)
 
     if isinstance(spec, OrMatch):
-        children = tuple(build_matcher(c) for c in spec.children)
-        return OrMatcher(children)
+        return OrMatcher(spec)
 
     if isinstance(spec, NotMatch):
-        return NotMatcherImpl(build_matcher(spec.child))
+        return NotMatcherImpl(spec)
 
     raise TypeError(f"未知匹配规格类型: {type(spec).__name__}")

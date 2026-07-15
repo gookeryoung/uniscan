@@ -114,6 +114,80 @@ class TestParseMatch:
         with pytest.raises(RuleParseError, match="children"):
             parse_match({"type": "and", "children": "not-a-list"})
 
+    def test_parse_leaf_description(self) -> None:
+        """叶子匹配条件应解析 description 字段。"""
+        match = parse_match(
+            {
+                "type": "filename",
+                "mode": "contains",
+                "pattern": "password",
+                "description": "敏感凭证关键词",
+            }
+        )
+        assert isinstance(match, LeafMatch)
+        assert match.description == "敏感凭证关键词"
+
+    def test_parse_leaf_description_default_empty(self) -> None:
+        """叶子匹配条件未指定 description 时应为空字符串。"""
+        match = parse_match({"type": "filename", "mode": "contains", "pattern": "x"})
+        assert isinstance(match, LeafMatch)
+        assert match.description == ""
+
+    def test_parse_and_description(self) -> None:
+        """AndMatch 应解析 description 字段。"""
+        match = parse_match(
+            {
+                "type": "and",
+                "description": "配置文件含密码",
+                "children": [
+                    {"type": "filename", "mode": "equals", "pattern": "a.txt"},
+                    {"type": "content", "mode": "contains", "pattern": "secret"},
+                ],
+            }
+        )
+        assert isinstance(match, AndMatch)
+        assert match.description == "配置文件含密码"
+
+    def test_parse_or_description(self) -> None:
+        """OrMatch 应解析 description 字段。"""
+        match = parse_match(
+            {
+                "type": "or",
+                "description": "凭证关键词命中",
+                "children": [
+                    {"type": "content", "mode": "contains", "pattern": "a"},
+                    {"type": "content", "mode": "contains", "pattern": "b"},
+                ],
+            }
+        )
+        assert isinstance(match, OrMatch)
+        assert match.description == "凭证关键词命中"
+
+    def test_parse_not_description(self) -> None:
+        """NotMatch 应解析 description 字段。"""
+        match = parse_match(
+            {
+                "type": "not",
+                "description": "非备份目录文件",
+                "child": {"type": "path", "mode": "contains", "pattern": "backup"},
+            }
+        )
+        assert isinstance(match, NotMatch)
+        assert match.description == "非备份目录文件"
+
+    def test_parse_composite_description_default_empty(self) -> None:
+        """组合匹配条件未指定 description 时应为空字符串。"""
+        match = parse_match(
+            {
+                "type": "and",
+                "children": [
+                    {"type": "filename", "mode": "equals", "pattern": "a.txt"},
+                ],
+            }
+        )
+        assert isinstance(match, AndMatch)
+        assert match.description == ""
+
 
 class TestParseRule:
     def test_parse_rule_minimal(self) -> None:

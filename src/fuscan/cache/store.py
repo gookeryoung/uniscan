@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
@@ -311,8 +312,8 @@ class CacheStore:
             params: tuple[Any, ...] = (file_hash, *rule_hashes)
             rows = self._conn.execute(
                 f"SELECT rule_hash, matched, severity, detail, match_text, "
-                f"       match_count, target FROM scan_results "
-                f"WHERE file_hash = ? AND rule_hash IN ({placeholders})",
+                f"       match_texts, match_description, match_count, target "
+                f"FROM scan_results WHERE file_hash = ? AND rule_hash IN ({placeholders})",
                 params,
             ).fetchall()
             # 延迟导入打破循环：cache.store → scanner.result → scanner.__init__ → scanner.scanner → cache.store
@@ -322,6 +323,17 @@ class CacheStore:
             for row in rows:
                 if row["matched"]:
                     severity = Severity(row["severity"]) if row["severity"] else Severity.INFO
+                    # match_texts 以 JSON 数组形式存储；NULL 或空数组视为空元组
+                    raw_texts = row["match_texts"]
+                    if raw_texts:
+                        try:
+                            texts_list = json.loads(raw_texts)
+                            match_texts = tuple(str(t) for t in texts_list) if isinstance(texts_list, list) else ()
+                        except (TypeError, ValueError):
+                            logger.warning("match_texts 反序列化失败，回退到空元组: %r", raw_texts)
+                            match_texts = ()
+                    else:
+                        match_texts = ()
                     result[row["rule_hash"]] = RuleHit(
                         rule_name="",  # 调用方按 rule_hash 反查 name，避免冗余存储
                         severity=severity,
@@ -329,6 +341,8 @@ class CacheStore:
                         match_text=row["match_text"] or "",
                         match_count=row["match_count"],
                         target=row["target"] or "",
+                        match_texts=match_texts,
+                        match_description=row["match_description"] or "",
                     )
                 else:
                     result[row["rule_hash"]] = None
@@ -366,29 +380,36 @@ class CacheStore:
                 self._conn.execute(
                     "INSERT INTO scan_results "
                     "(file_hash, rule_hash, matched, severity, detail, match_text, "
-                    " match_count, target, cached_at) "
-                    "VALUES (?, ?, 0, NULL, NULL, NULL, 0, '', ?) "
+                    " match_texts, match_description, match_count, target, cached_at) "
+                    "VALUES (?, ?, 0, NULL, NULL, NULL, NULL, '', 0, '', ?) "
                     "ON CONFLICT(file_hash, rule_hash) DO UPDATE SET "
                     "  matched = 0, severity = NULL, detail = NULL, match_text = NULL, "
+                    "  match_texts = NULL, match_description = '', "
                     "  match_count = 0, target = '', cached_at = excluded.cached_at",
                     (file_hash, rule_hash, now),
                 )
             else:
+                # match_texts 以 JSON 数组形式序列化，便于跨行解析且保持顺序
+                texts_json = json.dumps(list(hit.match_texts), ensure_ascii=False) if hit.match_texts else None
                 self._conn.execute(
                     "INSERT INTO scan_results "
                     "(file_hash, rule_hash, matched, severity, detail, match_text, "
-                    " match_count, target, cached_at) "
-                    "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?) "
+                    " match_texts, match_description, match_count, target, cached_at) "
+                    "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(file_hash, rule_hash) DO UPDATE SET "
                     "  matched = 1, severity = excluded.severity, detail = excluded.detail, "
-                    "  match_text = excluded.match_text, match_count = excluded.match_count, "
-                    "  target = excluded.target, cached_at = excluded.cached_at",
+                    "  match_text = excluded.match_text, match_texts = excluded.match_texts, "
+                    "  match_description = excluded.match_description, "
+                    "  match_count = excluded.match_count, target = excluded.target, "
+                    "  cached_at = excluded.cached_at",
                     (
                         file_hash,
                         rule_hash,
                         hit.severity.value,
                         hit.detail,
                         hit.match_text,
+                        texts_json,
+                        hit.match_description,
                         hit.match_count,
                         hit.target,
                         now,
@@ -489,8 +510,11 @@ class CacheStore:
                 for item in items:
                     for rule_hash, hit in item.hits:
                         if hit is None:
-                            result_rows.append((item.file_hash, rule_hash, 0, None, None, None, 0, "", now))
+                            result_rows.append((item.file_hash, rule_hash, 0, None, None, None, None, "", 0, "", now))
                         else:
+                            texts_json = (
+                                json.dumps(list(hit.match_texts), ensure_ascii=False) if hit.match_texts else None
+                            )
                             result_rows.append(
                                 (
                                     item.file_hash,
@@ -499,6 +523,8 @@ class CacheStore:
                                     hit.severity.value,
                                     hit.detail,
                                     hit.match_text,
+                                    texts_json,
+                                    hit.match_description,
                                     hit.match_count,
                                     hit.target,
                                     now,
@@ -508,11 +534,13 @@ class CacheStore:
                     self._conn.executemany(
                         "INSERT INTO scan_results "
                         "(file_hash, rule_hash, matched, severity, detail, match_text, "
-                        " match_count, target, cached_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        " match_texts, match_description, match_count, target, cached_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                         "ON CONFLICT(file_hash, rule_hash) DO UPDATE SET "
                         "  matched = excluded.matched, severity = excluded.severity, "
                         "  detail = excluded.detail, match_text = excluded.match_text, "
+                        "  match_texts = excluded.match_texts, "
+                        "  match_description = excluded.match_description, "
                         "  match_count = excluded.match_count, target = excluded.target, "
                         "  cached_at = excluded.cached_at",
                         result_rows,

@@ -54,6 +54,10 @@ class MatchResult:
     可能匹配多处，如多处密码、多处密钥），用于区分"命中规则数"与"匹配条数"。
     ``target`` 为匹配目标类型（"filename"/"content"/"path"），叶子匹配器设置，
     组合规则为空字符串。GUI 根据 ``target`` 判断是否在内容预览中搜索高亮位置。
+    ``match_texts`` 为该次求值命中的所有文本（去重保序，含组合规则子匹配文本），
+    用于 AND/OR 等组合规则标记每个命中的内容，避免仅标记单一匹配规则的内容。
+    ``match_description`` 为该匹配项的可选描述（来自 MatchSpec.description），
+    便于用户理解匹配规则含义，在 GUI 详情表与导出结果中展示。
     """
 
     matched: bool
@@ -61,6 +65,8 @@ class MatchResult:
     match_text: str = ""
     match_count: int = 1
     target: str = ""
+    match_texts: tuple[str, ...] = ()
+    match_description: str = ""
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,10 @@ class RuleHit:
     ``target`` 为匹配目标类型（"filename"/"content"/"path"），叶子匹配器设置，
     组合规则为空字符串。GUI 据 ``target=="filename"`` 判断是否在内容预览中
     搜索高亮位置——文件名匹配不应在内容中搜索高亮，否则可能产生误导。
+    ``match_texts`` 为该规则命中的所有文本（去重保序，含组合规则子匹配文本），
+    用于 AND/OR 等组合规则标记每个命中的内容。
+    ``match_description`` 为该匹配项的可选描述（来自 MatchSpec.description），
+    便于用户理解匹配规则含义，在 GUI 详情表与导出结果中展示。
     """
 
     rule_name: str
@@ -114,6 +124,8 @@ class RuleHit:
     match_text: str = ""
     match_count: int = 1
     target: str = ""
+    match_texts: tuple[str, ...] = ()
+    match_description: str = ""
 
 
 @dataclass(frozen=True)
@@ -341,7 +353,7 @@ class ScanReport:
         """将扫描报告转换为 CSV 字符串（每行一条规则命中）。"""
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(["path", "size", "severity", "rule", "match_count", "detail"])
+        writer.writerow(["path", "size", "severity", "rule", "description", "match_count", "detail"])
         for r in self.hits:
             for hit in r.hits:
                 writer.writerow(
@@ -350,6 +362,7 @@ class ScanReport:
                         r.size,
                         hit.severity.value,
                         hit.rule_name,
+                        hit.match_description,
                         hit.match_count,
                         hit.detail,
                     ]
@@ -373,5 +386,7 @@ class ScanReport:
                 rel = result.path
             lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
             for hit in result.hits:
-                lines.append(f"    [{hit.severity.value}] {hit.rule_name} (条数 {hit.match_count}): {hit.detail}")
+                # 描述非空时附加在规则名后，便于用户理解匹配规则含义
+                rule_label = f"{hit.rule_name} - {hit.match_description}" if hit.match_description else hit.rule_name
+                lines.append(f"    [{hit.severity.value}] {rule_label} (条数 {hit.match_count}): {hit.detail}")
         return "\n".join(lines)

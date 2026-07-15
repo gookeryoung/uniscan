@@ -642,6 +642,8 @@ class Scanner:
                         match_text=result.match_text,
                         match_count=result.match_count,
                         target=result.target,
+                        match_texts=result.match_texts,
+                        match_description=result.match_description,
                     )
                 )
 
@@ -764,6 +766,8 @@ class Scanner:
                             match_text=result.match_text,
                             match_count=result.match_count,
                             target=result.target,
+                            match_texts=result.match_texts,
+                            match_description=result.match_description,
                         )
                     )
                 # else: 缓存记录为未命中，跳过
@@ -783,6 +787,8 @@ class Scanner:
                     match_text=match_result.match_text,
                     match_count=match_result.match_count,
                     target=match_result.target,
+                    match_texts=match_result.match_texts,
+                    match_description=match_result.match_description,
                 )
                 hits.append(hit)
                 batch_hits.append((rule_hash, hit))
@@ -860,6 +866,8 @@ class Scanner:
                         match_text=result.match_text,
                         match_count=result.match_count,
                         target=result.target,
+                        match_texts=result.match_texts,
+                        match_description=result.match_description,
                     )
                 )
         return hits, 0

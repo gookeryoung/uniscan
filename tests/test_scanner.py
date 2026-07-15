@@ -536,7 +536,7 @@ class TestScanReport:
         report = self._build_report(tmp_path)
         csv_text = report.to_csv()
         lines = csv_text.strip().splitlines()
-        assert lines[0] == "path,size,severity,rule,match_count,detail"
+        assert lines[0] == "path,size,severity,rule,description,match_count,detail"
         # 3 条命中：a.txt 2 条 + b.txt 1 条
         assert len(lines) - 1 == 3
         # 第一条数据应包含 a.txt 路径
@@ -546,7 +546,98 @@ class TestScanReport:
 
         report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
         csv_text = report.to_csv()
-        assert csv_text.strip() == "path,size,severity,rule,match_count,detail"
+        assert csv_text.strip() == "path,size,severity,rule,description,match_count,detail"
+
+    def test_to_csv_includes_description(self, tmp_path: Path) -> None:
+        """to_csv 应在 description 列填入 match_description（需求4）。"""
+        from fuscan.scanner.result import RuleHit
+
+        results = (
+            ScanResult(
+                path=tmp_path / "a.txt",
+                size=10,
+                hits=(
+                    RuleHit(
+                        "敏感凭证",
+                        Severity.WARNING,
+                        "d1",
+                        match_count=1,
+                        match_description="敏感凭证关键词",
+                    ),
+                ),
+            ),
+        )
+        report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
+        csv_text = report.to_csv()
+        lines = csv_text.strip().splitlines()
+        assert lines[0] == "path,size,severity,rule,description,match_count,detail"
+        # 第二行（数据行）的 description 列应包含描述文本
+        # CSV 列顺序：path,size,severity,rule,description,match_count,detail
+        # 由于 detail 可能含逗号被引号包裹，用简单的 in 判断
+        assert "敏感凭证关键词" in lines[1]
+
+    def test_to_csv_description_empty_when_not_set(self, tmp_path: Path) -> None:
+        """match_description 未设置时 description 列应为空。"""
+        from fuscan.scanner.result import RuleHit
+
+        results = (
+            ScanResult(
+                path=tmp_path / "a.txt",
+                size=10,
+                hits=(RuleHit("r", Severity.WARNING, "d1", match_count=1),),
+            ),
+        )
+        report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
+        csv_text = report.to_csv()
+        # 解析 CSV：用 csv 模块正确处理引号
+        import csv as _csv
+        import io as _io
+
+        reader = _csv.reader(_io.StringIO(csv_text))
+        rows = list(reader)
+        # 列顺序：path,size,severity,rule,description,match_count,detail
+        assert rows[0][4] == "description"
+        assert rows[1][4] == ""  # description 列为空
+
+    def test_to_text_includes_description(self, tmp_path: Path) -> None:
+        """to_text 应在规则名后附加 match_description（需求4）。"""
+        from fuscan.scanner.result import RuleHit
+
+        results = (
+            ScanResult(
+                path=tmp_path / "a.txt",
+                size=10,
+                hits=(
+                    RuleHit(
+                        "敏感凭证",
+                        Severity.WARNING,
+                        "d1",
+                        match_count=1,
+                        match_description="敏感凭证关键词",
+                    ),
+                ),
+            ),
+        )
+        report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
+        text = report.to_text()
+        # 描述非空时应在规则名后附加 " - 描述"
+        assert "敏感凭证 - 敏感凭证关键词" in text
+
+    def test_to_text_description_empty_omits_suffix(self, tmp_path: Path) -> None:
+        """match_description 为空时 to_text 不应附加 " - " 后缀。"""
+        from fuscan.scanner.result import RuleHit
+
+        results = (
+            ScanResult(
+                path=tmp_path / "a.txt",
+                size=10,
+                hits=(RuleHit("敏感凭证", Severity.WARNING, "d1", match_count=1),),
+            ),
+        )
+        report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
+        text = report.to_text()
+        assert "敏感凭证" in text
+        assert "敏感凭证 - " not in text
 
     def test_to_text_contains_root_and_hits(self, tmp_path: Path) -> None:
         report = self._build_report(tmp_path)

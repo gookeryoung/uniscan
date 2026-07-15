@@ -70,22 +70,26 @@ SEVERITY_COLORS: dict[Severity, QColor] = {
 def extract_keywords(hits: Sequence[RuleHit]) -> list[str]:
     """从命中规则中提取高亮关键词。
 
-    优先使用 ``RuleHit.match_text``（原始匹配文本，无 repr 转义）；
-    对于组合规则 ``match_text`` 为空时，回退到从 ``detail`` 中提取单引号包裹的内容。
+    优先遍历 ``RuleHit.match_texts``（含组合规则全部命中文本，去重保序）；
+    ``match_texts`` 为空时回退到 ``match_text``（兼容旧缓存）；
+    两者均空时回退到从 ``detail`` 中提取单引号包裹的内容。
     """
     keywords: list[str] = []
     seen: set[str] = set()
     for hit in hits:
-        kw = hit.match_text
-        if not kw:
+        # 优先 match_texts（AND/OR 等组合规则记录的全部命中文本）
+        texts = hit.match_texts if hit.match_texts else ((hit.match_text,) if hit.match_text else ())
+        if not texts:
             # 组合规则无单一匹配文本，回退到 detail 解析
             for match in KEYWORD_RE.finditer(hit.detail):
                 kw = match.group(1)
                 if kw:
+                    texts = (kw,)
                     break
-        if kw and kw not in seen:
-            seen.add(kw)
-            keywords.append(kw)
+        for kw in texts:
+            if kw and kw not in seen:
+                seen.add(kw)
+                keywords.append(kw)
     return keywords
 
 
@@ -122,7 +126,8 @@ def build_preview_html(content: str, keywords: Sequence[str]) -> str:
 def build_keyword_to_rule_map(hits: Sequence[RuleHit]) -> dict[str, int]:
     """构建关键词到规则索引的映射，同一关键词仅归属首条规则。
 
-    优先使用 ``RuleHit.match_text`` 作为关键词；为空时回退到从 ``detail``
+    优先遍历 ``RuleHit.match_texts``（含组合规则全部命中文本）；
+    ``match_texts`` 为空时回退到 ``match_text``；两者均空时回退到从 ``detail``
     中提取单引号包裹的内容。同一关键词被多条规则命中时，仅归属到首条规则，
     避免同一位置被重复计数。
     ``target=="filename"`` 的规则跳过（文件名匹配不应在内容预览中搜索高亮，
@@ -132,14 +137,16 @@ def build_keyword_to_rule_map(hits: Sequence[RuleHit]) -> dict[str, int]:
     for rule_idx, hit in enumerate(hits):
         if hit.target == "filename":
             continue
-        kw = hit.match_text
-        if not kw:
+        texts = hit.match_texts if hit.match_texts else ((hit.match_text,) if hit.match_text else ())
+        if not texts:
             for match in KEYWORD_RE.finditer(hit.detail):
                 kw = match.group(1)
                 if kw:
+                    texts = (kw,)
                     break
-        if kw and kw not in keyword_to_rule:
-            keyword_to_rule[kw] = rule_idx
+        for kw in texts:
+            if kw and kw not in keyword_to_rule:
+                keyword_to_rule[kw] = rule_idx
     return keyword_to_rule
 
 

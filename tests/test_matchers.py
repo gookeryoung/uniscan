@@ -129,57 +129,53 @@ class TestCompositeMatchers:
     def test_and_all_match(self, tmp_path: Path) -> None:
         path = tmp_path / "doc.conf"
         path.write_text("", encoding="utf-8")
-        children = (
-            FileNameMatcher(
-                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$", case_sensitive=False)
-            ),
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password", case_sensitive=False)
-            ),
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$", case_sensitive=False),
+                LeafMatch(
+                    target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password", case_sensitive=False
+                ),
+            )
         )
-        matcher = AndMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="db_password=x")
         assert matcher.matches(ctx).matched is True
 
     def test_and_partial_fail(self, tmp_path: Path) -> None:
         path = tmp_path / "doc.txt"
-        children = (
-            FileNameMatcher(
-                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="doc.conf", case_sensitive=False)
-            ),
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password", case_sensitive=False)
-            ),
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="doc.conf", case_sensitive=False),
+                LeafMatch(
+                    target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password", case_sensitive=False
+                ),
+            )
         )
-        matcher = AndMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="db_password=x")
         assert matcher.matches(ctx).matched is False
 
     def test_or_any_match(self, tmp_path: Path) -> None:
         path = tmp_path / "x.txt"
-        children = (
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token", case_sensitive=False)
-            ),
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="api_key", case_sensitive=False)
-            ),
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token", case_sensitive=False),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="api_key", case_sensitive=False),
+            )
         )
-        matcher = OrMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="has api_key here")
         assert matcher.matches(ctx).matched is True
 
     def test_or_none_match(self, tmp_path: Path) -> None:
         path = tmp_path / "x.txt"
-        children = (
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token", case_sensitive=False)
-            ),
-            ContentMatcher(
-                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="api_key", case_sensitive=False)
-            ),
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token", case_sensitive=False),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="api_key", case_sensitive=False),
+            )
         )
-        matcher = OrMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="nothing relevant")
         assert matcher.matches(ctx).matched is False
 
@@ -187,10 +183,10 @@ class TestCompositeMatchers:
         path = tmp_path / "data" / "file.txt"
         path.parent.mkdir()
         path.write_text("", encoding="utf-8")
-        child = PathMatcher(
-            LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup", case_sensitive=False)
+        spec = NotMatch(
+            child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup", case_sensitive=False)
         )
-        matcher = NotMatcherImpl(child)
+        matcher = build_matcher(spec)
         ctx = _make_context(path)
         assert matcher.matches(ctx).matched is True  # path 不含 backup → not 命中
 
@@ -198,10 +194,10 @@ class TestCompositeMatchers:
         path = tmp_path / "backup" / "file.txt"
         path.parent.mkdir()
         path.write_text("", encoding="utf-8")
-        child = PathMatcher(
-            LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup", case_sensitive=False)
+        spec = NotMatch(
+            child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup", case_sensitive=False)
         )
-        matcher = NotMatcherImpl(child)
+        matcher = build_matcher(spec)
         ctx = _make_context(path)
         assert matcher.matches(ctx).matched is False
 
@@ -271,11 +267,13 @@ class TestMatcherEdgeCases:
         """AndMatcher.match_all 应收集所有子匹配器的结果。"""
         path = tmp_path / "doc.conf"
         path.write_text("", encoding="utf-8")
-        children = (
-            FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="doc")),
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="pwd")),
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="doc"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="pwd"),
+            )
         )
-        matcher = AndMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="db_pwd=x")
         results = matcher.match_all(ctx)
         assert len(results) == 2
@@ -283,11 +281,13 @@ class TestMatcherEdgeCases:
     def test_or_match_all_collects_children(self, tmp_path: Path) -> None:
         """OrMatcher.match_all 应收集所有子匹配器的结果。"""
         path = tmp_path / "x.txt"
-        children = (
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token")),
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="key")),
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="key"),
+            )
         )
-        matcher = OrMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="has token here")
         results = matcher.match_all(ctx)
         assert len(results) == 2
@@ -296,8 +296,8 @@ class TestMatcherEdgeCases:
         """AndMatcher 全部命中但无 detail 时返回默认"全部命中"。"""
         path = tmp_path / "x.txt"
         # EQUALS 模式命中时 detail 为"完全相等"，但如果都命中应合并 detail
-        children = (FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="x.txt")),)
-        matcher = AndMatcher(children)
+        spec = AndMatch(children=(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="x.txt"),))
+        matcher = build_matcher(spec)
         ctx = _make_context(path)
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -325,7 +325,7 @@ class TestMatcherEdgeCases:
 
     def test_or_matcher_match_all_empty(self, tmp_path: Path) -> None:
         """OrMatcher.match_all 无子匹配器时返回空列表。"""
-        matcher = OrMatcher(())
+        matcher = OrMatcher(OrMatch(children=()))
         path = tmp_path / "x.txt"
         ctx = _make_context(path)
         results = matcher.match_all(ctx)
@@ -333,7 +333,7 @@ class TestMatcherEdgeCases:
 
     def test_and_matcher_match_all_empty(self, tmp_path: Path) -> None:
         """AndMatcher.match_all 无子匹配器时返回空列表。"""
-        matcher = AndMatcher(())
+        matcher = AndMatcher(AndMatch(children=()))
         path = tmp_path / "x.txt"
         ctx = _make_context(path)
         results = matcher.match_all(ctx)
@@ -462,11 +462,13 @@ class TestMatchText:
         """AndMatcher 应取首个子匹配器的 ``match_text`` 作为高亮关键词。"""
         path = tmp_path / "doc.conf"
         path.write_text("", encoding="utf-8")
-        children = (
-            FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$")),
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            )
         )
-        matcher = AndMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="db_password=x")
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -476,11 +478,13 @@ class TestMatchText:
     def test_or_matcher_passes_through_match_text(self, tmp_path: Path) -> None:
         """OrMatcher 应透传命中分支的 ``match_text``。"""
         path = tmp_path / "x.txt"
-        children = (
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"AKIA\d+")),
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing")),
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"AKIA\d+"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing"),
+            )
         )
-        matcher = OrMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content="key=AKIA12345")
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -491,8 +495,8 @@ class TestMatchText:
         path = tmp_path / "data" / "file.txt"
         path.parent.mkdir()
         path.write_text("", encoding="utf-8")
-        child = PathMatcher(LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
-        matcher = NotMatcherImpl(child)
+        spec = NotMatch(child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        matcher = build_matcher(spec)
         ctx = _make_context(path)
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -604,26 +608,30 @@ class TestMatchCount:
         path = tmp_path / "test_file.conf"
         content = "password=abc\npassword=def"
         # 子1：内容包含 password（2 次），子2：文件名以 test_ 开头（1 次）
-        children = (
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
-            FileNameMatcher(LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.STARTSWITH, pattern="test_")),
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.STARTSWITH, pattern="test_"),
+            )
         )
-        matcher = AndMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content=content)
         result = matcher.matches(ctx)
         assert result.matched is True
         assert result.match_count == 3  # 2 + 1
 
-    def test_or_matcher_uses_first_matched_count(self, tmp_path: Path) -> None:
-        """OrMatcher 的 match_count 应为首个命中分支的 match_count。"""
+    def test_or_matcher_sums_matched_child_counts(self, tmp_path: Path) -> None:
+        """OrMatcher 的 match_count 应为所有命中子匹配器 match_count 之和。"""
         path = tmp_path / "file.txt"
         content = "password=abc\npassword=def\npassword=ghi"
         # 子1：内容包含 password（3 次），子2：内容包含 secret（0 次）
-        children = (
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")),
-            ContentMatcher(LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="secret")),
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="secret"),
+            )
         )
-        matcher = OrMatcher(children)
+        matcher = build_matcher(spec)
         ctx = _make_context(path, content=content)
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -634,8 +642,8 @@ class TestMatchCount:
         path = tmp_path / "data" / "file.txt"
         path.parent.mkdir()
         path.write_text("", encoding="utf-8")
-        child = PathMatcher(LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
-        matcher = NotMatcherImpl(child)
+        spec = NotMatch(child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        matcher = build_matcher(spec)
         ctx = _make_context(path)
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -696,13 +704,13 @@ class TestMatchTarget:
         """OrMatcher 应透传命中分支的 target。"""
         path = tmp_path / "password.txt"
         path.write_text("nothing here", encoding="utf-8")
-        filename_child = FileNameMatcher(
-            LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password")
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing"),
+            )
         )
-        content_child = ContentMatcher(
-            LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing")
-        )
-        matcher = OrMatcher((filename_child, content_child))
+        matcher = build_matcher(spec)
         ctx = _make_context(path, "nothing here")
         result = matcher.matches(ctx)
         assert result.matched is True
@@ -712,17 +720,314 @@ class TestMatchTarget:
         """AndMatcher 为组合规则，target 应为空字符串。"""
         path = tmp_path / "password.txt"
         path.write_text("password=123", encoding="utf-8")
-        filename_child = FileNameMatcher(
-            LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password")
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            )
         )
-        content_child = ContentMatcher(
-            LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")
-        )
-        matcher = AndMatcher((filename_child, content_child))
+        matcher = build_matcher(spec)
         ctx = _make_context(path, "password=123")
         result = matcher.matches(ctx)
         assert result.matched is True
         assert result.target == ""
+
+
+class TestMatchTexts:
+    """``match_texts`` 字段测试：覆盖需求3（AND/OR 标记所有命中内容）。
+
+    AND/OR 组合规则应收集所有子匹配器命中的文本到 ``match_texts`` 元组，
+    去重保序后供 GUI 高亮所有命中关键词。叶子匹配器命中时填入单元素元组，
+    未命中时为空元组。
+    """
+
+    def test_leaf_matcher_fills_match_texts_on_hit(self, tmp_path: Path) -> None:
+        """叶子匹配器命中时 match_texts 应为单元素元组。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="the password here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_texts == ("password",)
+
+    def test_leaf_matcher_match_texts_empty_on_miss(self, tmp_path: Path) -> None:
+        """叶子匹配器未命中时 match_texts 应为空元组。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_texts == ()
+
+    def test_and_matcher_collects_all_child_match_texts(self, tmp_path: Path) -> None:
+        """AndMatcher 应收集所有子匹配器命中的文本。"""
+        path = tmp_path / "doc.conf"
+        path.write_text("", encoding="utf-8")
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="db_password=x")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        # 第一个子匹配器 match_text=".conf"，第二个 match_text="password"
+        assert result.match_texts == (".conf", "password")
+
+    def test_and_matcher_dedup_preserve_order(self, tmp_path: Path) -> None:
+        """AndMatcher 收集的 match_texts 应去重保序。"""
+        path = tmp_path / "password.conf"
+        path.write_text("", encoding="utf-8")
+        # 两个子匹配器都匹配 "password" 文本（一个文件名，一个内容）
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="password=123")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        # 去重后只剩一个 "password"
+        assert result.match_texts == ("password",)
+
+    def test_and_matcher_partial_fail_returns_empty_match_texts(self, tmp_path: Path) -> None:
+        """AndMatcher 任一子匹配器未命中时 match_texts 应为空元组。"""
+        path = tmp_path / "doc.txt"
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="doc.conf"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="db_password=x")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_texts == ()
+
+    def test_or_matcher_collects_all_matched_children_match_texts(self, tmp_path: Path) -> None:
+        """OrMatcher 应收集所有命中子匹配器的 match_texts（不止首个）。"""
+        path = tmp_path / "x.txt"
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="key"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="has token and key here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_texts == ("token", "key")
+
+    def test_or_matcher_collects_only_matched_children(self, tmp_path: Path) -> None:
+        """OrMatcher 仅收集命中子匹配器的文本，未命中的不进入 match_texts。"""
+        path = tmp_path / "x.txt"
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="has token here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_texts == ("token",)
+
+    def test_or_matcher_none_match_returns_empty_match_texts(self, tmp_path: Path) -> None:
+        """OrMatcher 所有子匹配器均未命中时 match_texts 应为空元组。"""
+        path = tmp_path / "x.txt"
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="nothing relevant")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_texts == ()
+
+    def test_or_matcher_dedup_preserve_order(self, tmp_path: Path) -> None:
+        """OrMatcher 收集的 match_texts 应去重保序。"""
+        path = tmp_path / "x.txt"
+        # 两个子匹配器都匹配 "password"（一个内容 contains，一个内容 regex）
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.REGEX, pattern=r"password=\w+"),
+            )
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="password=secret")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        # 第一个 match_text="password"，第二个 match_text="password=secret"
+        # 均不同，去重后按出现顺序保留
+        assert result.match_texts == ("password", "password=secret")
+
+    def test_not_matcher_match_texts_empty_on_hit(self, tmp_path: Path) -> None:
+        """NotMatcher 命中时 match_texts 应为空元组（无原始匹配文本）。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        spec = NotMatch(child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"))
+        matcher = build_matcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_texts == ()
+
+
+class TestMatchDescription:
+    """``match_description`` 字段测试：覆盖需求4（match 项描述字段）。
+
+    所有匹配器均应将 spec.description 透传到 MatchResult，未设置时为空字符串。
+    GUI 与导出层据此展示描述列。
+    """
+
+    def test_leaf_matcher_fills_description_from_spec(self, tmp_path: Path) -> None:
+        """叶子匹配器命中时应填充 match_description 来自 spec.description。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="password",
+            description="敏感凭证关键词",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="the password here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_description == "敏感凭证关键词"
+
+    def test_leaf_matcher_description_empty_by_default(self, tmp_path: Path) -> None:
+        """叶子匹配器未设置 description 时 match_description 应为空字符串。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password")
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="the password here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_description == ""
+
+    def test_leaf_matcher_description_preserved_on_miss(self, tmp_path: Path) -> None:
+        """叶子匹配器未命中时也填充 description，便于调用方区分组合规则的描述。"""
+        path = tmp_path / "f.txt"
+        spec = LeafMatch(
+            target=MatchTarget.CONTENT,
+            mode=MatchMode.CONTAINS,
+            pattern="missing",
+            description="未命中描述",
+        )
+        matcher = ContentMatcher(spec)
+        ctx = _make_context(path, content="nothing here")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_description == "未命中描述"
+
+    def test_and_matcher_fills_description_from_spec(self, tmp_path: Path) -> None:
+        """AndMatcher 命中时应填充 match_description 来自 spec.description。"""
+        path = tmp_path / "doc.conf"
+        path.write_text("", encoding="utf-8")
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.REGEX, pattern=r"\.conf$"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            ),
+            description="配置文件含密码",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="db_password=x")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_description == "配置文件含密码"
+
+    def test_and_matcher_description_preserved_on_partial_fail(self, tmp_path: Path) -> None:
+        """AndMatcher 部分未命中时也填充 description。"""
+        path = tmp_path / "doc.txt"
+        spec = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.EQUALS, pattern="doc.conf"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="password"),
+            ),
+            description="配置文件含密码",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="db_password=x")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_description == "配置文件含密码"
+
+    def test_or_matcher_fills_description_from_spec(self, tmp_path: Path) -> None:
+        """OrMatcher 命中时应填充 match_description 来自 spec.description。"""
+        path = tmp_path / "x.txt"
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="key"),
+            ),
+            description="凭证关键词命中",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="has token here")
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_description == "凭证关键词命中"
+
+    def test_or_matcher_description_preserved_on_no_match(self, tmp_path: Path) -> None:
+        """OrMatcher 全部未命中时也填充 description。"""
+        path = tmp_path / "x.txt"
+        spec = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing1"),
+                LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="missing2"),
+            ),
+            description="凭证关键词命中",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path, content="nothing relevant")
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_description == "凭证关键词命中"
+
+    def test_not_matcher_fills_description_from_spec(self, tmp_path: Path) -> None:
+        """NotMatcher 命中时应填充 match_description 来自 spec.description。"""
+        path = tmp_path / "data" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        spec = NotMatch(
+            child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"),
+            description="非备份目录文件",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is True
+        assert result.match_description == "非备份目录文件"
+
+    def test_not_matcher_description_preserved_on_invert_false(self, tmp_path: Path) -> None:
+        """NotMatcher 子条件命中（NotMatcher 自身未命中）时也填充 description。"""
+        path = tmp_path / "backup" / "file.txt"
+        path.parent.mkdir()
+        path.write_text("", encoding="utf-8")
+        spec = NotMatch(
+            child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"),
+            description="非备份目录文件",
+        )
+        matcher = build_matcher(spec)
+        ctx = _make_context(path)
+        result = matcher.matches(ctx)
+        assert result.matched is False
+        assert result.match_description == "非备份目录文件"
 
 
 class TestContainsOptimization:

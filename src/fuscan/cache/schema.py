@@ -40,15 +40,18 @@ __all__ = ["CACHE_COMPAT_VERSION", "CURRENT_VERSION", "SCHEMA_SQL", "migrate"]
 logger = logging.getLogger(__name__)
 
 # schema DDL 版本号：每次 DDL 变更递增，对应一次 migrate 步骤
-CURRENT_VERSION: int = 3
+CURRENT_VERSION: int = 4
 
 # 缓存数据兼容版本号：仅在哈希算法/序列化格式等数据语义变更时递增。
 # v1：SHA-256 哈希
 # v2：BLAKE2b digest_size=32 哈希（iter-38）
 # v3：按数据大小分流算法（iter-39）——小文件 SHA-256、大文件 BLAKE2b，
 #     修复 iter-38 在小文件场景的性能回退
+# v4：scan_results 新增 match_texts/match_description 字段（iter-41）——
+#     AND/OR 组合规则需记录全部命中文本，原 match_text 仅含首条命中，
+#     语义不兼容，需清空旧缓存重新扫描以获取准确的多匹配文本
 # 后续重大变更（如换 BLAKE3、修改 RuleHit 字段语义）才递增此值。
-CACHE_COMPAT_VERSION: int = 3
+CACHE_COMPAT_VERSION: int = 4
 
 
 SCHEMA_SQL: str = """
@@ -101,15 +104,17 @@ CREATE TABLE IF NOT EXISTS file_paths (
 CREATE INDEX IF NOT EXISTS idx_paths_path ON file_paths(path);
 
 CREATE TABLE IF NOT EXISTS scan_results (
-    file_hash   TEXT NOT NULL,
-    rule_hash   TEXT NOT NULL,
-    matched     INTEGER NOT NULL,
-    severity    TEXT,
-    detail      TEXT,
-    match_text  TEXT,
-    match_count INTEGER NOT NULL DEFAULT 1,
-    target      TEXT,
-    cached_at   TEXT NOT NULL,
+    file_hash        TEXT NOT NULL,
+    rule_hash        TEXT NOT NULL,
+    matched          INTEGER NOT NULL,
+    severity         TEXT,
+    detail           TEXT,
+    match_text       TEXT,
+    match_texts      TEXT,
+    match_description TEXT,
+    match_count      INTEGER NOT NULL DEFAULT 1,
+    target           TEXT,
+    cached_at        TEXT NOT NULL,
     PRIMARY KEY (file_hash, rule_hash),
     FOREIGN KEY (file_hash) REFERENCES scanned_files(file_hash) ON DELETE CASCADE,
     FOREIGN KEY (rule_hash) REFERENCES rules(rule_hash) ON DELETE CASCADE
@@ -236,6 +241,7 @@ def migrate(conn: sqlite3.Connection) -> int:
         #          旧库通过本路径安全创建 meta 表
         # v2 → v3：兼容版本号升级触发 purge 后走此路径重建（iter-39）
         # v3 → v4：新增 extracted_contents 表（iter-39），IF NOT EXISTS 安全升级
+        # v4 → v5：兼容版本号升级（iter-41，match_texts/match_description）触发 purge 后重建
         conn.executescript(SCHEMA_SQL)
         current = CURRENT_VERSION
         conn.execute(f"PRAGMA user_version = {current}")

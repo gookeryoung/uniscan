@@ -2887,10 +2887,11 @@ class TestHitDetailDialogNavigation:
         return HitDetailDialog(report.hits[0])
 
     def test_dialog_hits_table_has_position_count_column(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框命中规则表应包含5列，第4列为'位置数'。"""
+        """对话框命中规则表应包含6列，第4列为'位置数'，第6列为'描述'。"""
         dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        assert dialog.hits_table.columnCount() == 5
+        assert dialog.hits_table.columnCount() == 6
         assert dialog.hits_table.horizontalHeaderItem(3).text() == "位置数"
+        assert dialog.hits_table.horizontalHeaderItem(5).text() == "描述"
         dialog.close()
 
     def test_dialog_hits_table_position_count_values(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -2899,6 +2900,33 @@ class TestHitDetailDialogNavigation:
         # 规则0(密码): 2处password, 规则1(令牌): 1处token
         assert dialog.hits_table.item(0, 3).text() == "2"
         assert dialog.hits_table.item(1, 3).text() == "1"
+        dialog.close()
+
+    def test_dialog_hits_table_description_column_filled(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框第6列(描述)应填充 match_description，未设置时为空字符串（需求4）。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.rules.model import Severity
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        result = ScanResult(
+            path=tmp_path / "a.txt",
+            size=10,
+            hits=(
+                RuleHit(
+                    "规则A",
+                    Severity.WARNING,
+                    "d1",
+                    match_count=1,
+                    match_description="敏感凭证关键词",
+                ),
+                RuleHit("规则B", Severity.CRITICAL, "d2", match_count=1),
+            ),
+        )
+        dialog = HitDetailDialog(result)
+        # 第0行描述列应填充 match_description
+        assert dialog.hits_table.item(0, 5).text() == "敏感凭证关键词"
+        # 第1行描述列未设置时应为空字符串
+        assert dialog.hits_table.item(1, 5).text() == ""
         dialog.close()
 
     def test_dialog_click_hits_row_jumps_to_rule_highlight(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3034,6 +3062,92 @@ class TestMatchTextHighlighting:
         hits = (RuleHit("r", Severity.CRITICAL, "包含 'password'", match_text=""),)
         kws = extract_keywords(hits)
         assert kws == ["password"]
+
+    def test_extract_keywords_prefers_match_texts(self) -> None:
+        """``extract_keywords`` 应优先遍历 ``match_texts`` 而非 ``match_text``（需求3）。"""
+        from fuscan.scanner.result import RuleHit
+
+        hits = (
+            RuleHit(
+                "r",
+                Severity.WARNING,
+                "命中多个关键词",
+                match_text="password",
+                match_texts=("password", "token", "api_key"),
+            ),
+        )
+        kws = extract_keywords(hits)
+        assert kws == ["password", "token", "api_key"]
+
+    def test_extract_keywords_match_texts_dedup_across_hits(self) -> None:
+        """``extract_keywords`` 应在多条 hit 间去重 match_texts。"""
+        from fuscan.scanner.result import RuleHit
+
+        hits = (
+            RuleHit("r1", Severity.WARNING, "d1", match_texts=("password", "token")),
+            RuleHit("r2", Severity.CRITICAL, "d2", match_texts=("token", "secret")),
+        )
+        kws = extract_keywords(hits)
+        assert kws == ["password", "token", "secret"]
+
+    def test_extract_keywords_match_texts_falls_back_to_match_text(self) -> None:
+        """``match_texts`` 为空元组时应回退到 ``match_text``（兼容旧缓存）。"""
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.WARNING, "命中", match_text="password", match_texts=()),)
+        kws = extract_keywords(hits)
+        assert kws == ["password"]
+
+    def test_extract_keywords_match_texts_falls_back_to_detail(self) -> None:
+        """``match_texts`` 与 ``match_text`` 均空时应回退到 detail 解析。"""
+        from fuscan.scanner.result import RuleHit
+
+        hits = (RuleHit("r", Severity.WARNING, "包含 'secret'", match_text="", match_texts=()),)
+        kws = extract_keywords(hits)
+        assert kws == ["secret"]
+
+    def test_build_keyword_to_rule_map_uses_match_texts(self) -> None:
+        """``build_keyword_to_rule_map`` 应优先遍历 ``match_texts``（需求3）。"""
+        from fuscan.gui.preview_utils import build_keyword_to_rule_map
+        from fuscan.scanner.result import RuleHit
+
+        hits = (
+            RuleHit(
+                "r1",
+                Severity.WARNING,
+                "命中多个",
+                match_text="password",
+                target="content",
+                match_texts=("password", "token"),
+            ),
+            RuleHit("r2", Severity.CRITICAL, "d2", match_text="secret", target="content"),
+        )
+        mapping = build_keyword_to_rule_map(hits)
+        assert mapping == {"password": 0, "token": 0, "secret": 1}
+
+    def test_build_keyword_to_rule_map_dedup_first_wins(self) -> None:
+        """同一关键词被多条规则命中时，仅归属到首条规则。"""
+        from fuscan.gui.preview_utils import build_keyword_to_rule_map
+        from fuscan.scanner.result import RuleHit
+
+        hits = (
+            RuleHit("r1", Severity.WARNING, "d1", match_texts=("password",), target="content"),
+            RuleHit("r2", Severity.CRITICAL, "d2", match_texts=("password",), target="content"),
+        )
+        mapping = build_keyword_to_rule_map(hits)
+        assert mapping == {"password": 0}
+
+    def test_build_keyword_to_rule_map_skips_filename_target(self) -> None:
+        """``target=="filename"`` 的规则应跳过（不在内容中高亮）。"""
+        from fuscan.gui.preview_utils import build_keyword_to_rule_map
+        from fuscan.scanner.result import RuleHit
+
+        hits = (
+            RuleHit("r1", Severity.WARNING, "d1", match_texts=("password",), target="filename"),
+            RuleHit("r2", Severity.CRITICAL, "d2", match_texts=("secret",), target="content"),
+        )
+        mapping = build_keyword_to_rule_map(hits)
+        assert mapping == {"secret": 1}
 
     def test_dialog_positions_db_connection_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
         """详情对话框应能定位含反斜杠的数据库连接串密码。"""
@@ -4246,12 +4360,13 @@ class TestDetailArea:
         window.close()
 
     def test_detail_hits_table_has_position_count_column(self, qapp: QApplication, tmp_path: Path) -> None:
-        """命中规则表应包含5列，第4列为'位置数'。"""
+        """命中规则表应包含6列，第4列为'位置数'，第6列为'描述'。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
         window._detail_show_result(report.hits[0])
-        assert window.detail_hits_table.columnCount() == 5
+        assert window.detail_hits_table.columnCount() == 6
         assert window.detail_hits_table.horizontalHeaderItem(3).text() == "位置数"
+        assert window.detail_hits_table.horizontalHeaderItem(5).text() == "描述"
         window.close()
 
     def test_detail_hits_table_position_count_values(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4262,6 +4377,34 @@ class TestDetailArea:
         # 规则0(密码): 2处password, 规则1(令牌): 1处token
         assert window.detail_hits_table.item(0, 3).text() == "2"
         assert window.detail_hits_table.item(1, 3).text() == "1"
+        window.close()
+
+    def test_detail_hits_table_description_column_filled(self, qapp: QApplication, tmp_path: Path) -> None:
+        """第6列(描述)应填充 match_description，未设置时为空字符串（需求4）。"""
+        from fuscan.gui.main_window import MainWindow
+        from fuscan.rules.model import Severity
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        result = ScanResult(
+            path=tmp_path / "a.txt",
+            size=10,
+            hits=(
+                RuleHit(
+                    "规则A",
+                    Severity.WARNING,
+                    "d1",
+                    match_count=1,
+                    match_description="敏感凭证关键词",
+                ),
+                RuleHit("规则B", Severity.CRITICAL, "d2", match_count=1),
+            ),
+        )
+        window = MainWindow()
+        window._detail_show_result(result)
+        # 第0行描述列应填充 match_description
+        assert window.detail_hits_table.item(0, 5).text() == "敏感凭证关键词"
+        # 第1行描述列未设置时应为空字符串
+        assert window.detail_hits_table.item(1, 5).text() == ""
         window.close()
 
     def test_click_hits_row_jumps_to_rule_highlight(self, qapp: QApplication, tmp_path: Path) -> None:

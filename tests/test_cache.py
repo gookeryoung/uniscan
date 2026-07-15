@@ -524,6 +524,115 @@ class TestCacheStoreResults:
         assert cached[rule_hash].severity == Severity.CRITICAL
         store.close()
 
+    def test_put_and_get_match_texts_and_description(self, tmp_path: Path) -> None:
+        """match_texts 与 match_description 应正确序列化与反序列化（需求3/4）。"""
+        store = CacheStore(tmp_path / "cache.db")
+        rs = RuleSet(version="1.0", rules=(_filename_rule(),))
+        hashes = store.register_ruleset(rs)
+        rule_hash = hashes["r1"]
+        file_hash = hash_bytes(b"multi-hit-content")
+        hit = RuleHit(
+            rule_name="r1",
+            severity=Severity.WARNING,
+            detail="命中多个关键词",
+            match_text="password",
+            match_count=3,
+            target="content",
+            match_texts=("password", "token", "api_key"),
+            match_description="敏感凭证关键词组合",
+        )
+        store.put_result(file_hash, rule_hash, hit)
+        cached = store.get_cached_hits(file_hash, [rule_hash])
+        result = cached[rule_hash]
+        assert result is not None
+        assert result.match_texts == ("password", "token", "api_key")
+        assert result.match_description == "敏感凭证关键词组合"
+        store.close()
+
+    def test_put_and_get_empty_match_texts(self, tmp_path: Path) -> None:
+        """match_texts 为空元组时应正确序列化（兼容旧缓存）。"""
+        store = CacheStore(tmp_path / "cache.db")
+        rs = RuleSet(version="1.0", rules=(_filename_rule(),))
+        hashes = store.register_ruleset(rs)
+        rule_hash = hashes["r1"]
+        file_hash = hash_bytes(b"empty-texts")
+        hit = RuleHit(
+            rule_name="r1",
+            severity=Severity.WARNING,
+            detail="无文本命中",
+            match_text="",
+            match_count=1,
+            target="",
+            match_texts=(),
+            match_description="",
+        )
+        store.put_result(file_hash, rule_hash, hit)
+        cached = store.get_cached_hits(file_hash, [rule_hash])
+        result = cached[rule_hash]
+        assert result is not None
+        assert result.match_texts == ()
+        assert result.match_description == ""
+        store.close()
+
+    def test_put_and_get_unicode_match_texts(self, tmp_path: Path) -> None:
+        """match_texts 含中文时应正确序列化（JSON ensure_ascii=False）。"""
+        store = CacheStore(tmp_path / "cache.db")
+        rs = RuleSet(version="1.0", rules=(_filename_rule(),))
+        hashes = store.register_ruleset(rs)
+        rule_hash = hashes["r1"]
+        file_hash = hash_bytes(b"unicode-content")
+        hit = RuleHit(
+            rule_name="r1",
+            severity=Severity.WARNING,
+            detail="命中中文关键词",
+            match_text="密码",
+            match_count=1,
+            target="content",
+            match_texts=("密码", "令牌"),
+            match_description="中文凭证描述",
+        )
+        store.put_result(file_hash, rule_hash, hit)
+        cached = store.get_cached_hits(file_hash, [rule_hash])
+        result = cached[rule_hash]
+        assert result is not None
+        assert result.match_texts == ("密码", "令牌")
+        assert result.match_description == "中文凭证描述"
+        store.close()
+
+    def test_batch_put_results_match_texts_and_description(self, tmp_path: Path) -> None:
+        """batch_put_results 应正确写入 match_texts/match_description 字段。"""
+        from fuscan.cache.store import BatchWriteItem
+
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"batch-multi")
+            hit = RuleHit(
+                rule_name="r1",
+                severity=Severity.WARNING,
+                detail="批量写入多文本",
+                match_text="password",
+                match_count=2,
+                target="content",
+                match_texts=("password", "secret"),
+                match_description="批量凭证描述",
+            )
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=50,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, hit),),
+                    )
+                ]
+            )
+            cached = store.get_cached_hits(file_hash, [rule_hash])
+            result = cached[rule_hash]
+            assert result is not None
+            assert result.match_texts == ("password", "secret")
+            assert result.match_description == "批量凭证描述"
+
 
 # ---------------------------------------------------------------- 文件登记
 
