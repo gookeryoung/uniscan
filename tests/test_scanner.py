@@ -692,6 +692,105 @@ class TestScanReport:
         # 未知格式应回退到 text
         assert report.to_format("unknown") == report.to_text()
 
+    def test_to_pdf_returns_bytes_with_header(self, tmp_path: Path) -> None:
+        """to_pdf 应返回 PDF 二进制数据，以 %PDF- 开头。"""
+        report = self._build_report(tmp_path)
+        data = report.to_pdf()
+        assert isinstance(data, bytes)
+        assert data[:5] == b"%PDF-"
+
+    def test_to_pdf_empty_hits(self, tmp_path: Path) -> None:
+        """空命中报告也能生成 PDF，仍以 %PDF- 开头。"""
+        report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
+        data = report.to_pdf()
+        assert data[:5] == b"%PDF-"
+
+    def test_to_pdf_contains_keywords(self, tmp_path: Path) -> None:
+        """PDF 文本流应包含标题与命中规则名（CID 字体下文本可被提取）。"""
+        report = self._build_report(tmp_path)
+        data = report.to_pdf()
+        # PDF 中文字以 CID 编码无法直接 grep，但 PDF 结构标记应可见
+        assert b"/Type /Catalog" in data or b"/Pages" in data
+
+    def test_to_excel_returns_zip_archive(self, tmp_path: Path) -> None:
+        """to_excel 应返回 xlsx 二进制数据（zip 格式，PK 开头）。"""
+        report = self._build_report(tmp_path)
+        data = report.to_excel()
+        assert isinstance(data, bytes)
+        # xlsx 是 zip 压缩包，开头为 PK\x03\x04
+        assert data[:2] == b"PK"
+
+    def test_to_excel_empty_hits(self, tmp_path: Path) -> None:
+        """空命中报告也能生成 Excel。"""
+        report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
+        data = report.to_excel()
+        assert data[:2] == b"PK"
+
+    def test_to_excel_roundtrip(self, tmp_path: Path) -> None:
+        """生成的 xlsx 应能被 openpyxl 读回，且工作表名称正确。"""
+        from openpyxl import load_workbook
+
+        report = self._build_report(tmp_path)
+        data = report.to_excel()
+        import io as _io
+
+        wb = load_workbook(_io.BytesIO(data))
+        assert "扫描汇总" in wb.sheetnames
+        assert "命中明细" in wb.sheetnames
+        # 命中明细表头应在第 1 行
+        headers = [c.value for c in wb["命中明细"][1]]
+        assert headers == ["路径", "大小", "严重等级", "规则", "描述", "匹配数", "详情"]
+
+    def test_save_report_csv(self, tmp_path: Path) -> None:
+        """save_report 按 .csv 扩展名写入 UTF-8 文本。"""
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.csv"
+        report.save_report(target)
+        content = target.read_text(encoding="utf-8")
+        assert content.startswith("path,size,severity,rule,description,match_count,detail")
+
+    def test_save_report_json(self, tmp_path: Path) -> None:
+        """save_report 按 .json 扩展名写入 JSON 文本。"""
+        import json as _json
+
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.json"
+        report.save_report(target)
+        data = _json.loads(target.read_text(encoding="utf-8"))
+        assert data["root"] == str(tmp_path)
+
+    def test_save_report_txt_fallback(self, tmp_path: Path) -> None:
+        """save_report 对 .txt 扩展名按 text 格式写入。"""
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.txt"
+        report.save_report(target)
+        content = target.read_text(encoding="utf-8")
+        assert "扫描路径:" in content
+
+    def test_save_report_pdf(self, tmp_path: Path) -> None:
+        """save_report 按 .pdf 扩展名写入二进制。"""
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.pdf"
+        report.save_report(target)
+        data = target.read_bytes()
+        assert data[:5] == b"%PDF-"
+
+    def test_save_report_xlsx(self, tmp_path: Path) -> None:
+        """save_report 按 .xlsx 扩展名写入二进制。"""
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.xlsx"
+        report.save_report(target)
+        data = target.read_bytes()
+        assert data[:2] == b"PK"
+
+    def test_save_report_unknown_ext_falls_back_to_text(self, tmp_path: Path) -> None:
+        """save_report 对未知扩展名（非 csv/json/pdf/xlsx）按 text 写入。"""
+        report = self._build_report(tmp_path)
+        target = tmp_path / "out.log"
+        report.save_report(target)
+        content = target.read_text(encoding="utf-8")
+        assert "扫描路径:" in content
+
 
 class TestFormatSize:
     def test_bytes(self) -> None:

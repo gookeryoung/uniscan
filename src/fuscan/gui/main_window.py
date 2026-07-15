@@ -1158,26 +1158,43 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         QMessageBox.critical(self, "扫描失败", error)
 
     def _on_export_menu(self) -> None:
-        """导出按钮：弹出格式选择对话框。"""
+        """导出按钮：弹出格式选择对话框。
+
+        支持 CSV/JSON/PDF/Excel 四种格式，PDF 与 Excel 为二进制格式，
+        通过 ``ScanReport.save_report`` 统一写入（按扩展名自动选择序列化方式）。
+        """
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
             return
-        # 简单弹窗选择格式
-        items = ["CSV 文件 (*.csv)", "JSON 文件 (*.json)"]
-        item, ok = QInputDialog.getItem(self, "导出扫描结果", "选择导出格式:", items, 0, False)
+        # 格式选项与扩展名映射，顺序即菜单显示顺序
+        items = [
+            ("CSV 文件 (*.csv)", "csv"),
+            ("JSON 文件 (*.json)", "json"),
+            ("PDF 文件 (*.pdf)", "pdf"),
+            ("Excel 文件 (*.xlsx)", "excel"),
+        ]
+        labels = [label for label, _ in items]
+        choice, ok = QInputDialog.getItem(self, "导出扫描结果", "选择导出格式:", labels, 0, False)
         if not ok:
             return
-        fmt = "csv" if "CSV" in item else "json"
+        fmt = next(fmt for label, fmt in items if label == choice)
         self._on_export(fmt)
 
     def _on_export(self, fmt: str) -> None:
-        """导出扫描结果。"""
+        """导出扫描结果到文件。
+
+        :param fmt: 格式标识，``csv``/``json``/``pdf``/``excel``。
+            文本格式（csv/json）按 UTF-8 写入；二进制格式（pdf/excel）写 bytes。
+            统一委托给 ``ScanReport.save_report``，由其按扩展名自动选择序列化方式。
+        """
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
             return
 
-        filter_str = "CSV 文件 (*.csv)" if fmt == "csv" else "JSON 文件 (*.json)"
-        default_name = f"fuscan_report.{fmt}"
+        # 扩展名映射：excel 用 .xlsx，其他格式直接用同名扩展名
+        ext = "xlsx" if fmt == "excel" else fmt
+        filter_str = f"{fmt.upper()} 文件 (*.{ext})"
+        default_name = f"fuscan_report.{ext}"
         path_str, _ = QFileDialog.getSaveFileName(
             self,
             "导出扫描结果",
@@ -1188,8 +1205,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         path = Path(path_str)
         try:
-            content = self._last_report.to_format(fmt)
-            path.write_text(content, encoding="utf-8")
+            self._last_report.save_report(path)
             QMessageBox.information(self, "导出成功", f"已导出到:\n{path}")
         except OSError as exc:
             QMessageBox.warning(self, "导出失败", str(exc))

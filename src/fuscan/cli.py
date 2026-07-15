@@ -62,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="规则文件路径（YAML，可重复指定多个，后面的覆盖前面的同名规则）",
     )
     scan_parser.add_argument(
-        "-o", "--output-format", choices=["text", "json", "csv"], default="text", help="输出格式，默认 text"
+        "-o",
+        "--output-format",
+        choices=["text", "json", "csv", "pdf", "excel"],
+        default="text",
+        help="输出格式，默认 text（pdf/excel 需配合 -f 输出到文件）",
     )
     scan_parser.add_argument("-f", "--output-file", type=Path, default=None, help="输出到文件（默认 stdout）")
     scan_parser.add_argument("--max-depth", type=int, default=None, help="最大递归深度")
@@ -226,8 +230,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         )
         report = _run_scan(scanner, scan_path, args)
 
-    output = report.to_format(args.output_format)
-    _write_output(output, args.output_file)
+    _output_report(report, args.output_format, args.output_file)
     _print_summary(report)
     return 0
 
@@ -399,6 +402,29 @@ def _write_output(content: str, output_file: Path | None) -> None:
         return
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(content, encoding="utf-8")
+
+
+def _output_report(report: ScanReport, fmt: str, output_file: Path | None) -> None:
+    """按格式输出扫描报告，支持文本与二进制格式。
+
+    - text/json/csv：文本格式，通过 ``to_format`` 调度，stdout 或文件
+    - pdf/excel：二进制格式，必须输出到文件（``-f`` 参数）
+    """
+    if fmt == "pdf":
+        if output_file is None:
+            logger.error("PDF 格式必须配合 -f/--output-file 输出到文件")
+            return
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(report.to_pdf())
+        return
+    if fmt == "excel":
+        if output_file is None:
+            logger.error("Excel 格式必须配合 -f/--output-file 输出到文件")
+            return
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(report.to_excel())
+        return
+    _write_output(report.to_format(fmt), output_file)
 
 
 def _print_summary(report: ScanReport) -> None:

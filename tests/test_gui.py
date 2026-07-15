@@ -5061,6 +5061,112 @@ class TestExportAndMenu:
         assert not out_path.exists()
         window.close()
 
+    def test_export_pdf_to_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """导出 PDF 应写入二进制文件，以 %PDF- 开头。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "export.pdf"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(out_path), ""),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_export("pdf")
+        assert out_path.exists()
+        assert out_path.read_bytes()[:5] == b"%PDF-"
+        window.close()
+
+    def test_export_excel_to_file(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """导出 Excel 应写入 xlsx 二进制文件（PK 开头）。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "export.xlsx"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(out_path), ""),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_export("excel")
+        assert out_path.exists()
+        assert out_path.read_bytes()[:2] == b"PK"
+        window.close()
+
+    def test_export_menu_select_pdf(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """导出菜单选择 PDF 格式应写文件。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "export.pdf"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QInputDialog.getItem",
+            lambda *args, **kwargs: ("PDF 文件 (*.pdf)", True),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(out_path), ""),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_export_menu()
+        assert out_path.exists()
+        assert out_path.read_bytes()[:5] == b"%PDF-"
+        window.close()
+
+    def test_export_menu_select_excel(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """导出菜单选择 Excel 格式应写文件。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "export.xlsx"
+        window = MainWindow()
+        window._last_report = report
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QInputDialog.getItem",
+            lambda *args, **kwargs: ("Excel 文件 (*.xlsx)", True),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QFileDialog.getSaveFileName",
+            lambda *args, **kwargs: (str(out_path), ""),
+        )
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window._on_export_menu()
+        assert out_path.exists()
+        assert out_path.read_bytes()[:2] == b"PK"
+        window.close()
+
     def test_about_dialog(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """关于对话框应弹出。"""
         window = MainWindow()

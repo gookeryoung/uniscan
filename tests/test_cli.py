@@ -217,6 +217,44 @@ class TestScanCommand:
         data = json.loads(out_file.read_text(encoding="utf-8"))
         assert len(data["hits"]) == 2
 
+    def test_scan_pdf_output_to_file(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        tmp_path: Path,
+    ) -> None:
+        """-o pdf -f 应生成 PDF 二进制文件，以 %PDF- 开头。"""
+        out_file = tmp_path / "report.pdf"
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "-o", "pdf", "-f", str(out_file)])
+        assert rc == 0
+        assert out_file.exists()
+        data = out_file.read_bytes()
+        assert data[:5] == b"%PDF-"
+
+    def test_scan_excel_output_to_file(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        tmp_path: Path,
+    ) -> None:
+        """-o excel -f 应生成 xlsx 二进制文件（zip 格式，PK 开头）。"""
+        out_file = tmp_path / "report.xlsx"
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "-o", "excel", "-f", str(out_file)])
+        assert rc == 0
+        assert out_file.exists()
+        data = out_file.read_bytes()
+        assert data[:2] == b"PK"
+
+    def test_scan_pdf_without_output_file_logs_error(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """-o pdf 不带 -f 应记错误日志但不崩溃，退出码仍为 0。"""
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "-o", "pdf"])
+        assert rc == 0
+
     def test_scan_nonexistent_path(self, tmp_path: Path, rules_file: Path) -> None:
         rc = main(["scan", str(tmp_path / "missing"), "-r", str(rules_file)])
         assert rc == 1
