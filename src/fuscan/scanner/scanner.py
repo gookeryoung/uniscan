@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import threading
 import time
@@ -15,6 +14,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
+from fuscan.cache.hashes import hash_bytes
 from fuscan.extractors import extract_content_from_bytes, extract_content_with_fallback
 from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, HashingContentProvider, MatchContext
@@ -40,23 +40,27 @@ def default_extract_content(entry: FileEntry) -> str:
 
 
 def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
-    """带哈希的内容提供器：读字节算 SHA-256，再从同一份字节提取内容。
+    """带哈希的内容提供器：读字节算 BLAKE2b，再从同一份字节提取内容。
 
     一次 ``read_bytes`` 既算哈希又提取内容，避免提取器内部重复读磁盘。
     缓存模式下，``Scanner`` 用此函数替代 :func:`default_extract_content`，
     使文件哈希计算与内容提取共享一次磁盘 I/O。
 
+    哈希算法由 :func:`fuscan.cache.hashes.hash_bytes` 决定（BLAKE2b，
+    ``digest_size=32``，64 字符 hex）。算法变更需递增
+    :data:`fuscan.cache.schema.CACHE_COMPAT_VERSION` 触发旧缓存失效。
+
     :param entry: 文件元信息
-    :return: ``(content, file_hash)`` 元组；``file_hash`` 为 64 字符 SHA-256 十六进制摘要
+    :return: ``(content, file_hash)`` 元组；``file_hash`` 为 64 字符十六进制摘要
     """
     if entry.is_dir or entry.size > 100 * 1024 * 1024:
-        return "", hashlib.sha256(b"").hexdigest()
+        return "", hash_bytes(b"")
     try:
         data = entry.path.read_bytes()
     except OSError:
         logger.debug("读取文件失败: %s", entry.path, exc_info=True)
-        return "", hashlib.sha256(b"").hexdigest()
-    file_hash = hashlib.sha256(data).hexdigest()
+        return "", hash_bytes(b"")
+    file_hash = hash_bytes(data)
     try:
         content = extract_content_from_bytes(data, entry.extension)
     except Exception:
@@ -555,10 +559,16 @@ class Scanner:
     def _scan_entry_cached(self, entry: FileEntry) -> ScanResult:
         """缓存模式扫描：先查缓存，命中直接复用，未命中走匹配器并写入缓存。
 
-        若所有适用规则均为 filename/path 类型（不含 CONTENT 目标），
-        则跳过文件 I/O 直接走 :meth:`_scan_entry_uncached`，避免无谓的哈希计算。
-        一次 I/O 同时取内容和文件哈希（:func:`default_extract_content_with_hash`），
-        静态闭包包装内容传给 :class:`MatchContext`，避免改 MatchContext 接口。
+        优化路径：
+
+        1. **filename/path 规则跳过 I/O**：若所有适用规则均不含 CONTENT 目标，
+           走 :meth:`_scan_entry_uncached`，避免无谓的哈希计算
+        2. **mtime 预筛跳过 read_bytes**：``CacheStore.lookup_file_hash`` 按
+           ``(path, mtime, size)`` 查询已登记的 ``file_hash``。若所有适用规则
+           都已缓存（命中或未命中），则**完全跳过文件读取**，仅复用缓存结果
+        3. **常规路径**：一次 I/O 同时取内容和文件哈希
+           （:func:`default_extract_content_with_hash`），静态闭包包装内容
+           传给 :class:`MatchContext`，避免改 MatchContext 接口
         """
         assert self._cache is not None  # 仅类型收窄，调用方已保证非 None
         # 检查是否有内容规则适用此扩展名
@@ -570,12 +580,6 @@ class Scanner:
         if not has_content_rule:
             # 无内容规则：跳过文件 I/O，直接走匹配器（filename/path 不需读文件）
             return self._scan_entry_uncached(entry)
-        content, file_hash = self._hashing_content_provider(entry)
-
-        def _static_provider(_fe: FileEntry) -> str:
-            return content
-
-        context = MatchContext(entry, content_provider=_static_provider)
 
         applicable: list[tuple[Rule, Matcher, str]] = [
             (rule, matcher, rule_hash)
@@ -583,6 +587,28 @@ class Scanner:
             if not rule.file_extensions or entry.extension in rule.file_extensions
         ]
         rule_hashes = [rh for _, _, rh in applicable]
+
+        # mtime 预筛：若 (path, mtime, size) 已登记且所有规则都已缓存，
+        # 完全跳过 read_bytes，仅从缓存重建 ScanResult。
+        cached_file_hash = self._cache.lookup_file_hash(entry.path, entry.mtime, entry.size)
+        if cached_file_hash is not None and rule_hashes:
+            cached = self._cache.get_cached_hits(cached_file_hash, rule_hashes)
+            if all(rh in cached for rh in rule_hashes):
+                # 全部规则已缓存命中（含未命中记录），无需读文件
+                hits, rule_errors = self._build_hits_from_cache(applicable, cached)
+                # 仅刷新 last_scanned_at/last_seen_at 元数据
+                self._cache.register_file(cached_file_hash, entry.size)
+                self._cache.register_path(cached_file_hash, entry.path, entry.mtime)
+                return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)
+
+        # 常规路径：读文件 + 算哈希 + 查缓存 + 未命中执行匹配器
+        content, file_hash = self._hashing_content_provider(entry)
+
+        def _static_provider(_fe: FileEntry) -> str:
+            return content
+
+        context = MatchContext(entry, content_provider=_static_provider)
+
         cached: dict[str, RuleHit | None] = self._cache.get_cached_hits(file_hash, rule_hashes) if rule_hashes else {}
 
         hits: list[RuleHit] = []
@@ -631,3 +657,30 @@ class Scanner:
         self._cache.register_path(file_hash, entry.path, entry.mtime)
 
         return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)
+
+    @staticmethod
+    def _build_hits_from_cache(
+        applicable: list[tuple[Rule, Matcher, str]],
+        cached: dict[str, RuleHit | None],
+    ) -> tuple[list[RuleHit], int]:
+        """从缓存字典重建 ``RuleHit`` 列表（与主路径的填回逻辑一致）。
+
+        :param applicable: 适用的 (Rule, Matcher, rule_hash) 列表，决定输出顺序
+        :param cached: ``rule_hash -> RuleHit | None`` 字典
+        :return: ``(hits, rule_errors)``；rule_errors 在纯缓存路径下恒为 0
+        """
+        hits: list[RuleHit] = []
+        for rule, _, rule_hash in applicable:
+            result = cached.get(rule_hash)
+            if result is not None:
+                hits.append(
+                    RuleHit(
+                        rule_name=rule.name,
+                        severity=result.severity,
+                        detail=result.detail,
+                        match_text=result.match_text,
+                        match_count=result.match_count,
+                        target=result.target,
+                    )
+                )
+        return hits, 0

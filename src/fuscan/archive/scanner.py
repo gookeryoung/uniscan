@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +16,7 @@ from fuscan.archive.base import (
     ArchiveReader,
     get_reader,
 )
+from fuscan.cache.hashes import hash_bytes
 from fuscan.extractors import ExtractorError, extract_content_from_bytes
 from fuscan.rules.model import Rule, RuleSet
 from fuscan.scanner.context import FileEntry, MatchContext
@@ -192,9 +192,9 @@ class ArchiveScanner:
             is_dir=False,
         )
 
-        # 读字节并算哈希
+        # 读字节并算哈希（BLAKE2b digest_size=32，与 Scanner 主路径一致）
         data = self._read_entry_bytes(archive_path, entry, reader)
-        file_hash = hashlib.sha256(data).hexdigest()
+        file_hash = hash_bytes(data)
         content = self._extract_content_from_bytes(data, entry)
 
         def content_provider(_fe: FileEntry) -> str:

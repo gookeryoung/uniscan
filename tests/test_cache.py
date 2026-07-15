@@ -212,6 +212,7 @@ class TestRuleHashCompute:
 
     def test_rule_hash_is_sha256_hex(self) -> None:
         h = compute_rule_hash(_filename_rule())
+        # BLAKE2b digest_size=32 输出 64 字符 hex（与 SHA-256 长度一致）
         assert len(h) == 64
         # 全部为十六进制字符
         int(h, 16)
@@ -223,13 +224,13 @@ class TestRuleHashCompute:
         assert "match" in data
 
     def test_hash_bytes_empty(self) -> None:
-        # 空字节返回固定摘要
-        assert hash_bytes(b"") == hashlib.sha256(b"").hexdigest()
+        # 空字节返回固定摘要（BLAKE2b digest_size=32）
+        assert hash_bytes(b"") == hashlib.blake2b(b"", digest_size=32).hexdigest()
 
     def test_compute_file_hash(self, tmp_path: Path) -> None:
         p = tmp_path / "a.txt"
         p.write_bytes(b"hello")
-        assert compute_file_hash(p) == hashlib.sha256(b"hello").hexdigest()
+        assert compute_file_hash(p) == hashlib.blake2b(b"hello", digest_size=32).hexdigest()
 
     def test_compute_file_hash_missing(self, tmp_path: Path) -> None:
         with pytest.raises(OSError):
@@ -811,3 +812,314 @@ class TestMigrate:
         version = migrate(conn)
         assert version == CURRENT_VERSION
         conn.close()
+
+
+class TestCacheCompatVersion:
+    """缓存数据兼容版本号管理（iter-38）。"""
+
+    def test_fresh_db_writes_compat_version(self, tmp_path: Path) -> None:
+        """新建数据库应写入当前 CACHE_COMPAT_VERSION 到 meta 表。"""
+        from fuscan.cache.schema import CACHE_COMPAT_VERSION
+
+        conn = sqlite3.connect(str(tmp_path / "fresh.db"))
+        conn.row_factory = sqlite3.Row
+        migrate(conn)
+        row = conn.execute("SELECT value FROM meta WHERE key = 'cache_compat_version'").fetchone()
+        assert row is not None
+        assert int(row["value"]) == CACHE_COMPAT_VERSION
+        conn.close()
+
+    def test_old_compat_version_triggers_purge(self, tmp_path: Path) -> None:
+        """兼容版本号低于当前值时清空旧业务表数据。"""
+        db = tmp_path / "old.db"
+        # 先用旧 schema + 旧 compat 版本号建库
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO meta (key, value) VALUES ('cache_compat_version', '1')")
+        conn.execute("CREATE TABLE scanned_files (file_hash TEXT PRIMARY KEY, size INTEGER)")
+        conn.execute("INSERT INTO scanned_files VALUES ('oldhash', 100)")
+        conn.commit()
+
+        # 触发迁移：应清空 scanned_files
+        from fuscan.cache.schema import CACHE_COMPAT_VERSION
+
+        assert CACHE_COMPAT_VERSION >= 2  # 当前为 2，旧库 v1 应被清空
+        migrate(conn)
+        # 旧数据应被清空
+        rows = conn.execute("SELECT * FROM scanned_files").fetchall()
+        assert len(rows) == 0
+        # meta 中 compat 版本应已升级
+        row = conn.execute("SELECT value FROM meta WHERE key = 'cache_compat_version'").fetchone()
+        assert int(row["value"]) == CACHE_COMPAT_VERSION
+        conn.close()
+
+    def test_future_compat_version_triggers_purge(self, tmp_path: Path) -> None:
+        """兼容版本号高于当前代码时，保守清空未来版本数据。"""
+        db = tmp_path / "future.db"
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        # 写入未来版本号（远超当前值）
+        conn.execute("INSERT INTO meta (key, value) VALUES ('cache_compat_version', '999')")
+        conn.execute("CREATE TABLE scanned_files (file_hash TEXT PRIMARY KEY, size INTEGER)")
+        conn.execute("INSERT INTO scanned_files VALUES ('futurehash', 200)")
+        conn.commit()
+
+        migrate(conn)
+        # 未来数据应被清空
+        rows = conn.execute("SELECT * FROM scanned_files").fetchall()
+        assert len(rows) == 0
+        conn.close()
+
+    def test_corrupted_compat_version_triggers_purge(self, tmp_path: Path) -> None:
+        """meta 中 compat 版本号损坏（非数字）时清空缓存。"""
+        db = tmp_path / "corrupt.db"
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO meta (key, value) VALUES ('cache_compat_version', 'not-a-number')")
+        conn.execute("CREATE TABLE scanned_files (file_hash TEXT PRIMARY KEY, size INTEGER)")
+        conn.execute("INSERT INTO scanned_files VALUES ('x', 1)")
+        conn.commit()
+
+        migrate(conn)
+        rows = conn.execute("SELECT * FROM scanned_files").fetchall()
+        assert len(rows) == 0
+        conn.close()
+
+    def test_same_compat_version_preserves_data(self, tmp_path: Path) -> None:
+        """兼容版本号一致时不触发清空。"""
+
+        db = tmp_path / "same.db"
+        conn = sqlite3.connect(str(db))
+        conn.row_factory = sqlite3.Row
+        # 模拟一个已迁移到当前版本的库，含真实数据
+        migrate(conn)
+        file_hash = hash_bytes(b"keep-me")
+        conn.execute(
+            "INSERT INTO scanned_files (file_hash, size, first_seen_at, last_scanned_at) "
+            "VALUES (?, 42, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            (file_hash,),
+        )
+        conn.commit()
+
+        # 再次 migrate（模拟下次启动）
+        migrate(conn)
+        # 数据应保留
+        row = conn.execute("SELECT size FROM scanned_files WHERE file_hash = ?", (file_hash,)).fetchone()
+        assert row is not None
+        assert row["size"] == 42
+        conn.close()
+
+
+class TestHitCache:
+    """进程内 LRU 命中缓存（iter-38）。"""
+
+    @staticmethod
+    def _setup_store_with_rule(tmp_path: Path, rule_name: str = "r1") -> tuple[CacheStore, str]:
+        """构造已登记单条规则的 CacheStore，返回 (store, rule_hash)。"""
+        from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
+
+        rule = Rule(
+            name=rule_name,
+            description="d",
+            severity=Severity.WARNING,
+            match=LeafMatch(
+                target=MatchTarget.CONTENT,
+                mode=MatchMode.CONTAINS,
+                pattern="x",
+                case_sensitive=False,
+            ),
+            file_extensions=(),
+        )
+        rs = RuleSet(version="1.0", rules=(rule,))
+        store = CacheStore(tmp_path / "c.db")
+        hashes = store.register_ruleset(rs)
+        return store, hashes[rule_name]
+
+    def test_get_cached_hits_writes_to_lru(self, tmp_path: Path) -> None:
+        """首次查询走 SQLite 后写入 LRU，第二次同参数命中 LRU。"""
+        store, rule_hash = self._setup_store_with_rule(tmp_path)
+        try:
+            file_hash = hash_bytes(b"content")
+            store.put_result(file_hash, rule_hash, None)
+            assert store.hit_cache_size() == 0  # put 后 invalidate
+
+            # 首次查询：走 SQLite
+            r1 = store.get_cached_hits(file_hash, [rule_hash])
+            assert rule_hash in r1
+            assert store.hit_cache_size() == 1
+            # 第二次查询：命中 LRU
+            r2 = store.get_cached_hits(file_hash, [rule_hash])
+            assert r2 == r1
+        finally:
+            store.close()
+
+    def test_put_result_invalidates_lru(self, tmp_path: Path) -> None:
+        """put_result 后下次查询走 SQLite 取最新数据。"""
+        store, rule_hash = self._setup_store_with_rule(tmp_path)
+        try:
+            file_hash = hash_bytes(b"c")
+            # 首次未命中也缓存
+            store.put_result(file_hash, rule_hash, None)
+            store.get_cached_hits(file_hash, [rule_hash])  # 填充 LRU
+            assert store.hit_cache_size() == 1
+
+            # 写入命中结果
+            from fuscan.rules.model import Severity
+            from fuscan.scanner.result import RuleHit
+
+            hit = RuleHit(
+                rule_name="r",
+                severity=Severity.WARNING,
+                detail="d",
+                match_text="t",
+                match_count=1,
+                target="content",
+            )
+            store.put_result(file_hash, rule_hash, hit)
+            assert store.hit_cache_size() == 0  # 已 invalidate
+
+            # 下次查询应取到 hit，而非缓存的 None
+            r = store.get_cached_hits(file_hash, [rule_hash])
+            assert r[rule_hash] is not None
+            assert r[rule_hash].severity == Severity.WARNING
+        finally:
+            store.close()
+
+    def test_lru_evicts_oldest_when_full(self, tmp_path: Path) -> None:
+        """LRU 容量超限时弹出最旧条目。"""
+        from fuscan.cache import store as store_mod
+
+        store, rule_hash = self._setup_store_with_rule(tmp_path)
+        try:
+            # 临时缩小容量以便测试
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(store_mod, "_HIT_CACHE_MAX", 3)
+                for i in range(5):
+                    fh = hash_bytes(f"content-{i}".encode())
+                    store.put_result(fh, rule_hash, None)
+                    store.get_cached_hits(fh, [rule_hash])  # 填充 LRU
+                # 应只剩最近 3 个
+                assert store.hit_cache_size() == 3
+        finally:
+            store.close()
+
+    def test_rule_hashes_set_change_treats_as_miss(self, tmp_path: Path) -> None:
+        """rule_hashes 集合变化时 LRU 视为未命中，走 SQLite。"""
+        # 登记 2 条规则，得到 rh1 / rh2
+        from fuscan.rules.model import LeafMatch, MatchMode, MatchTarget, Rule, RuleSet, Severity
+
+        rules = [
+            Rule(
+                name=f"r{i}",
+                description="d",
+                severity=Severity.WARNING,
+                match=LeafMatch(
+                    target=MatchTarget.CONTENT,
+                    mode=MatchMode.CONTAINS,
+                    pattern="x",
+                    case_sensitive=False,
+                ),
+                file_extensions=(),
+            )
+            for i in (1, 2)
+        ]
+        rs = RuleSet(version="1.0", rules=tuple(rules))
+        store = CacheStore(tmp_path / "c.db")
+        try:
+            hashes = store.register_ruleset(rs)
+            rh1, rh2 = hashes["r1"], hashes["r2"]
+
+            file_hash = hash_bytes(b"c")
+            store.put_result(file_hash, rh1, None)
+            store.get_cached_hits(file_hash, [rh1])  # LRU 用 (rh1) 填充
+
+            # 加入 rh2 后 LRU 仍记录 (rh1) 集合，应判定未命中
+            store.put_result(file_hash, rh2, None)
+            r = store.get_cached_hits(file_hash, [rh1, rh2])
+            # 应同时返回 rh1 和 rh2 的结果（来自 SQLite 重查）
+            assert rh1 in r
+            assert rh2 in r
+        finally:
+            store.close()
+
+    def test_prune_clears_lru(self, tmp_path: Path) -> None:
+        """清理孤立规则后 LRU 整体失效（规则集合已变）。"""
+        store, rule_hash = self._setup_store_with_rule(tmp_path)
+        try:
+            file_hash = hash_bytes(b"c")
+            store.put_result(file_hash, rule_hash, None)
+            store.get_cached_hits(file_hash, [rule_hash])
+            assert store.hit_cache_size() == 1
+
+            # 传入空集合：触发"删除所有规则"分支，deleted > 0，LRU 应被清空
+            store.prune_orphan_rules(set())
+            assert store.hit_cache_size() == 0
+        finally:
+            store.close()
+
+
+class TestLookupFileHash:
+    """mtime 预筛：lookup_file_hash（iter-38）。"""
+
+    def test_lookup_returns_hash_when_path_mtime_size_match(self, tmp_path: Path) -> None:
+        """(path, mtime, size) 三元组完全匹配时返回已登记的 file_hash。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"content")
+            path = tmp_path / "file.txt"
+            path.write_bytes(b"content")
+            st = path.stat()
+            store.register_file(file_hash, st.st_size)
+            store.register_path(file_hash, path, st.st_mtime)
+
+            found = store.lookup_file_hash(path, st.st_mtime, st.st_size)
+            assert found == file_hash
+
+    def test_lookup_returns_none_when_mtime_differs(self, tmp_path: Path) -> None:
+        """mtime 不匹配时返回 None（文件已修改，需重算哈希）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"content")
+            path = tmp_path / "file.txt"
+            path.write_bytes(b"content")
+            st = path.stat()
+            store.register_file(file_hash, st.st_size)
+            store.register_path(file_hash, path, st.st_mtime)
+
+            # 模拟文件被修改：mtime + 100s
+            assert store.lookup_file_hash(path, st.st_mtime + 100, st.st_size) is None
+
+    def test_lookup_returns_none_when_size_differs(self, tmp_path: Path) -> None:
+        """size 不匹配时返回 None。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"content")
+            path = tmp_path / "file.txt"
+            path.write_bytes(b"content")
+            st = path.stat()
+            store.register_file(file_hash, st.st_size)
+            store.register_path(file_hash, path, st.st_mtime)
+
+            assert store.lookup_file_hash(path, st.st_mtime, st.st_size + 1) is None
+
+    def test_lookup_returns_none_when_path_unknown(self, tmp_path: Path) -> None:
+        """未登记的路径返回 None。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            assert store.lookup_file_hash(tmp_path / "unknown", 0.0, 0) is None
+
+    def test_lookup_handles_multiple_paths_same_hash(self, tmp_path: Path) -> None:
+        """同一 file_hash 关联多个路径时，每个路径都能查到。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"shared-content")
+            p1 = tmp_path / "a.txt"
+            p2 = tmp_path / "b.txt"
+            p1.write_bytes(b"shared-content")
+            p2.write_bytes(b"shared-content")
+            st1 = p1.stat()
+            st2 = p2.stat()
+            store.register_file(file_hash, st1.st_size)
+            store.register_path(file_hash, p1, st1.st_mtime)
+            store.register_path(file_hash, p2, st2.st_mtime)
+
+            assert store.lookup_file_hash(p1, st1.st_mtime, st1.st_size) == file_hash
+            assert store.lookup_file_hash(p2, st2.st_mtime, st2.st_size) == file_hash

@@ -1469,6 +1469,78 @@ class TestScannerCache:
         finally:
             cache.close()
 
+    def test_cache_mtime_prefilter_skips_read_bytes(self, tmp_path: Path) -> None:
+        """二次扫描时未修改文件应跳过 read_bytes（mtime 预筛命中）。"""
+        from fuscan.cache import CacheStore
+
+        path = tmp_path / "secret.txt"
+        path.write_text("password here", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner1 = Scanner(rs, cache=cache)
+            report1 = scanner1.scan(tmp_path)
+            assert report1.stats.matched_files == 1
+
+            # 验证：第一次扫描结束后，lookup_file_hash 应能命中
+            st = path.stat()
+            pre = cache.lookup_file_hash(path, st.st_mtime, st.st_size)
+            assert pre is not None, "首次扫描后 file_paths 应已登记该文件"
+
+            # 第二次扫描：文件未修改，应走 mtime 预筛路径
+            call_count = 0
+            original_read_bytes = Path.read_bytes
+
+            def counting_read_bytes(self: Path) -> bytes:
+                nonlocal call_count
+                if self.name == "secret.txt":
+                    call_count += 1
+                return original_read_bytes(self)
+
+            scanner2 = Scanner(rs, cache=cache)
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(Path, "read_bytes", counting_read_bytes)
+                report2 = scanner2.scan(tmp_path)
+            # 文件未修改：mtime 预筛命中，应完全不调用 read_bytes
+            assert call_count == 0, f"mtime 预筛未生效，read_bytes 仍被调用 {call_count} 次"
+            # 结果应一致
+            assert report2.stats.matched_files == 1
+            assert report2.hits[0].rule_names == ("pwd",)
+        finally:
+            cache.close()
+
+    def test_cache_mtime_prefilter_misses_when_file_modified(self, tmp_path: Path) -> None:
+        """文件被修改后 mtime 预筛不命中，应回退到 read_bytes 重算哈希。"""
+        import os
+
+        from fuscan.cache import CacheStore
+
+        path = tmp_path / "secret.txt"
+        path.write_text("password here", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner1 = Scanner(rs, cache=cache)
+            report1 = scanner1.scan(tmp_path)
+            assert report1.stats.matched_files == 1
+
+            # 修改文件内容并前移 mtime（确保 mtime/size 改变）
+            path.write_text("password there and more", encoding="utf-8")
+            # 强制 mtime 改变
+            new_mtime = path.stat().st_mtime + 100
+            os.utime(path, (new_mtime, new_mtime))
+
+            scanner2 = Scanner(rs, cache=cache)
+            report2 = scanner2.scan(tmp_path)
+            # 文件被修改后应重新匹配，结果仍命中（含 password 关键字）
+            assert report2.stats.matched_files == 1
+        finally:
+            cache.close()
+
     def test_default_extract_content_with_hash(self, tmp_path: Path) -> None:
         """default_extract_content_with_hash 返回内容和哈希。"""
         import hashlib
@@ -1481,7 +1553,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(path)
         content, file_hash = default_extract_content_with_hash(entry)
         assert "password" in content
-        expected = hashlib.sha256(b"password content").hexdigest()
+        expected = hashlib.blake2b(b"password content", digest_size=32).hexdigest()
         assert file_hash == expected
 
     def test_default_extract_content_with_hash_empty_for_dir(self, tmp_path: Path) -> None:
@@ -1495,7 +1567,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(tmp_path / "subdir")
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.sha256(b"").hexdigest()
+        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
 
     def test_default_extract_content_with_hash_single_io(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """default_extract_content_with_hash 只读一次磁盘（消除双重 I/O）。"""
@@ -1521,7 +1593,7 @@ class TestScannerCache:
         content, file_hash = default_extract_content_with_hash(entry)
         assert call_count == 1, "read_bytes 应只调用一次（消除双重 I/O）"
         assert "password" in content
-        assert file_hash == hashlib.sha256(b"password content").hexdigest()
+        assert file_hash == hashlib.blake2b(b"password content", digest_size=32).hexdigest()
 
     def test_default_extract_content_with_hash_oversize_returns_empty(self, tmp_path: Path) -> None:
         """超过 100MB 的文件返回空内容和空哈希。"""
@@ -1536,7 +1608,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(path)
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.sha256(b"").hexdigest()
+        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
 
     def test_default_extract_content_with_hash_read_os_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1559,7 +1631,7 @@ class TestScannerCache:
         monkeypatch.setattr(Path, "read_bytes", mock_read_bytes)
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.sha256(b"").hexdigest()
+        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
 
     def test_default_extract_content_with_hash_extractor_error_fallback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

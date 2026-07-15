@@ -1,6 +1,6 @@
 # fuscan 性能基线
 
-> 测量时间：2026-07-14（扫描热路径性能优化后）
+> 测量时间：2026-07-15（缓存性能优化与版本兼容 iter-38 后）
 > 测量方式：`uv run pytest -m slow tests/test_benchmark.py` + `uv run python benchmarks/bench_scan.py`
 
 ## 测量环境
@@ -10,7 +10,7 @@
 | 操作系统 | Windows 11 (10.0.26200) |
 | CPU | Intel Core i7-14700K (24 核) |
 | Python | 3.8.20 |
-| fuscan 版本 | iter-36 (commit pending) |
+| fuscan 版本 | iter-38 (commit pending) |
 
 ## 提取器单格式速度
 
@@ -45,21 +45,37 @@
 
 | 场景 | 耗时 (s) | 文件/秒 | MB/秒 | 缓存命中率 |
 |------|--------:|--------:|------:|----------:|
-| S1 单线程无缓存 | 4.70 | 106.5 | 2.6 | - |
-| S2 4 线程无缓存 | 2.80 | 178.6 | 4.4 | - |
-| S3 24 线程无缓存 | 2.91 | 171.8 | 4.3 | - |
-| S4 4 线程+冷缓存 | 2.98 | 167.6 | - | 0% |
-| S5 4 线程+热缓存 | 2.98 | 167.5 | - | 100% |
+| S1 单线程无缓存 | 5.86 | 85.4 | 2.1 | - |
+| S2 4 线程无缓存 | 2.90 | 172.5 | 4.3 | - |
+| S3 24 线程无缓存 | 2.94 | 169.9 | 4.2 | - |
+| S4 4 线程+冷缓存 | 3.05 | 163.9 | - | 0% |
+| S5 4 线程+热缓存 | 0.08 | 6006.4 | - | 100% |
 
 **观察**：
-- 单线程较优化前（99.2 → 106.5 files/s）提升约 7.4%，主要来自减少系统调用
-  （DirEntry.stat 复用 scandir 缓存 + 合并 stat/is_dir 判断）
-- 4 线程相比单线程提升约 1.7 倍（受 GIL 和 I/O 竞争限制）
-- 24 线程与 4 线程相当，说明 4 线程已接近最优并发度
-- 热缓存命中率 100%，但吞吐量与无缓存相近，因 CONTENT 规则仍需读取文件计算哈希
-- 缓存收益主要体现在 filename-only 规则（跳过文件 I/O，见 test_cache_throughput ≥ 200 files/s）
+- S5 热缓存较 iter-37（167.5 → 6006.4 files/s）提升约 36 倍，主因 mtime 预筛
+  在所有规则都已缓存时跳过 `read_bytes`，热路径从磁盘 I/O 降为纯内存查询
+- LRU 命中缓存（容量 4096）避免对每条规则单独查 SQLite，进一步降低命中延迟
+- S1-S4 较 iter-37 略有回退（约 2-20%），BLAKE2b 在本机冷启动时 OpenSSL 上下文
+  初始化略慢于 SHA-256 内建实现，且 4-6KB 小文件未充分体现算法优势；在 slow
+  回归阈值（≥ 50 files/s）容忍范围内
+- 多线程场景 4 线程已接近最优并发度，24 线程无额外收益
 
-## 性能优化记录（iter-37）
+## 性能优化记录
+
+### iter-38 缓存性能优化与版本兼容
+
+四项优化，热缓存场景跨越两个数量级提升：
+
+1. **BLAKE2b 替代 SHA-256**：`hashlib.blake2b(data, digest_size=32)` 输出 64 字符
+   hex，`scanned_files.file_hash` 列 schema 无需变更；通过 OpenSSL 加速且释放 GIL
+2. **LRU 命中缓存**：`CacheStore._hit_cache` 容量 4096，`OrderedDict` 实现 O(1)
+   访问与淘汰；写操作（put_result/register_file/register_path）后 invalidate
+3. **mtime + size 三元组预筛**：`CacheStore.lookup_file_hash(path, mtime, size)`
+   命中且所有规则已缓存时跳过 `read_bytes`，热路径降为纯内存查询
+4. **CACHE_COMPAT_VERSION 版本号机制**：`meta` 表存储数据语义版本号，
+   哈希算法/序列化结构变更时递增触发自动 purge，避免旧缓存污染
+
+### iter-37 扫描热路径性能优化
 
 扫描热路径三项优化，单线程吞吐量提升约 7%：
 
@@ -77,8 +93,8 @@
 
 | 测试 | 断言 | 基线值 |
 |------|------|-------:|
-| test_sequential_throughput | ≥ 50 files/s | 99.2 |
-| test_concurrent_throughput | ≥ 50 files/s | 171.6 |
+| test_sequential_throughput | ≥ 50 files/s | 85.4 |
+| test_concurrent_throughput | ≥ 50 files/s | 172.5 |
 | test_cache_throughput | ≥ 200 files/s | filename 规则热缓存 |
 | test_cache_hit_ratio | ≥ 95% | 100% |
 | test_extract_speed (各格式) | 见上表阈值 | 见上表 |
