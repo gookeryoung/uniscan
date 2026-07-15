@@ -64,7 +64,7 @@ class PdfExtractor(Extractor):
     def _extract_pages(self, reader: object) -> str:
         """提取所有页面文本。"""
         parts = []
-        for page in reader.pages:
+        for page in reader.pages:  # pyrefly: ignore [missing-attribute]
             try:
                 text = page.extract_text() or ""
                 if text:

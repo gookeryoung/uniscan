@@ -34,14 +34,14 @@ class TestParseMatch:
 
     def test_parse_content_regex_case_sensitive(self) -> None:
         match = parse_match({"type": "content", "mode": "regex", "pattern": "AKIA[0-9]+", "case_sensitive": True})
-        assert match.target == MatchTarget.CONTENT
-        assert match.mode == MatchMode.REGEX
-        assert match.case_sensitive is True
+        assert match.target == MatchTarget.CONTENT  # pyrefly: ignore [missing-attribute]
+        assert match.mode == MatchMode.REGEX  # pyrefly: ignore [missing-attribute]
+        assert match.case_sensitive is True  # pyrefly: ignore [missing-attribute]
 
     def test_parse_path_endswith(self) -> None:
         match = parse_match({"type": "path", "mode": "endswith", "pattern": ".conf"})
-        assert match.target == MatchTarget.PATH
-        assert match.mode == MatchMode.ENDSWITH
+        assert match.target == MatchTarget.PATH  # pyrefly: ignore [missing-attribute]
+        assert match.mode == MatchMode.ENDSWITH  # pyrefly: ignore [missing-attribute]
 
     def test_parse_and(self) -> None:
         match = parse_match(

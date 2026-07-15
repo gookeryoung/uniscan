@@ -72,7 +72,7 @@ class XlsxExtractor(Extractor):
     def _extract_sheet(self, sheet: object) -> list[str]:
         """提取单个工作表的文本。"""
         texts: list[str] = []
-        for row_count, row in enumerate(sheet.iter_rows(values_only=True), 1):
+        for row_count, row in enumerate(sheet.iter_rows(values_only=True), 1):  # pyrefly: ignore [missing-attribute]
             if row_count > self._max_rows:
                 logger.debug("工作表行数超过上限 %d，截断", self._max_rows)
                 break

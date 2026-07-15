@@ -87,7 +87,7 @@ rules:
         # 同名规则应被覆盖，总数不变
         assert len(rs.rules) == len(builtin.rules)
         overridden_rule = next(r for r in rs.rules if r.name == builtin_rule_name)
-        assert overridden_rule.match.pattern == "overridden"
+        assert overridden_rule.match.pattern == "overridden"  # pyrefly: ignore [missing-attribute]
 
     def test_load_with_builtin_unions_ignore_paths(self, tmp_path: Path) -> None:
         """用户与内置的 ignore_paths 取并集。"""

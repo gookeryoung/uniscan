@@ -55,7 +55,7 @@ class TestMergeRulesets:
         rule = merged.rules[0]
         assert rule.name == "r1"
         # 验证使用的是 override 的 pattern
-        assert rule.match.pattern == "override"
+        assert rule.match.pattern == "override"  # pyrefly: ignore [missing-attribute]
 
     def test_merge_override_severity(self) -> None:
         """override 规则的 severity 也应覆盖 base。"""
@@ -129,7 +129,7 @@ class TestMergeRulesets:
         assert len(merged.rules) == 4
         # shared 的 pattern 应为 override 版本
         shared_rule = next(r for r in merged.rules if r.name == "shared")
-        assert shared_rule.match.pattern == "new"
+        assert shared_rule.match.pattern == "new"  # pyrefly: ignore [missing-attribute]
         # ignore_paths 并集
         assert set(merged.ignore_paths) == {"*/vendor/*", "*/.cache/*"}
 
@@ -161,7 +161,7 @@ class TestMergeMultipleRulesets:
 
         merged = merge_multiple_rulesets(rs1, rs2)
         assert len(merged.rules) == 1
-        assert merged.rules[0].match.pattern == "v2"
+        assert merged.rules[0].match.pattern == "v2"  # pyrefly: ignore [missing-attribute]
 
     def test_three_args_chained_override(self) -> None:
         """三个参数时按顺序链式覆盖：最后一个胜出。"""
@@ -170,7 +170,7 @@ class TestMergeMultipleRulesets:
         rs3 = _make_ruleset(rules=(_make_rule("shared", pattern="v3"),))
 
         merged = merge_multiple_rulesets(rs1, rs2, rs3)
-        assert merged.rules[0].match.pattern == "v3"
+        assert merged.rules[0].match.pattern == "v3"  # pyrefly: ignore [missing-attribute]
 
     def test_disjoint_rules_all_preserved(self) -> None:
         """不同名规则全部保留。"""
@@ -212,6 +212,6 @@ class TestMergeMultipleRulesets:
         rule_a = next(r for r in merged.rules if r.name == "a")
         rule_b = next(r for r in merged.rules if r.name == "b")
         rule_c = next(r for r in merged.rules if r.name == "c")
-        assert rule_a.match.pattern == "a3"
-        assert rule_b.match.pattern == "b2"
-        assert rule_c.match.pattern == "c2"
+        assert rule_a.match.pattern == "a3"  # pyrefly: ignore [missing-attribute]
+        assert rule_b.match.pattern == "b2"  # pyrefly: ignore [missing-attribute]
+        assert rule_c.match.pattern == "c2"  # pyrefly: ignore [missing-attribute]

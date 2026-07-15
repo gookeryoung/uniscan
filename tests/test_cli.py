@@ -55,7 +55,7 @@ def scan_root(tmp_path: Path) -> Path:
 class TestBuildParser:
     def test_parser_has_subcommands(self) -> None:
         parser = build_parser()
-        actions = {a for a in parser._subparsers._group_actions if hasattr(a, "choices")}
+        actions = {a for a in parser._subparsers._group_actions if hasattr(a, "choices")}  # pyrefly: ignore [missing-attribute]
         # 至少存在子命令解析
         assert actions
 

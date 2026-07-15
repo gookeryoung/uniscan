@@ -280,7 +280,7 @@ def _cmd_tray(args: argparse.Namespace) -> int:
         try:
             from PySide2.QtWidgets import QApplication
         except ImportError:  # pragma: no cover
-            from PySide6.QtWidgets import QApplication
+            from PySide6.QtWidgets import QApplication  # pyrefly: ignore [missing-import]
 
         # 仅在 tray 子命令时加载 PySide 与 watchdog
         from fuscan.watcher.tray import TrayApp

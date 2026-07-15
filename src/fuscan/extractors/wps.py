@@ -147,7 +147,7 @@ class WpsExtractor(Extractor):
             slide_texts = []
             for shape in slide.shapes:
                 if shape.has_text_frame:
-                    for para in shape.text_frame.paragraphs:
+                    for para in shape.text_frame.paragraphs:  # pyrefly: ignore [missing-attribute]
                         text = para.text.strip()
                         if text:
                             slide_texts.append(text)

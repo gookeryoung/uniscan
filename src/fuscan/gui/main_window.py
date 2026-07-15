@@ -65,8 +65,8 @@ try:
         QWidget,
     )
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QFile, QPoint, QSize, Qt, QUrl, Slot
-    from PySide6.QtGui import (
+    from PySide6.QtCore import QFile, QPoint, QSize, Qt, QUrl, Slot  # pyrefly: ignore [missing-import]
+    from PySide6.QtGui import (  # pyrefly: ignore [missing-import]
         QAction,
         QColor,
         QIcon,
@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
         QTextCharFormat,
         QTextCursor,
     )
-    from PySide6.QtWidgets import (
+    from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
         QAbstractButton,
         QApplication,
         QButtonGroup,
@@ -231,7 +231,7 @@ def _read_svg_text(svg_path: str) -> str:
     """
     if svg_path.startswith(":"):
         file = QFile(svg_path)
-        if not file.open(QFile.ReadOnly | QFile.Text):
+        if not file.open(QFile.ReadOnly | QFile.Text):  # pyrefly: ignore [missing-argument]
             raise OSError(f"无法打开 Qt 资源: {svg_path}")
         try:
             return bytes(file.readAll()).decode("utf-8")
@@ -268,7 +268,7 @@ def _load_themed_icon(svg_path: str, color: str) -> QIcon:
         pixmap = QPixmap(_ICON_RENDER_SIZE, _ICON_RENDER_SIZE)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
-        renderer.render(painter)
+        renderer.render(painter)  # pyrefly: ignore [missing-argument]
         painter.end()
         return QIcon(pixmap)
     except (OSError, ValueError):
@@ -292,7 +292,7 @@ class WorkflowStage(enum.Enum):
     RESULTS = "results"
 
 
-class MainWindow(QMainWindow, Ui_MainWindow):
+class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheritance]
     """主窗口：扫描器 GUI 入口，基于工作流阶段的三页整页切换布局。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -397,7 +397,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def _setup_detail_table(self) -> None:
         """设置详情区命中表：全列拉伸 + 行点击信号（editTriggers/selectionBehavior 已在 .ui 中声明）。"""
-        self.detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # pyrefly: ignore [missing-argument]
         self.detail_hits_table.cellClicked.connect(self._on_detail_hits_row_clicked)
 
     def _setup_comboboxes(self) -> None:
@@ -566,10 +566,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """填充侧边栏阶段项（深色背景用白色变体；配置 / 扫描中 / 结果）。"""
         self.sidebar.blockSignals(True)
         self.sidebar.clear()
-        self.sidebar.addItem(QListWidgetItem(self._icon_folder_on_primary, "配置"))
-        self.sidebar.addItem(QListWidgetItem(self._icon_scan_on_primary, "扫描中"))
-        self.sidebar.addItem(QListWidgetItem(self._icon_history_on_primary, "结果"))
-        self.sidebar.setCurrentRow(0)
+        self.sidebar.addItem(QListWidgetItem(self._icon_folder_on_primary, "配置"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.addItem(QListWidgetItem(self._icon_scan_on_primary, "扫描中"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.addItem(QListWidgetItem(self._icon_history_on_primary, "结果"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         self.sidebar.blockSignals(False)
 
     def _connect_signals(self) -> None:
@@ -638,10 +638,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         action_copy.triggered.connect(self._on_copy_path)
         action_open_window.triggered.connect(self._on_open_in_window)
         action_open_location.triggered.connect(self._on_open_file_location)
-        menu.addAction(action_copy)
-        menu.addAction(action_open_window)
-        menu.addAction(action_open_location)
-        menu.exec_(self.result_tree.viewport().mapToGlobal(pos))
+        menu.addAction(action_copy)  # pyrefly: ignore [missing-argument]
+        menu.addAction(action_open_window)  # pyrefly: ignore [missing-argument]
+        menu.addAction(action_open_location)  # pyrefly: ignore [missing-argument]
+        menu.exec_(self.result_tree.viewport().mapToGlobal(pos))  # pyrefly: ignore [missing-argument]
 
     def _on_rules_file_list_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
         """规则文件列表右键菜单：上移 / 下移 / 移除。"""
@@ -654,11 +654,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         action_up.triggered.connect(self._on_move_rule_up)
         action_down.triggered.connect(self._on_move_rule_down)
         action_remove.triggered.connect(self._on_remove_rule)
-        menu.addAction(action_up)
-        menu.addAction(action_down)
+        menu.addAction(action_up)  # pyrefly: ignore [missing-argument]
+        menu.addAction(action_down)  # pyrefly: ignore [missing-argument]
         menu.addSeparator()
-        menu.addAction(action_remove)
-        menu.exec_(self.rules_file_list.viewport().mapToGlobal(pos))
+        menu.addAction(action_remove)  # pyrefly: ignore [missing-argument]
+        menu.exec_(self.rules_file_list.viewport().mapToGlobal(pos))  # pyrefly: ignore [missing-argument]
 
     def _setup_shortcuts(self) -> None:
         """创建全局快捷键：F3 下一条命中、Shift+F3 上一条命中、Delete 移除规则文件。"""
@@ -703,7 +703,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         }[stage]
         self.main_stack.setCurrentIndex(page_index)
         self.sidebar.blockSignals(True)
-        self.sidebar.setCurrentRow(page_index)
+        self.sidebar.setCurrentRow(page_index)  # pyrefly: ignore [missing-argument]
         self.sidebar.blockSignals(False)
         self._update_stage_actions()
 
@@ -753,7 +753,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 结果页
         self.rescan_btn.setEnabled(is_results)
         if is_results and has_report:
-            self.export_btn.setEnabled(len(self._last_report.hits) > 0)
+            self.export_btn.setEnabled(len(self._last_report.hits) > 0)  # pyrefly: ignore [missing-attribute]
         else:
             self.export_btn.setEnabled(False)
 
@@ -842,7 +842,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self._config.last_drive:
             target = self._config.last_drive
             for btn in self._drive_buttons:
-                if btn.property("drive") == target:
+                if btn.property("drive") == target:  # pyrefly: ignore [bad-argument-type]
                     btn.setChecked(True)
                     self._selected_drive = target
                     break
@@ -853,7 +853,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.path_combo.blockSignals(True)
         for p in self._config.scan_paths:
-            self.path_combo.addItem(p)
+            self.path_combo.addItem(p)  # pyrefly: ignore [missing-argument]
         self.path_combo.blockSignals(False)
 
         # 恢复扫描历史
@@ -885,7 +885,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         idx = self.path_combo.findText(path_str)
         if idx >= 0:
             self.path_combo.removeItem(idx)
-        self.path_combo.insertItem(0, path_str)
+        self.path_combo.insertItem(0, path_str)  # pyrefly: ignore [bad-argument-type, missing-argument]
         while self.path_combo.count() > MAX_HISTORY:
             self.path_combo.removeItem(self.path_combo.count() - 1)
         self.path_combo.setCurrentIndex(0)
@@ -905,7 +905,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for path_str in self._scan_history:
             item = QListWidgetItem(path_str)
             item.setToolTip(path_str)
-            self.history_list.addItem(item)
+            self.history_list.addItem(item)  # pyrefly: ignore [missing-argument]
 
     def _on_history_item_double_clicked(self, item: QListWidgetItem) -> None:
         """双击历史列表项切换到 folder 模式并选择该路径。"""
@@ -961,7 +961,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """刷新盘符按钮列表（hard_disk 图标 + 盘符字母，平铺展示）。"""
         # 清除旧按钮
         for btn in self._drive_buttons:
-            self._drive_button_group.removeButton(btn)
+            self._drive_button_group.removeButton(btn)  # pyrefly: ignore [missing-attribute]
             self.drive_buttons_layout.removeWidget(btn)
             btn.deleteLater()
         self._drive_buttons.clear()
@@ -971,17 +971,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             btn = QPushButton(letter, self.target_stack.widget(1))
             btn.setObjectName(f"drive_btn_{letter}")
             btn.setCheckable(True)
-            btn.setProperty("drive", str(drive))
+            btn.setProperty("drive", str(drive))  # pyrefly: ignore [bad-argument-type]
             btn.setIcon(self._icon_hard_disk)
             btn.setIconSize(QSize(14, self._config.drive_icon_size))
-            self.drive_buttons_layout.addWidget(btn)
-            self._drive_button_group.addButton(btn)
+            self.drive_buttons_layout.addWidget(btn)  # pyrefly: ignore [missing-argument]
+            self._drive_button_group.addButton(btn)  # pyrefly: ignore [missing-attribute]
             self._drive_buttons.append(btn)
 
     def _on_drive_selected(self, _button: QAbstractButton) -> None:
         """盘符按钮选择变更。"""
         checked = self._drive_button_group.checkedButton() if self._drive_button_group else None
-        self._selected_drive = checked.property("drive") if checked is not None else None
+        self._selected_drive = checked.property("drive") if checked is not None else None  # pyrefly: ignore [bad-argument-type]
         self._update_scan_button()
 
     def _build_scan_roots(self) -> list[Path]:
@@ -1100,10 +1100,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cache=cache,
             source_files=source_files,
         )
-        self._worker.progress_info.connect(self._on_scan_progress)
-        self._worker.finished_report.connect(self._on_scan_finished)
-        self._worker.failed.connect(self._on_scan_failed)
-        self._worker.cancelled.connect(self._on_scan_cancelled)
+        self._worker.progress_info.connect(self._on_scan_progress)  # pyrefly: ignore [missing-attribute]
+        self._worker.finished_report.connect(self._on_scan_finished)  # pyrefly: ignore [missing-attribute]
+        self._worker.failed.connect(self._on_scan_failed)  # pyrefly: ignore [missing-attribute]
+        self._worker.cancelled.connect(self._on_scan_cancelled)  # pyrefly: ignore [missing-attribute]
         self._worker.start()
 
     def _build_cache_context(self) -> tuple[CacheStore | None, dict[Path, str] | None]:
@@ -1144,7 +1144,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.pause_resume_btn.setText("暂停扫描")
         self.stats_label.setText("扫描中...")
 
-    @Slot(object)
+    @Slot(object)  # pyrefly: ignore [not-callable]
     def _on_scan_cancelled(self, report: ScanReport) -> None:
         """扫描被取消后的回调：有结果切结果页，无结果切配置页。"""
         self._last_report = report
@@ -1176,7 +1176,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._worker.deleteLater()
         self._worker = None
 
-    @Slot(object)
+    @Slot(object)  # pyrefly: ignore [not-callable]
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
         """扫描实时进度回调：更新进度条、当前文件、状态栏汇总与两个列表。
 
@@ -1260,7 +1260,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.matched_files_list.scrollToBottom()
         self._last_matched_files = new_files
 
-    @Slot(object)
+    @Slot(object)  # pyrefly: ignore [not-callable]
     def _on_scan_finished(self, report: ScanReport) -> None:
         """扫描完成回调：填充结果并切换到结果页。"""
         self._last_report = report
@@ -1271,7 +1271,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stats_label.setText(report.summary())
         self._switch_stage(WorkflowStage.RESULTS)
 
-    @Slot(str)
+    @Slot(str)  # pyrefly: ignore [not-callable]
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调：切回配置页并提示。"""
         self._reset_scan_ui()
@@ -1436,7 +1436,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._populate_detail_file_info(result)
         self._populate_detail_hits_table(result)
         # 强制刷新当前详情页，避免 Qt 渲染时序导致 stack 未生效
-        self.detail_main_stack.currentWidget().update()
+        self.detail_main_stack.currentWidget().update()  # pyrefly: ignore [missing-argument]
 
     def _populate_detail_file_info(self, result: ScanResult) -> None:
         """填充详情区文件元信息。"""
@@ -1729,7 +1729,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for path in self._rules_paths:
             item = QListWidgetItem(str(path))
             item.setToolTip(str(path))
-            self.rules_file_list.addItem(item)
+            self.rules_file_list.addItem(item)  # pyrefly: ignore [missing-argument]
 
     def _on_move_rule_up(self) -> None:
         """将选中的规则文件上移一位。"""
@@ -1741,7 +1741,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self._rules_paths[row - 1],
         )
         self._refresh_rules_file_list()
-        self.rules_file_list.setCurrentRow(row - 1)
+        self.rules_file_list.setCurrentRow(row - 1)  # pyrefly: ignore [missing-argument]
         self._reload_and_refresh()
 
     def _on_move_rule_down(self) -> None:
@@ -1754,7 +1754,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self._rules_paths[row + 1],
         )
         self._refresh_rules_file_list()
-        self.rules_file_list.setCurrentRow(row + 1)
+        self.rules_file_list.setCurrentRow(row + 1)  # pyrefly: ignore [missing-argument]
         self._reload_and_refresh()
 
     def _on_remove_rule(self) -> None:
@@ -1775,7 +1775,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(self, "提示", "未加载任何规则文件，请先加载规则。")
             return
         dialog = RuleEditorDialog(self._rules_paths, self)
-        dialog.rules_saved.connect(self._on_rules_saved)
+        dialog.rules_saved.connect(self._on_rules_saved)  # pyrefly: ignore [missing-attribute]
         dialog.exec_()
 
     def _on_rules_saved(self, _path: str) -> None:
@@ -1828,7 +1828,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ``group_mode_combo`` 的 ``currentIndexChanged`` 仍直接调用
         :meth:`_refresh_result_tree`，因为这些是用户主动切换选择，需立即反馈。
         """
-        self._result_filter_timer.start()
+        self._result_filter_timer.start()  # pyrefly: ignore [missing-argument]
 
     def _refresh_result_tree(self) -> None:
         """根据当前筛选条件与分组模式刷新结果树。"""
@@ -1877,8 +1877,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 _apply_severity_to_standard_item(child_row[2], hit.severity)
                 child_row[4].setTextAlignment(Qt.AlignCenter)
                 # 子行挂载在第 0 列 cell 上（QStandardItem.appendRow 是 cell 方法）
-                file_row[0].appendRow(child_row)
-            self._result_model.appendRow(file_row)
+                file_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(file_row)  # pyrefly: ignore [missing-argument]
 
     def _populate_grouped_by_rule(self, report: ScanReport) -> None:
         """按规则分组：规则名为顶层项，文件为子项。"""
@@ -1900,8 +1900,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 _apply_severity_to_standard_item(child_row[2], hit.severity)
                 child_row[4].setTextAlignment(Qt.AlignCenter)
                 child_row[0].setData(sr, Qt.UserRole)
-                top_row[0].appendRow(child_row)
-            self._result_model.appendRow(top_row)
+                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
 
     def _populate_grouped_by_severity(self, report: ScanReport) -> None:
         """按严重等级分组：等级为顶层项，文件为子项。"""
@@ -1931,8 +1931,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if sr.max_severity == Severity.CRITICAL:
                     for cell in child_row:
                         cell.setBackground(_SEVERITY_BACKGROUNDS[Severity.CRITICAL])
-                top_row[0].appendRow(child_row)
-            self._result_model.appendRow(top_row)
+                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
 
     def _on_result_double_clicked(self, index: QModelIndex) -> None:
         """双击结果项：在新窗口打开详情对话框。

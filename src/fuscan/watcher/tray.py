@@ -27,9 +27,9 @@ try:
     from PySide2.QtGui import QIcon
     from PySide2.QtWidgets import QAction, QApplication, QMenu, QSystemTrayIcon
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QObject, QTimer, Signal
-    from PySide6.QtGui import QAction, QIcon
-    from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+    from PySide6.QtCore import QObject, QTimer, Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtGui import QAction, QIcon  # pyrefly: ignore [missing-import]
+    from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon  # pyrefly: ignore [missing-import]
 
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
@@ -47,7 +47,7 @@ __all__ = ["TrayApp"]
 logger = logging.getLogger(__name__)
 
 
-class TrayApp(QObject):
+class TrayApp(QObject):  # pyrefly: ignore [invalid-inheritance]
     """托盘驻守应用。
 
     信号：
@@ -148,21 +148,21 @@ class TrayApp(QObject):
 
         show_action = QAction("显示主窗口", self)
         show_action.triggered.connect(self._show_main_window)
-        self._tray_menu.addAction(show_action)
+        self._tray_menu.addAction(show_action)  # pyrefly: ignore [missing-argument]
 
         self._monitor_action = QAction("启动监控", self)
         self._monitor_action.triggered.connect(self._toggle_monitoring)
-        self._tray_menu.addAction(self._monitor_action)
+        self._tray_menu.addAction(self._monitor_action)  # pyrefly: ignore [missing-argument]
 
         scan_now_action = QAction("立即全量扫描", self)
         scan_now_action.triggered.connect(self._full_scan)
-        self._tray_menu.addAction(scan_now_action)
+        self._tray_menu.addAction(scan_now_action)  # pyrefly: ignore [missing-argument]
 
         self._tray_menu.addSeparator()
 
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self._quit)
-        self._tray_menu.addAction(quit_action)
+        self._tray_menu.addAction(quit_action)  # pyrefly: ignore [missing-argument]
 
         self._tray.setContextMenu(self._tray_menu)
         self._tray.activated.connect(self._on_tray_activated)
@@ -219,7 +219,7 @@ class TrayApp(QObject):
         # CREATED 或 MODIFIED：加入队列，由定时器批量扫描
         if event.path not in self._pending_paths:
             self._pending_paths.append(event.path)
-        self._scan_timer.start()
+        self._scan_timer.start()  # pyrefly: ignore [missing-argument]
 
     def _flush_pending_scans(self) -> None:
         """批量扫描待处理文件。"""
@@ -247,12 +247,12 @@ class TrayApp(QObject):
             ignore_dirs=tuple(self._monitor_config.ignore_dirs),
             ignore_extensions=tuple(self._monitor_config.ignore_extensions),
         )
-        self._scan_worker.finished_report.connect(self._handle_scan_result)
+        self._scan_worker.finished_report.connect(self._handle_scan_result)  # pyrefly: ignore [missing-attribute]
         self._scan_worker.start()
 
     def _handle_scan_result(self, report: ScanReport) -> None:
         """处理扫描结果。"""
-        self.scan_completed.emit(report)
+        self.scan_completed.emit(report)  # pyrefly: ignore [missing-attribute]
 
         # 持久化状态（无论是否有命中）
         if self._state_file is not None:
@@ -266,7 +266,7 @@ class TrayApp(QObject):
 
         # 通知每个命中文件
         for result in report.hits:
-            self.file_hit.emit(str(result.path), len(result.hits))
+            self.file_hit.emit(str(result.path), len(result.hits))  # pyrefly: ignore [missing-attribute]
 
         # 托盘通知（通知文本由 ScanReport.notification_message 构造）
         if self._tray is not None and self._tray.isVisible():
@@ -274,7 +274,7 @@ class TrayApp(QObject):
                 "fuscan 发现命中",
                 report.notification_message(),
                 QSystemTrayIcon.Information,
-                3000,
+                3000,  # pyrefly: ignore [bad-argument-type]
             )
 
         # 更新主窗口结果树
@@ -298,7 +298,7 @@ class TrayApp(QObject):
     def _notify(self, title: str, message: str) -> None:
         """显示托盘通知。"""
         if self._tray is not None and self._tray.isVisible():
-            self._tray.showMessage(title, message, QSystemTrayIcon.Information, 3000)
+            self._tray.showMessage(title, message, QSystemTrayIcon.Information, 3000)  # pyrefly: ignore [bad-argument-type]
 
     def _quit(self) -> None:
         """退出应用。"""

@@ -6,7 +6,7 @@
 try:
     from PySide2 import QtCore
 except ImportError:  # pragma: no cover
-    from PySide6 import QtCore
+    from PySide6 import QtCore  # pyrefly: ignore [missing-import]
 
 qt_resource_data = b"\
 \x00\x00\x08j\

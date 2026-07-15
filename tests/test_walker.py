@@ -304,7 +304,7 @@ class TestWalkerErrorHandling:
         def mock_scandir(path: object) -> object:
             if Path(str(path)).name == "subdir":
                 raise OSError("模拟权限拒绝")
-            return original_scandir(path)
+            return original_scandir(path)  # pyrefly: ignore [no-matching-overload]
 
         monkeypatch.setattr(os, "scandir", mock_scandir)
         walker = FileWalker()

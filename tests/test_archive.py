@@ -1004,7 +1004,7 @@ class TestZipReaderErrorPaths:
         def fake_zipfile(file: str, mode: str = "r"):
             if file == str(path):
                 raise OSError("模拟权限拒绝")
-            return original_zipfile(file, mode)
+            return original_zipfile(file, mode)  # pyrefly: ignore [no-matching-overload]
 
         monkeypatch.setattr(zipfile, "ZipFile", fake_zipfile)
         with pytest.raises(ArchiveError, match="无法打开 ZIP 文件"):

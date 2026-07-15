@@ -16,7 +16,7 @@ from typing import Sequence
 try:
     from PySide2.QtGui import QColor
 except ImportError:  # pragma: no cover
-    from PySide6.QtGui import QColor
+    from PySide6.QtGui import QColor  # pyrefly: ignore [missing-import]
 
 from fuscan import theme
 from fuscan.rules.model import Severity

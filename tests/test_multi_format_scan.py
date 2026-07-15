@@ -249,7 +249,7 @@ class TestDocumentFormats:
 
         doc = OpenDocumentText()
         p = P(text=f"数据库连接: {_DB_CONN_SAMPLE}")
-        doc.text.addElement(p)
+        doc.text.addElement(p)  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "config.odt"
         doc.save(str(path))
 
@@ -266,7 +266,7 @@ class TestDocumentFormats:
 
         doc = OpenDocumentText()
         p = P(text=f"Authorization: {_BEARER_SAMPLE}")
-        doc.text.addElement(p)
+        doc.text.addElement(p)  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "auth.odt"
         doc.save(str(path))
 

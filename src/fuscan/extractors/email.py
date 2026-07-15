@@ -93,17 +93,17 @@ class EmlExtractor(Extractor):
                 if payload:
                     charset = part.get_content_charset() or "utf-8"
                     try:
-                        plain = payload.decode(charset, errors="ignore")
+                        plain = payload.decode(charset, errors="ignore")  # pyrefly: ignore [missing-attribute]
                     except (LookupError, UnicodeDecodeError):
-                        plain = payload.decode("utf-8", errors="ignore")
+                        plain = payload.decode("utf-8", errors="ignore")  # pyrefly: ignore [missing-attribute]
             elif content_type == "text/html" and html is None:
                 payload = part.get_payload(decode=True)
                 if payload:
                     charset = part.get_content_charset() or "utf-8"
                     try:
-                        html_text = payload.decode(charset, errors="ignore")
+                        html_text = payload.decode(charset, errors="ignore")  # pyrefly: ignore [missing-attribute]
                     except (LookupError, UnicodeDecodeError):
-                        html_text = payload.decode("utf-8", errors="ignore")
+                        html_text = payload.decode("utf-8", errors="ignore")  # pyrefly: ignore [missing-attribute]
                     html = _strip_html(html_text)
 
         if plain:

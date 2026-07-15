@@ -19,8 +19,8 @@ try:
         QWidget,
     )
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import Signal
-    from PySide6.QtWidgets import (
+    from PySide6.QtCore import Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
         QDialog,
         QMessageBox,
         QWidget,
@@ -34,7 +34,7 @@ __all__ = ["RuleEditorDialog"]
 logger = logging.getLogger(__name__)
 
 
-class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):
+class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):  # pyrefly: ignore [invalid-inheritance]
     """规则文件编辑对话框。
 
     信号：
@@ -137,8 +137,8 @@ class RuleEditorDialog(QDialog, Ui_RuleEditorDialog):
                 "规则解析错误",
                 f"文件已保存但规则解析失败:\n{exc}\n\n请修正后重新保存。",
             )
-            self.rules_saved.emit(str(path))
+            self.rules_saved.emit(str(path))  # pyrefly: ignore [missing-attribute]
             return
 
-        self.rules_saved.emit(str(path))
+        self.rules_saved.emit(str(path))  # pyrefly: ignore [missing-attribute]
         QMessageBox.information(self, "保存成功", f"规则文件已保存并重新加载:\n{path.name}")

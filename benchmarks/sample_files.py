@@ -207,7 +207,7 @@ def _gen_pptx(path: Path, content: str) -> None:
         if slide.shapes.title:
             slide.shapes.title.text = chunk[0]
         if len(chunk) > 1 and len(slide.placeholders) > 1:
-            slide.placeholders[1].text = "\n".join(chunk[1:])
+            slide.placeholders[1].text = "\n".join(chunk[1:])  # pyrefly: ignore [missing-attribute]
     prs.save(str(path))
 
 

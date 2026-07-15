@@ -22,7 +22,7 @@ try:
     try:
         from PySide2.QtWidgets import QApplication
     except ImportError:  # pragma: no cover
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication  # pyrefly: ignore [missing-import]
 
     from fuscan.rules.model import (
         LeafMatch,
@@ -226,7 +226,7 @@ class TestTrayAppScanHandling:
         app._pending_paths = [f1, f2]
 
         reports: list[Any] = []
-        app.scan_completed.connect(reports.append)
+        app.scan_completed.connect(reports.append)  # pyrefly: ignore [missing-attribute]
 
         app._flush_pending_scans()
 
@@ -247,8 +247,8 @@ class TestTrayAppScanHandling:
 
         completed_reports: list[Any] = []
         hit_paths: list[Any] = []
-        app.scan_completed.connect(completed_reports.append)
-        app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))
+        app.scan_completed.connect(completed_reports.append)  # pyrefly: ignore [missing-attribute]
+        app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))  # pyrefly: ignore [missing-attribute]
 
         hit = RuleHit(rule_name="敏感内容", severity=Severity.CRITICAL, detail="命中 password")
         result = ScanResult(path=tmp_path / "a.txt", size=10, hits=(hit,), errors=0)
@@ -278,7 +278,7 @@ class TestTrayAppScanHandling:
         app = TrayApp(ruleset=rs)
 
         hit_paths: list[Any] = []
-        app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))
+        app.file_hit.connect(lambda path, count: hit_paths.append((path, count)))  # pyrefly: ignore [missing-attribute]
 
         result = ScanResult(path=tmp_path / "a.txt", size=10, hits=(), errors=0)
         report = ScanReport(

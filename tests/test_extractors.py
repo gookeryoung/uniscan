@@ -99,8 +99,8 @@ def pptx_file(tmp_path: Path) -> Path:
 
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[1])
-    slide.shapes.title.text = "标题 含 secret"
-    slide.placeholders[1].text = "幻灯片内容"
+    slide.shapes.title.text = "标题 含 secret"  # pyrefly: ignore [missing-attribute]
+    slide.placeholders[1].text = "幻灯片内容"  # pyrefly: ignore [missing-attribute]
     path = tmp_path / "test.pptx"
     prs.save(str(path))
     return path
@@ -314,7 +314,7 @@ class TestPptxExtractor:
 
         prs = Presentation()
         slide = prs.slides.add_slide(prs.slide_layouts[1])
-        slide.shapes.title.text = "表格测试"
+        slide.shapes.title.text = "表格测试"  # pyrefly: ignore [missing-attribute]
         # 添加表格
         table_shape = slide.shapes.add_table(
             rows=2, cols=2, left=Inches(1), top=Inches(2), width=Inches(4), height=Inches(1)
@@ -325,7 +325,7 @@ class TestPptxExtractor:
         table.cell(1, 0).text = "user"
         table.cell(1, 1).text = "pwd123"
         # 添加备注
-        slide.notes_slide.notes_text_frame.text = "备注内容 secret"
+        slide.notes_slide.notes_text_frame.text = "备注内容 secret"  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "table_notes.pptx"
         prs.save(str(path))
 
@@ -493,8 +493,8 @@ class TestWpsExtractor:
 
         prs = Presentation()
         slide = prs.slides.add_slide(prs.slide_layouts[1])
-        slide.shapes.title.text = "dps 标题 password"
-        slide.placeholders[1].text = "幻灯片内容"
+        slide.shapes.title.text = "dps 标题 password"  # pyrefly: ignore [missing-attribute]
+        slide.placeholders[1].text = "幻灯片内容"  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "test.dps"
         prs.save(str(path))
 
@@ -811,9 +811,9 @@ class TestOdfExtractors:
 
         doc = OpenDocumentText()
         p = P(text="段落含 password 内容")
-        doc.text.addElement(p)
+        doc.text.addElement(p)  # pyrefly: ignore [missing-attribute]
         h = H(outlinelevel="1", text="标题 secret")
-        doc.text.addElement(h)
+        doc.text.addElement(h)  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "real.odt"
         doc.save(str(path))
 
@@ -834,7 +834,7 @@ class TestOdfExtractors:
         cell.addElement(P(text="cell_password"))
         row.addElement(cell)
         table.addElement(row)
-        doc.spreadsheet.addElement(table)
+        doc.spreadsheet.addElement(table)  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "real.ods"
         doc.save(str(path))
 
@@ -1121,7 +1121,7 @@ class TestExtractFromBytes:
         from odf.text import P
 
         doc = OpenDocumentText()
-        doc.text.addElement(P(text="odt password 内容"))
+        doc.text.addElement(P(text="odt password 内容"))  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "test.odt"
         doc.save(str(path))
 
@@ -1142,7 +1142,7 @@ class TestExtractFromBytes:
         cell.addElement(P(text="ods_password"))
         row.addElement(cell)
         table.addElement(row)
-        doc.spreadsheet.addElement(table)
+        doc.spreadsheet.addElement(table)  # pyrefly: ignore [missing-attribute]
         path = tmp_path / "test.ods"
         doc.save(str(path))
 

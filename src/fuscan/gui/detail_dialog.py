@@ -21,9 +21,9 @@ try:
         QWidget,
     )
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
-    from PySide6.QtWidgets import (
+    from PySide6.QtCore import Qt  # pyrefly: ignore [missing-import]
+    from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor  # pyrefly: ignore [missing-import]
+    from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
         QDialog,
         QHeaderView,
         QTableWidget,
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 _ICON_TARGET = ":/icons/target.svg"
 
 
-class HitDetailDialog(QDialog, Ui_HitDetailDialog):
+class HitDetailDialog(QDialog, Ui_HitDetailDialog):  # pyrefly: ignore [invalid-inheritance]
     """命中详情对话框。
 
     展示：
@@ -84,7 +84,7 @@ class HitDetailDialog(QDialog, Ui_HitDetailDialog):
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性与信号槽连接。"""
         # 命中规则表：列头拉伸模式、只读、整行选择
-        self.hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # pyrefly: ignore [missing-argument]
         self.hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.hits_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.hits_table.cellClicked.connect(self._on_hits_row_clicked)

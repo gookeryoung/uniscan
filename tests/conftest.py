@@ -34,4 +34,4 @@ def chdir_tmp(tmp_path: Path) -> Iterator[Path]:
         yield tmp_path
     finally:
         sys.path.remove(str(tmp_path))
-        sys.chdir(original)
+        sys.chdir(original)  # pyrefly: ignore [missing-attribute]

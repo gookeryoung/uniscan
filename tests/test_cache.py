@@ -520,8 +520,8 @@ class TestCacheStoreResults:
             RuleHit(rule_name="r1", severity=Severity.CRITICAL, detail="second"),
         )
         cached = store.get_cached_hits(file_hash, [rule_hash])
-        assert cached[rule_hash].detail == "second"
-        assert cached[rule_hash].severity == Severity.CRITICAL
+        assert cached[rule_hash].detail == "second"  # pyrefly: ignore [missing-attribute]
+        assert cached[rule_hash].severity == Severity.CRITICAL  # pyrefly: ignore [missing-attribute]
         store.close()
 
     def test_put_and_get_match_texts_and_description(self, tmp_path: Path) -> None:
@@ -1111,7 +1111,7 @@ class TestHitCache:
             # 下次查询应取到 hit，而非缓存的 None
             r = store.get_cached_hits(file_hash, [rule_hash])
             assert r[rule_hash] is not None
-            assert r[rule_hash].severity == Severity.WARNING
+            assert r[rule_hash].severity == Severity.WARNING  # pyrefly: ignore [missing-attribute]
         finally:
             store.close()
 
@@ -1383,7 +1383,7 @@ class TestBatchPutResults:
             cached = store.get_cached_hits(file_hash, [rule_hash])
             assert rule_hash in cached
             assert cached[rule_hash] is not None
-            assert cached[rule_hash].detail == "d"
+            assert cached[rule_hash].detail == "d"  # pyrefly: ignore [missing-attribute]
             # file_paths 已登记，lookup_file_hash 应命中
             assert store.lookup_file_hash(tmp_path / "a.txt", 1.0, 100) == file_hash
 
@@ -1450,7 +1450,7 @@ class TestBatchPutResults:
             )
             cached = store.get_cached_hits(file_hash, [r1, r2])
             assert cached[r1] is not None
-            assert cached[r1].detail == "hit"
+            assert cached[r1].detail == "hit"  # pyrefly: ignore [missing-attribute]
             assert cached[r2] is None
 
     def test_empty_hits_only_refreshes_metadata(self, tmp_path: Path) -> None:
@@ -1545,7 +1545,7 @@ class TestBatchPutResults:
             store.put_result(file_hash, rule_hash, _make_hit(detail="v1"))
             # 触发 LRU 加载
             cached1 = store.get_cached_hits(file_hash, [rule_hash])
-            assert cached1[rule_hash].detail == "v1"
+            assert cached1[rule_hash].detail == "v1"  # pyrefly: ignore [missing-attribute]
             # 批量写入覆盖
             store.batch_put_results(
                 [
@@ -1560,7 +1560,7 @@ class TestBatchPutResults:
             )
             # LRU 应已失效，下次查询从 SQLite 取最新
             cached2 = store.get_cached_hits(file_hash, [rule_hash])
-            assert cached2[rule_hash].detail == "v2"
+            assert cached2[rule_hash].detail == "v2"  # pyrefly: ignore [missing-attribute]
 
     def test_same_file_hash_multiple_paths(self, tmp_path: Path) -> None:
         """同内容不同路径：两个 BatchWriteItem 共享 file_hash。"""

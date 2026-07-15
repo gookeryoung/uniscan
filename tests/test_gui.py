@@ -24,8 +24,13 @@ try:
         from PySide2.QtCore import Qt
         from PySide2.QtWidgets import QApplication, QListWidgetItem, QMenu, QMessageBox
     except ImportError:  # pragma: no cover
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QListWidgetItem, QMenu, QMessageBox
+        from PySide6.QtCore import Qt  # pyrefly: ignore [missing-import]
+        from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
+            QApplication,
+            QListWidgetItem,
+            QMenu,
+            QMessageBox,
+        )
 
     from fuscan.gui.detail_dialog import HitDetailDialog
     from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
@@ -469,16 +474,16 @@ class TestMultiRulesList:
         window._reload_ruleset()
         window._refresh_rules_file_list()
         # 初始 r2 覆盖 r1，pattern 应为 second
-        rule = window._ruleset.rules[0]
+        rule = window._ruleset.rules[0]  # pyrefly: ignore [missing-attribute]
         assert rule.match.pattern == "second"
 
         # 选中第二行并上移
-        window.rules_file_list.setCurrentRow(1)
+        window.rules_file_list.setCurrentRow(1)  # pyrefly: ignore [missing-argument]
         window._on_move_rule_up()
 
         # 顺序变为 [r2, r1]，r1 覆盖 r2，pattern 应为 first
         assert window._rules_paths == [r2, r1]
-        rule = window._ruleset.rules[0]
+        rule = window._ruleset.rules[0]  # pyrefly: ignore [missing-attribute]
         assert rule.match.pattern == "first"
         window.close()
 
@@ -502,12 +507,12 @@ class TestMultiRulesList:
         window._refresh_rules_file_list()
 
         # 选中第一行并下移
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         window._on_move_rule_down()
 
         # 顺序变为 [r2, r1]，r1 覆盖 r2
         assert window._rules_paths == [r2, r1]
-        rule = window._ruleset.rules[0]
+        rule = window._ruleset.rules[0]  # pyrefly: ignore [missing-attribute]
         assert rule.match.pattern == "first"
         window.close()
 
@@ -529,7 +534,7 @@ class TestMultiRulesList:
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         window._on_move_rule_up()
 
         assert window._rules_paths == [r1, r2]
@@ -553,7 +558,7 @@ class TestMultiRulesList:
         window._rules_paths = [r1, r2]
         window._refresh_rules_file_list()
 
-        window.rules_file_list.setCurrentRow(1)
+        window.rules_file_list.setCurrentRow(1)  # pyrefly: ignore [missing-argument]
         window._on_move_rule_down()
 
         assert window._rules_paths == [r1, r2]
@@ -581,7 +586,7 @@ class TestMultiRulesList:
         assert window.rules_tree.topLevelItemCount() == 2
 
         # 选中第一行并移除
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         window._on_remove_rule()
 
         assert len(window._rules_paths) == 1
@@ -605,7 +610,7 @@ class TestMultiRulesList:
         window._refresh_rules_file_list()
         assert window._ruleset is not None
 
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         window._on_remove_rule()
 
         assert len(window._rules_paths) == 0
@@ -632,12 +637,12 @@ class TestMultiRulesList:
         # [r1, r2] → r2 覆盖 r1
         window._rules_paths = [r1, r2]
         window._reload_ruleset()
-        assert window._ruleset.rules[0].match.pattern == "from_r2"
+        assert window._ruleset.rules[0].match.pattern == "from_r2"  # pyrefly: ignore [missing-attribute]
 
         # [r2, r1] → r1 覆盖 r2
         window._rules_paths = [r2, r1]
         window._reload_ruleset()
-        assert window._ruleset.rules[0].match.pattern == "from_r1"
+        assert window._ruleset.rules[0].match.pattern == "from_r1"  # pyrefly: ignore [missing-attribute]
         window.close()
 
 
@@ -749,7 +754,7 @@ class TestConfigPersistence:
         """从下拉选择路径应设置 scan_root。"""
         (tmp_path / "target").mkdir()
         window = MainWindow()
-        window.path_combo.addItem(str(tmp_path / "target"))
+        window.path_combo.addItem(str(tmp_path / "target"))  # pyrefly: ignore [missing-argument]
         window.path_combo.setCurrentIndex(0)
         assert window._scan_root == tmp_path / "target"
         window.close()
@@ -861,7 +866,7 @@ class TestScanWorker:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -869,13 +874,13 @@ class TestScanWorker:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         results: list[Any] = []
-        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         # 通过事件循环等待 finished 信号
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)  # 超时保护
+        QTimer.singleShot(10000, loop.quit)  # 超时保护  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -889,20 +894,20 @@ class TestScanWorker:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         rs = _build_ruleset()
         worker = ScanWorker(ruleset=rs, roots=[tmp_path / "nonexistent"])
 
         results: list[Any] = []
         errors: list[Any] = []
-        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
-        worker.failed.connect(lambda msg: errors.append(msg))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        worker.failed.connect(lambda msg: errors.append(msg))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -1012,7 +1017,7 @@ class TestScanControlIntegration:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
         (tmp_path / "normal.txt").write_text("y", encoding="utf-8")
@@ -1030,7 +1035,7 @@ class TestScanControlIntegration:
         assert window.main_stack.currentIndex() == 1
 
         loop = QEventLoop()
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         window._worker.finished.connect(loop.quit) if window._worker is not None else None
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
@@ -1499,7 +1504,7 @@ class TestScanningPageLayout:
         try:
             from PySide2.QtWidgets import QProgressBar as _QProgressBar
         except ImportError:  # pragma: no cover
-            from PySide6.QtWidgets import QProgressBar as _QProgressBar
+            from PySide6.QtWidgets import QProgressBar as _QProgressBar  # pyrefly: ignore [missing-import]
         assert isinstance(window.progress, _QProgressBar)
         # 初始（SETUP 阶段）应不可见
         assert not window.progress.isVisible()
@@ -1604,13 +1609,13 @@ class TestSeverityDisplay:
         sev_cell = window._result_model.item(0, 2)
         assert sev_cell is not None
         assert sev_cell.text() == "警告"
-        assert sev_cell.foreground().color().name() == "#f0883e"
+        assert sev_cell.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
 
         assert top_item.rowCount() > 0
         child_sev_cell = top_item.child(0, 2)
         assert child_sev_cell is not None
         assert child_sev_cell.text() == "警告"
-        assert child_sev_cell.foreground().color().name() == "#f0883e"
+        assert child_sev_cell.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
         window.close()
 
     def test_detail_hits_table_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1634,7 +1639,7 @@ class TestSeverityDisplay:
         item = window.detail_hits_table.item(0, 1)
         assert item is not None
         assert item.text() == "警告"
-        assert item.foreground().color().name() == "#f0883e"
+        assert item.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
         window.close()
 
     def test_rules_tree_shows_severity_colors(self, qapp: QApplication) -> None:
@@ -1647,7 +1652,7 @@ class TestSeverityDisplay:
         assert item is not None
         sev_text = item.text(1)
         assert sev_text in ("严重", "警告", "一般")
-        color_name = item.foreground(1).color().name()
+        color_name = item.foreground(1).color().name()  # pyrefly: ignore [missing-argument]
         assert color_name in ("#d73a49", "#f0883e", "#0366d6")
         window.close()
 
@@ -1664,7 +1669,7 @@ class TestSeverityDisplay:
         item = dialog.hits_table.item(0, 1)
         assert item is not None
         assert item.text() == "警告"
-        assert item.foreground().color().name() == "#f0883e"
+        assert item.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
         dialog.close()
 
 
@@ -1676,7 +1681,7 @@ class TestScanWorkerControl:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         # 300 个文件确保遍历阶段触发进度回调（每 200 个文件一次）
         for i in range(300):
@@ -1694,13 +1699,13 @@ class TestScanWorkerControl:
 
         finished_reports: list[Any] = []
         cancelled_reports: list[Any] = []
-        worker.finished_report.connect(lambda r: finished_reports.append(r))  # noqa: PLW0108
-        worker.cancelled.connect(lambda r: cancelled_reports.append(r))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: finished_reports.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        worker.cancelled.connect(lambda r: cancelled_reports.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -1715,7 +1720,7 @@ class TestScanWorkerControl:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -1723,16 +1728,16 @@ class TestScanWorkerControl:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         results: list[Any] = []
-        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         # 暂停后立即恢复
-        QTimer.singleShot(50, worker.pause)
-        QTimer.singleShot(100, worker.resume)
+        QTimer.singleShot(50, worker.pause)  # pyrefly: ignore [bad-argument-type, missing-argument]
+        QTimer.singleShot(100, worker.resume)  # pyrefly: ignore [bad-argument-type, missing-argument]
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -1998,7 +2003,7 @@ class TestScanWorkerMultiRoot:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         (tmp_path / "dir_a").mkdir()
         (tmp_path / "dir_a" / "secret.txt").write_text("x", encoding="utf-8")
@@ -2009,12 +2014,12 @@ class TestScanWorkerMultiRoot:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path / "dir_a", tmp_path / "dir_b"])
 
         results: list[Any] = []
-        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -2030,7 +2035,7 @@ class TestScanWorkerMultiRoot:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
 
@@ -2041,12 +2046,12 @@ class TestScanWorkerMultiRoot:
         )
 
         results: list[Any] = []
-        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108
+        worker.finished_report.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -2063,7 +2068,7 @@ class TestScanWorkerProgress:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         for i in range(5):
             (tmp_path / f"secret_{i}.txt").write_text("x", encoding="utf-8")
@@ -2072,12 +2077,12 @@ class TestScanWorkerProgress:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         progress_infos: list[Any] = []
-        worker.progress_info.connect(progress_infos.append)
+        worker.progress_info.connect(progress_infos.append)  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -2096,7 +2101,7 @@ class TestScanWorkerProgress:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         dir_a = tmp_path / "dir_a"
         dir_a.mkdir()
@@ -2111,12 +2116,12 @@ class TestScanWorkerProgress:
         worker = ScanWorker(ruleset=rs, roots=[dir_a, dir_b])
 
         progress_infos: list[Any] = []
-        worker.progress_info.connect(progress_infos.append)
+        worker.progress_info.connect(progress_infos.append)  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -2132,7 +2137,7 @@ class TestScanWorkerProgress:
         try:
             from PySide2.QtCore import QEventLoop, QTimer
         except ImportError:  # pragma: no cover
-            from PySide6.QtCore import QEventLoop, QTimer
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
 
         from fuscan.scanner.result import ProgressInfo
 
@@ -2142,12 +2147,12 @@ class TestScanWorkerProgress:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         progress_infos: list[Any] = []
-        worker.progress_info.connect(progress_infos.append)
+        worker.progress_info.connect(progress_infos.append)  # pyrefly: ignore [missing-attribute]
         worker.start()
 
         loop = QEventLoop()
         worker.finished.connect(loop.quit)
-        QTimer.singleShot(10000, loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
         (loop.exec if hasattr(loop, "exec") else loop.exec_)()
 
         worker.wait(2000)
@@ -2178,7 +2183,7 @@ class TestScanWorkerDirect:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         reports: list[Any] = []
-        worker.finished_report.connect(reports.append)
+        worker.finished_report.connect(reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()  # 直接调用，不通过 start()
 
         assert len(reports) == 1
@@ -2200,7 +2205,7 @@ class TestScanWorkerDirect:
         worker = ScanWorker(ruleset=rs, roots=[dir_a, dir_b])
 
         reports: list[Any] = []
-        worker.finished_report.connect(reports.append)
+        worker.finished_report.connect(reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()
 
         assert len(reports) == 1
@@ -2215,7 +2220,7 @@ class TestScanWorkerDirect:
         worker = ScanWorker(ruleset=rs, roots=[tmp_path])
 
         reports: list[Any] = []
-        worker.finished_report.connect(reports.append)
+        worker.finished_report.connect(reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()
 
         assert len(reports) == 1
@@ -2238,7 +2243,7 @@ class TestScanWorkerDirect:
         worker._start_time = time.monotonic() - 2.0  # 2 秒前开始
 
         emitted: list[Any] = []
-        worker.progress_info.connect(emitted.append)
+        worker.progress_info.connect(emitted.append)  # pyrefly: ignore [missing-attribute]
 
         info = ProgressInfo(current_file="test.txt", scanned=5, total=8, skipped=1, matched=2, errors=0, elapsed=1.0)
         worker._on_progress(info)
@@ -2262,7 +2267,7 @@ class TestScanWorkerDirect:
         worker._start_time = time.monotonic()
 
         emitted: list[Any] = []
-        worker.progress_info.connect(emitted.append)
+        worker.progress_info.connect(emitted.append)  # pyrefly: ignore [missing-attribute]
 
         info = ProgressInfo(
             current_file="secret.py",
@@ -2301,9 +2306,9 @@ class TestScanWorkerDirect:
         monkeypatch.setattr(Scanner, "scan", boom)
 
         failures: list[Any] = []
-        worker.failed.connect(failures.append)
+        worker.failed.connect(failures.append)  # pyrefly: ignore [missing-attribute]
         reports: list[Any] = []
-        worker.finished_report.connect(reports.append)
+        worker.finished_report.connect(reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()
 
         assert len(failures) == 1
@@ -2319,7 +2324,7 @@ class TestScanWorkerDirect:
         worker._start_time = time.monotonic()
 
         emitted: list[Any] = []
-        worker.progress_info.connect(emitted.append)
+        worker.progress_info.connect(emitted.append)  # pyrefly: ignore [missing-attribute]
 
         info = ProgressInfo(current_file="", scanned=3, total=3, skipped=0, matched=1, errors=0, elapsed=0.5)
         worker._on_progress(info)
@@ -2421,7 +2426,7 @@ class TestScanWorkerDirect:
         monkeypatch.setattr(Scanner, "cancel", fake_cancel)
 
         cancelled_reports: list[Any] = []
-        worker.cancelled.connect(cancelled_reports.append)
+        worker.cancelled.connect(cancelled_reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()
 
         assert cancel_called["n"] >= 1
@@ -2446,7 +2451,7 @@ class TestScanWorkerDirect:
         monkeypatch.setattr(Scanner, "scan", fake_scan)
 
         cancelled_reports: list[Any] = []
-        worker.cancelled.connect(cancelled_reports.append)
+        worker.cancelled.connect(cancelled_reports.append)  # pyrefly: ignore [missing-attribute]
         worker.run()
 
         assert len(cancelled_reports) == 1
@@ -2605,7 +2610,7 @@ class TestScanModePersistence:
         if len(window._drive_buttons) == 0:
             window.close()
             pytest.skip("无可用盘符")
-        first_drive = window._drive_buttons[0].property("drive")
+        first_drive = window._drive_buttons[0].property("drive")  # pyrefly: ignore [bad-argument-type]
         window.close()
 
         config = Config(scan_mode="drive", last_drive=first_drive)
@@ -2775,12 +2780,12 @@ class TestHitDetailDialog:
         try:
             from PySide2.QtGui import QStandardItem
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QStandardItem
+            from PySide6.QtGui import QStandardItem  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         # 创建一个没有 UserRole 数据的项
         item = QStandardItem("test")
-        window._result_model.appendRow([item])
+        window._result_model.appendRow([item])  # pyrefly: ignore [missing-argument]
         # 不应抛异常
         window._on_result_double_clicked(item.index())
         window.close()
@@ -3481,7 +3486,7 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
         # 启动节流 timer 模拟用户正在输入
-        window._result_filter_timer.start()
+        window._result_filter_timer.start()  # pyrefly: ignore [missing-argument]
         assert window._result_filter_timer.isActive()
 
         # 新扫描完成调用 _populate_results，应停止挂起的 timer
@@ -3854,7 +3859,7 @@ class TestRuleEditor:
             lambda *args, **kwargs: None,
         )
         saved_paths: list[str] = []
-        dialog.rules_saved.connect(saved_paths.append)
+        dialog.rules_saved.connect(saved_paths.append)  # pyrefly: ignore [missing-attribute]
         dialog._on_save()
 
         content = rules_path.read_text(encoding="utf-8")
@@ -3972,7 +3977,7 @@ class TestRuleEditor:
         rules_path = self._make_rules_file(tmp_path)
         dialog = RuleEditorDialog([rules_path])
         saved_paths: list[str] = []
-        dialog.rules_saved.connect(saved_paths.append)
+        dialog.rules_saved.connect(saved_paths.append)  # pyrefly: ignore [missing-attribute]
 
         # 模拟无效索引
         dialog.file_combo.setCurrentIndex(-1)
@@ -4007,7 +4012,7 @@ class TestRuleEditor:
 
         monkeypatch.setattr(Path, "write_text", _raise_on_write)
         saved_paths: list[str] = []
-        dialog.rules_saved.connect(saved_paths.append)
+        dialog.rules_saved.connect(saved_paths.append)  # pyrefly: ignore [missing-attribute]
         dialog._on_save()
 
         try:
@@ -4039,7 +4044,7 @@ class TestRuleEditor:
         )
 
         saved_paths: list[str] = []
-        dialog.rules_saved.connect(saved_paths.append)
+        dialog.rules_saved.connect(saved_paths.append)  # pyrefly: ignore [missing-attribute]
         dialog._on_save()
 
         assert warned["called"]
@@ -4224,13 +4229,13 @@ class TestDetailArea:
         try:
             from PySide2.QtGui import QStandardItem
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QStandardItem
+            from PySide6.QtGui import QStandardItem  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         # 创建无 data 的顶层项并选中
         item = QStandardItem("no-data")
         item.setEditable(False)
-        window._result_model.appendRow([item])
+        window._result_model.appendRow([item])  # pyrefly: ignore [missing-argument]
         window.detail_action_stack.setCurrentIndex(1)
         window.detail_main_stack.setCurrentIndex(1)
         window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
@@ -4325,7 +4330,7 @@ class TestDetailArea:
         window._on_copy_path()
         clipboard = QApplication.clipboard()
         assert clipboard is not None
-        assert "secret.txt" in clipboard.text()
+        assert "secret.txt" in clipboard.text()  # pyrefly: ignore [missing-argument]
         window.close()
 
     def test_detail_copy_path_no_result(self, qapp: QApplication) -> None:
@@ -4376,7 +4381,7 @@ class TestDetailArea:
 
         original_qmenu = mw_module.QMenu
 
-        class FakeQMenu(QMenu):
+        class FakeQMenu(QMenu):  # pyrefly: ignore [invalid-inheritance]
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 super().__init__(*args, **kwargs)
                 self.exec_ = lambda *a, **kw: None
@@ -4407,7 +4412,7 @@ class TestDetailArea:
         original_qmenu = mw_module.QMenu
         call_count = {"n": 0}
 
-        class FakeQMenu(QMenu):
+        class FakeQMenu(QMenu):  # pyrefly: ignore [invalid-inheritance]
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 super().__init__(*args, **kwargs)
                 call_count["n"] += 1
@@ -4430,14 +4435,14 @@ class TestDetailArea:
         window = MainWindow()
         window._rules_paths = [r1]
         window._refresh_rules_file_list()
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
 
         captured: list[Any] = []
         from fuscan.gui import main_window as mw_module
 
         original_qmenu = mw_module.QMenu
 
-        class FakeQMenu(QMenu):
+        class FakeQMenu(QMenu):  # pyrefly: ignore [invalid-inheritance]
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 super().__init__(*args, **kwargs)
                 self.exec_ = lambda *a, **kw: None
@@ -4463,7 +4468,7 @@ class TestDetailArea:
         try:
             from PySide2.QtGui import QKeySequence
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QKeySequence
+            from PySide6.QtGui import QKeySequence  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         assert window._shortcut_next.key().toString() == QKeySequence("F3").toString()
@@ -4646,7 +4651,7 @@ class TestDetailArea:
         original_qmenu = mw_module.QMenu
         call_count = {"n": 0}
 
-        class FakeQMenu(QMenu):
+        class FakeQMenu(QMenu):  # pyrefly: ignore [invalid-inheritance]
             def __init__(self, *args: Any, **kwargs: Any) -> None:
                 super().__init__(*args, **kwargs)
                 call_count["n"] += 1
@@ -5309,7 +5314,7 @@ class TestScanCallbacks:
         window._scan_root = tmp_path
         window._ruleset = rs
         # 手动创建 worker 以测试暂停/恢复
-        window._worker = ScanWorker(scanner, tmp_path)
+        window._worker = ScanWorker(scanner, tmp_path)  # pyrefly: ignore [bad-argument-type]
         window._scan_state = ScanState.RUNNING
 
         window._pause_scan()
@@ -5569,7 +5574,7 @@ class TestExportAndMenu:
         try:
             from PySide2.QtWidgets import QListWidgetItem
         except ImportError:  # pragma: no cover
-            from PySide6.QtWidgets import QListWidgetItem
+            from PySide6.QtWidgets import QListWidgetItem  # pyrefly: ignore [missing-import]
 
         scan_dir = tmp_path / "scan_target"
         scan_dir.mkdir()
@@ -5586,7 +5591,7 @@ class TestExportAndMenu:
         try:
             from PySide2.QtGui import QCloseEvent
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QCloseEvent
+            from PySide6.QtGui import QCloseEvent  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         window.closeEvent(QCloseEvent())
@@ -5617,7 +5622,7 @@ class TestRulesManagement:
         window._refresh_rules_file_list()
         assert window.rules_file_list.count() == 1
 
-        window.rules_file_list.setCurrentRow(0)
+        window.rules_file_list.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         window._on_remove_rule()
         assert len(window._rules_paths) == 0
         window.close()
@@ -5684,7 +5689,7 @@ class TestSettingsDialog:
         try:
             from PySide2.QtWidgets import QDialog
         except ImportError:  # pragma: no cover
-            from PySide6.QtWidgets import QDialog
+            from PySide6.QtWidgets import QDialog  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         # settings_action 应存在并连接到 _on_settings
@@ -6100,7 +6105,7 @@ class TestGuiCache:
         try:
             from PySide2.QtGui import QCloseEvent
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QCloseEvent
+            from PySide6.QtGui import QCloseEvent  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         window._config.cache_enabled = True
@@ -6124,7 +6129,7 @@ class TestGuiCache:
         try:
             from PySide2.QtGui import QCloseEvent
         except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QCloseEvent
+            from PySide6.QtGui import QCloseEvent  # pyrefly: ignore [missing-import]
 
         window = MainWindow()
         window._config.cache_enabled = True

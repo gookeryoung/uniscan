@@ -14,7 +14,7 @@ from __future__ import annotations
 try:
     from PySide2.QtWidgets import QDialog, QWidget
 except ImportError:  # pragma: no cover
-    from PySide6.QtWidgets import QDialog, QWidget
+    from PySide6.QtWidgets import QDialog, QWidget  # pyrefly: ignore [missing-import]
 
 from fuscan.config import Config
 from fuscan.gui.settings_dialog_ui import Ui_SettingsDialog
@@ -22,7 +22,7 @@ from fuscan.gui.settings_dialog_ui import Ui_SettingsDialog
 __all__ = ["SettingsDialog"]
 
 
-class SettingsDialog(QDialog, Ui_SettingsDialog):
+class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-inheritance]
     """设置对话框，多页面 Tab 形式展示。"""
 
     def __init__(self, config: Config, parent: QWidget | None = None) -> None:

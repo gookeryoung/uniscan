@@ -116,7 +116,7 @@ class PptxExtractor(Extractor):
     def _extract_slide(self, slide: object) -> list[str]:
         """提取单张幻灯片的文本。"""
         texts: list[str] = []
-        for shape in slide.shapes:
+        for shape in slide.shapes:  # pyrefly: ignore [missing-attribute]
             if shape.has_text_frame:
                 for para in shape.text_frame.paragraphs:
                     text = para.text.strip()
@@ -128,8 +128,8 @@ class PptxExtractor(Extractor):
                     row_texts = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                     if row_texts:
                         texts.append("\t".join(row_texts))
-        if slide.has_notes_slide:
-            notes_text = slide.notes_slide.notes_text_frame.text.strip()
+        if slide.has_notes_slide:  # pyrefly: ignore [missing-attribute]
+            notes_text = slide.notes_slide.notes_text_frame.text.strip()  # pyrefly: ignore [missing-attribute]
             if notes_text:
                 texts.append(f"[备注] {notes_text}")
         return texts

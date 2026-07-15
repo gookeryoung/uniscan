@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Mapping
 try:
     from PySide2.QtCore import QObject, QThread, Signal
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QObject, QThread, Signal
+    from PySide6.QtCore import QObject, QThread, Signal  # pyrefly: ignore [missing-import]
 
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
@@ -30,7 +30,7 @@ __all__ = ["ScanWorker"]
 logger = logging.getLogger(__name__)
 
 
-class ScanWorker(QThread):
+class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
     """后台扫描线程。
 
     信号：
@@ -101,7 +101,7 @@ class ScanWorker(QThread):
     def _on_progress(self, info: ProgressInfo) -> None:
         """Scanner 进度回调：累加前序根路径的统计后 emit。"""
         elapsed = time.monotonic() - self._start_time
-        self.progress_info.emit(
+        self.progress_info.emit(  # pyrefly: ignore [missing-attribute]
             ProgressInfo(
                 current_file=info.current_file,
                 scanned=info.scanned + self._cum_scanned,
@@ -179,9 +179,9 @@ class ScanWorker(QThread):
                 cancelled=was_cancelled,
             )
             if was_cancelled:
-                self.cancelled.emit(merged)
+                self.cancelled.emit(merged)  # pyrefly: ignore [missing-attribute]
             else:
-                self.finished_report.emit(merged)
+                self.finished_report.emit(merged)  # pyrefly: ignore [missing-attribute]
         except Exception as exc:
             logger.exception("后台扫描失败")
-            self.failed.emit(str(exc))
+            self.failed.emit(str(exc))  # pyrefly: ignore [missing-attribute]
