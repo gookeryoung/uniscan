@@ -2635,6 +2635,25 @@ class TestHitDetailDialog:
         assert "命中规则数" in info_text
         dialog.close()
 
+    def test_dialog_delete_on_close_and_icon(self, qapp: QApplication, tmp_path: Path) -> None:
+        """对话框应设置 WA_DeleteOnClose 避免反复打开累积卡死，并使用 target.svg 图标。"""
+        from fuscan.gui.detail_dialog import HitDetailDialog
+        from fuscan.scanner import RuleHit, ScanResult
+
+        path = tmp_path / "secret.txt"
+        path.write_text("my password here", encoding="utf-8")
+        result = ScanResult(
+            path=path,
+            size=path.stat().st_size,
+            hits=(RuleHit("r1", Severity.WARNING, "包含 'password'"),),
+        )
+        dialog = HitDetailDialog(result)
+        # WA_DeleteOnClose 确保关闭时 Qt 自动 delete，避免被父窗口持有导致累积卡死
+        assert dialog.testAttribute(Qt.WA_DeleteOnClose)
+        # 窗口图标应已加载 target.svg，非空
+        assert not dialog.windowIcon().isNull()
+        dialog.close()
+
     def test_dialog_hits_table(self, qapp: QApplication, tmp_path: Path) -> None:
         """命中规则表应正确显示。"""
         from fuscan.gui.detail_dialog import HitDetailDialog

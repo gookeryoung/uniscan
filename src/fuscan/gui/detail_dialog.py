@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Sequence
 
 try:
     from PySide2.QtCore import Qt
-    from PySide2.QtGui import QColor, QTextCharFormat, QTextCursor
+    from PySide2.QtGui import QColor, QIcon, QTextCharFormat, QTextCursor
     from PySide2.QtWidgets import (
         QDialog,
         QHeaderView,
@@ -47,8 +48,10 @@ from fuscan.scanner.result import RuleHit, ScanResult
 
 __all__ = ["HitDetailDialog"]
 
-
 logger = logging.getLogger(__name__)
+
+# 命中详情对话框窗口图标（assets/icons/target.svg）
+_ICON_TARGET = str(Path(__file__).parent.parent / "assets" / "icons" / "target.svg")
 
 
 class HitDetailDialog(QDialog, Ui_HitDetailDialog):
@@ -67,6 +70,10 @@ class HitDetailDialog(QDialog, Ui_HitDetailDialog):
         super().__init__(parent)
         self._result = result
         self.setupUi(self)
+        # 关闭时自动销毁：避免反复打开对话框累积 QTextDocument/QTableWidgetItem 导致内存泄漏卡死
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        # 窗口图标使用 target.svg
+        self.setWindowIcon(QIcon(_ICON_TARGET))
         self._hit_positions: list[tuple[int, int, int]] = []
         self._current_hit_index: int = -1
         self._configure_ui()
