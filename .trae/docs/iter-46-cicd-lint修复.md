@@ -142,17 +142,48 @@ pyrefly 提供 `--site-package-path`（显式指定 site-packages）、`--python
 | CI 安装 libpython3.8 | uv 装的 python-build-standalone 不受 apt 影响；需额外 sudo 步骤 | 未采用 |
 | 升级 pyrefly | uv.lock 锁定 1.1.1，升级需 `uv lock --upgrade-package` | 未采用 |
 
+### walker.py ctypes.windll 跨平台修复（commit 184d361）
+
+`--python-platform linux` 导致 pyrefly 报 `ctypes.windll` 不存在（`windll` 是 Windows 专属，Linux 平台无此属性）。`_is_network_drive` 函数直接调用 `ctypes.windll.kernel32.GetDriveTypeW`，无平台守卫。
+
+尝试过的方案：
+1. `# pyrefly: ignore[missing-attribute]`：Windows 平台变 `unused-ignore`（pyrefly 严格检查 unused），两难
+2. `if sys.platform != "win32": return False` 守卫：pyrefly 不识别 `sys.platform` 类型收窄，仍检查 if 分支后的代码
+
+采用方案：`getattr(ctypes, "windll", None)` 动态访问，返回 `Any` 类型，pyrefly 不报 `missing-attribute`：
+
+```python
+windll = getattr(ctypes, "windll", None)
+if windll is None:
+    return False
+drive_type = windll.kernel32.GetDriveTypeW(drive_str)
+```
+
+- Windows：`getattr` 返回 windll 对象，与 `ctypes.windll` 等效
+- Linux：`getattr` 返回 None，函数返回 False（与之前 `ctypes.windll` 抛 AttributeError 被 try/except 捕获等效）
+- 两个平台 pyrefly check 均 0 errors，无需 `# pyrefly: ignore` 注释
+- pytest 28 passed，功能不变
+
 ### 本地验证
 
-用 `--python-platform windows` 本地复现 CI 行为：
+两个平台均验证通过：
 
 ```powershell
+# Windows 平台（本地默认）
+uv run pyrefly check
+# 0 errors (435 suppressed)
+
+# Linux 平台（模拟 CI）
 $sitePackages = uv run python -c "import sysconfig; print(sysconfig.get_path('purelib'))"
-uv run pyrefly check --site-package-path $sitePackages --python-platform windows --skip-interpreter-query
-# 结果：0 errors (435 suppressed, 55 warnings not shown)，退出码 0
+uv run pyrefly check --site-package-path $sitePackages --python-platform linux --skip-interpreter-query
+# 0 errors (435 suppressed)
 ```
 
 注意：`site.getsitepackages()[0]` 返回 `.venv`（venv 根）而非 site-packages，必须用 `sysconfig.get_path('purelib')` 获取正确路径。
+
+### CI 验证
+
+run 29456013146 (commit 184d361) conclusion=**success**。Lint & Typecheck job 三步骤（Ruff check / Ruff format check / Pyrefly check）全部通过，test job（Python 3.8 & 3.14）全部通过。
 
 ## 遗留事项
 
