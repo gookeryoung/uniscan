@@ -47,6 +47,7 @@ from fuscan.scanner.result import RuleHit, ScanResult
 
 __all__ = ["HitDetailDialog"]
 
+
 logger = logging.getLogger(__name__)
 
 
