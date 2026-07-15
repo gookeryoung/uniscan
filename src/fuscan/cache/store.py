@@ -27,14 +27,17 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Collection, Mapping
+from typing import TYPE_CHECKING, Any, Collection, Mapping
 
 from fuscan.cache.hashes import compute_rule_hash, hash_bytes, serialize_rule
 from fuscan.cache.schema import CURRENT_VERSION, migrate
 from fuscan.rules.model import Rule, RuleSet, Severity
-from fuscan.scanner.result import RuleHit
 
-__all__ = ["CacheStats", "CacheStore", "default_cache_path"]
+if TYPE_CHECKING:
+    # 仅类型注解使用，运行时不导入以避免与 scanner.scanner 形成循环
+    from fuscan.scanner.result import RuleHit
+
+__all__ = ["BatchWriteItem", "CacheStats", "CacheStore", "default_cache_path"]
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +65,26 @@ class CacheStats:
     scanned_files: int = 0
     file_paths: int = 0
     scan_results: int = 0
+    extracted_contents: int = 0
     db_bytes: int = 0
     schema_version: int = 0
+
+
+@dataclass(frozen=True)
+class BatchWriteItem:
+    """单次批量写入项：包含文件元数据与该文件所有规则的缓存结果。
+
+    用于 :meth:`CacheStore.batch_put_results` 批量写入，避免逐条
+    :meth:`CacheStore.put_result` + :meth:`CacheStore.register_file`
+    + :meth:`CacheStore.register_path` 触发多次 commit/fsync。
+    预筛命中场景下 ``hits`` 可为空元组，仅刷新文件元数据。
+    """
+
+    file_hash: str
+    size: int
+    path: Path
+    mtime: float
+    hits: tuple[tuple[str, RuleHit | None], ...]
 
 
 class CacheStore:
@@ -294,6 +315,9 @@ class CacheStore:
                 f"WHERE file_hash = ? AND rule_hash IN ({placeholders})",
                 params,
             ).fetchall()
+            # 延迟导入打破循环：cache.store → scanner.result → scanner.__init__ → scanner.scanner → cache.store
+            from fuscan.scanner.result import RuleHit
+
             result: dict[str, RuleHit | None] = {}
             for row in rows:
                 if row["matched"]:
@@ -418,6 +442,89 @@ class CacheStore:
             self._register_path_locked(file_hash, path, mtime, now)
             self._hit_cache_invalidate(file_hash)
 
+    def batch_put_results(self, items: list[BatchWriteItem]) -> None:
+        """批量写入扫描结果与文件元数据，单次事务提交。
+
+        适用于扫描器累积一批后 flush 的场景。相比逐条
+        :meth:`put_result` + :meth:`register_file` + :meth:`register_path`，
+        显著减少 commit/fsync 次数，提升冷缓存场景吞吐。
+
+        - ``items[i].hits`` 为非空时，等价于对该 ``file_hash`` 调用多次
+          :meth:`put_result`（含命中与未命中两种 RuleHit）
+        - ``items[i].hits`` 为空元组时，仅刷新 ``scanned_files`` 与 ``file_paths``
+          元数据（预筛命中场景，无新结果需写入）
+        - ``scanned_files`` 用 :meth:`_register_file_locked` 同款 UPSERT 语义
+          （``size > 0`` 才覆盖占位值）
+        - 异常时整批 ROLLBACK，已写入数据不受影响
+
+        COMMIT 成功后统一失效涉及到的 ``file_hash`` 的进程内 LRU 条目。
+
+        :param items: 批量写入项列表；空列表直接返回
+        """
+        if not items:
+            return
+        now = _now_iso()
+        with self._lock:
+            try:
+                self._conn.execute("BEGIN")
+                # 1. scanned_files（executemany 比 循环 execute 快）
+                self._conn.executemany(
+                    "INSERT INTO scanned_files (file_hash, size, first_seen_at, last_scanned_at) "
+                    "VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(file_hash) DO UPDATE SET "
+                    "  size = CASE WHEN excluded.size > 0 THEN excluded.size ELSE scanned_files.size END, "
+                    "  last_scanned_at = excluded.last_scanned_at",
+                    [(item.file_hash, item.size, now, now) for item in items],
+                )
+                # 2. file_paths
+                self._conn.executemany(
+                    "INSERT INTO file_paths (file_hash, path, mtime, last_seen_at) "
+                    "VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(file_hash, path) DO UPDATE SET "
+                    "  mtime = excluded.mtime, last_seen_at = excluded.last_seen_at",
+                    [(item.file_hash, str(item.path), item.mtime, now) for item in items],
+                )
+                # 3. scan_results（扁平化为行列表后一次性 executemany）
+                result_rows: list[tuple[Any, ...]] = []
+                for item in items:
+                    for rule_hash, hit in item.hits:
+                        if hit is None:
+                            result_rows.append((item.file_hash, rule_hash, 0, None, None, None, 0, "", now))
+                        else:
+                            result_rows.append(
+                                (
+                                    item.file_hash,
+                                    rule_hash,
+                                    1,
+                                    hit.severity.value,
+                                    hit.detail,
+                                    hit.match_text,
+                                    hit.match_count,
+                                    hit.target,
+                                    now,
+                                )
+                            )
+                if result_rows:
+                    self._conn.executemany(
+                        "INSERT INTO scan_results "
+                        "(file_hash, rule_hash, matched, severity, detail, match_text, "
+                        " match_count, target, cached_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(file_hash, rule_hash) DO UPDATE SET "
+                        "  matched = excluded.matched, severity = excluded.severity, "
+                        "  detail = excluded.detail, match_text = excluded.match_text, "
+                        "  match_count = excluded.match_count, target = excluded.target, "
+                        "  cached_at = excluded.cached_at",
+                        result_rows,
+                    )
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+            # 仅 COMMIT 成功后失效 LRU
+            for item in items:
+                self._hit_cache_invalidate(item.file_hash)
+
     def lookup_file_hash(
         self,
         path: Path,
@@ -446,6 +553,54 @@ class CacheStore:
                 (str(path), mtime, size),
             ).fetchone()
             return row["file_hash"] if row else None
+
+    # ------------------------------------------------------------------ 提取内容缓存
+
+    def get_extracted_content(self, file_hash: str) -> str | None:
+        """查询提取器结果缓存。
+
+        用于缓存模式：同内容不同路径（如 node_modules 重复依赖）的文件，
+        通过 ``file_hash`` 复用提取结果，跳过 ``extract_content_from_bytes``。
+
+        :param file_hash: 文件内容哈希
+        :return: 命中时返回提取后的纯文本；未命中返回 None
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT content FROM extracted_contents WHERE file_hash = ?",
+                (file_hash,),
+            ).fetchone()
+            return row["content"] if row else None
+
+    def put_extracted_content(self, file_hash: str, content: str, extension: str) -> None:
+        """写入提取器结果缓存。
+
+        仅缓存非空内容；空内容（如提取失败回退到空字符串）不缓存，避免哨兵值污染。
+        ``scanned_files`` 中须已存在该 ``file_hash``（外键约束），
+        调用方通常先 :meth:`register_file` 再调本方法。
+
+        :param file_hash: 文件内容哈希
+        :param content: 提取后的纯文本内容
+        :param extension: 文件扩展名（用于诊断与未来按格式清理）
+        """
+        if not content:
+            return
+        now = _now_iso()
+        with self._lock:
+            # 确保 scanned_files 存在该 file_hash，避免外键约束失败
+            self._conn.execute(
+                "INSERT OR IGNORE INTO scanned_files "
+                "(file_hash, size, first_seen_at, last_scanned_at) VALUES (?, 0, ?, ?)",
+                (file_hash, now, now),
+            )
+            self._conn.execute(
+                "INSERT INTO extracted_contents (file_hash, content, extension, cached_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(file_hash) DO UPDATE SET "
+                "  content = excluded.content, extension = excluded.extension, "
+                "  cached_at = excluded.cached_at",
+                (file_hash, content, extension, now),
+            )
 
     # ------------------------------------------------------------------ 清理与统计
 
@@ -510,6 +665,7 @@ class CacheStore:
             scanned_files = self._count("scanned_files")
             file_paths = self._count("file_paths")
             scan_results = self._count("scan_results")
+            extracted_contents = self._count("extracted_contents")
             db_bytes = self._db_path.stat().st_size if self._db_path.exists() else 0
             return CacheStats(
                 rule_files=rule_files,
@@ -517,6 +673,7 @@ class CacheStore:
                 scanned_files=scanned_files,
                 file_paths=file_paths,
                 scan_results=scan_results,
+                extracted_contents=extracted_contents,
                 db_bytes=db_bytes,
                 schema_version=CURRENT_VERSION,
             )

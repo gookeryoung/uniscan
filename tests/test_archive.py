@@ -30,6 +30,7 @@ from fuscan.rules.model import (
     Severity,
 )
 from fuscan.scanner import Scanner
+from fuscan.scanner.result import ProgressInfo
 
 # ----------------------------- 工具函数 -----------------------------
 
@@ -1193,3 +1194,127 @@ class TestArchiveScannerErrorPaths:
         # 但 GBK 的 ASCII 字符 password 仍能保留
         hits = [r for r in results if r.has_hit]
         assert len(hits) == 1
+
+
+# ----------------------------- 并行扫描（iter-39 P3）-----------------------------
+
+
+class TestArchiveParallelScan:
+    """压缩包文件级别并行扫描（iter-39 P3）。
+
+    ``max_workers > 1`` 时不同 archive 文件用线程池并行扫描，单个 archive
+    内条目顺序执行。验证并行结果一致性、进度回调、取消机制与边界场景。
+    """
+
+    def test_parallel_results_match_sequential(self, tmp_path: Path) -> None:
+        """并行扫描结果与单线程一致（hit 路径集合相同，顺序无关）。"""
+        for i in range(3):
+            _make_zip(
+                tmp_path / f"a{i}.zip",
+                {f"secret{i}.txt": "x", f"normal{i}.txt": "y"},
+            )
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+
+        scanner_seq = Scanner(rs, scan_archives=True, max_workers=1)
+        report_seq = scanner_seq.scan(tmp_path)
+
+        scanner_par = Scanner(rs, scan_archives=True, max_workers=2)
+        report_par = scanner_par.scan(tmp_path)
+
+        seq_paths = sorted(str(r.path) for r in report_seq.results if r.has_hit)
+        par_paths = sorted(str(r.path) for r in report_par.results if r.has_hit)
+        assert seq_paths == par_paths
+        # 3 个 zip + 6 个内部条目 = 9
+        assert report_seq.stats.scanned_files == report_par.stats.scanned_files == 9
+        assert report_seq.stats.matched_files == report_par.stats.matched_files == 3
+
+    def test_parallel_progress_callbacks_monotonic(self, tmp_path: Path) -> None:
+        """并行模式下进度回调按累计值单调非递减触发。"""
+        for i in range(4):
+            _make_zip(tmp_path / f"a{i}.zip", {f"secret{i}.txt": "x"})
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        progresses: list[ProgressInfo] = []
+        scanner = Scanner(
+            rs,
+            scan_archives=True,
+            max_workers=3,
+            on_progress=progresses.append,
+            progress_interval=0.0,
+        )
+        report = scanner.scan(tmp_path)
+        # 进度回调至少触发一次
+        assert progresses
+        # 累计 scanned 单调非递减
+        scanned_values = [p.scanned for p in progresses]
+        assert scanned_values == sorted(scanned_values)
+        # 最终一次进度与 stats 一致
+        assert progresses[-1].scanned == report.stats.scanned_files
+        # 最终一次 matched 与 stats 一致
+        assert progresses[-1].matched == report.stats.matched_files
+
+    def test_parallel_cancel_terminates(self, tmp_path: Path) -> None:
+        """并行模式下取消操作应终止扫描并返回 cancelled=True。
+
+        通过 on_progress 回调在首次进度触发时调用 scanner.cancel()，验证
+        cancel 标志在 archive 文件级别并行路径下被正确检查。
+        """
+        # 创建多个含多条目的 zip，增加并行任务量与耗时
+        for i in range(8):
+            _make_zip(
+                tmp_path / f"archive{i}.zip",
+                {f"secret{i}_{j}.txt": "x" for j in range(8)},
+            )
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        scanner_ref: list[Scanner | None] = [None]
+
+        def on_progress(_p: ProgressInfo) -> None:
+            if scanner_ref[0] is not None:
+                scanner_ref[0].cancel()
+
+        scanner = Scanner(
+            rs,
+            scan_archives=True,
+            max_workers=2,
+            on_progress=on_progress,
+            progress_interval=0.0,
+        )
+        scanner_ref[0] = scanner
+        report = scanner.scan(tmp_path)
+        assert report.cancelled
+
+    def test_parallel_with_no_archives(self, tmp_path: Path) -> None:
+        """无 archive 文件时并行路径直接返回零增量，普通文件正常扫描。"""
+        (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("r", "hello"))
+        scanner = Scanner(rs, scan_archives=True, max_workers=2)
+        report = scanner.scan(tmp_path)
+        # 普通文件被扫描，archive phase 增量为 0
+        assert report.stats.scanned_files == 1
+        assert report.stats.matched_files == 1
+        assert not report.cancelled
+
+    def test_parallel_single_archive(self, tmp_path: Path) -> None:
+        """仅一个 archive 时并行路径仍正常工作（退化为单 future）。"""
+        _make_zip(tmp_path / "a.zip", {"secret.txt": "x", "normal.txt": "y"})
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        scanner = Scanner(rs, scan_archives=True, max_workers=4)
+        report = scanner.scan(tmp_path)
+        hit_paths = [str(r.path) for r in report.results if r.has_hit]
+        assert any("secret.txt" in p for p in hit_paths)
+        # 1 zip + 2 条目 = 3
+        assert report.stats.scanned_files == 3
+
+    def test_parallel_archive_scan_error_counted(self, tmp_path: Path) -> None:
+        """并行模式下损坏 archive 的错误被正确计入 stats.errors。"""
+        # 一个正常 zip + 一个损坏 zip
+        _make_zip(tmp_path / "good.zip", {"secret.txt": "x"})
+        (tmp_path / "bad.zip").write_bytes(b"not a zip file")
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        scanner = Scanner(rs, scan_archives=True, max_workers=2)
+        report = scanner.scan(tmp_path)
+        # 损坏 zip 在 ArchiveScanner.scan_archive 内被捕获返回单条错误结果，
+        # 不抛异常，errors >= 1
+        assert report.stats.errors >= 1
+        # good.zip 内 secret.txt 仍被扫描到
+        hit_paths = [str(r.path) for r in report.results if r.has_hit]
+        assert any("secret.txt" in p for p in hit_paths)

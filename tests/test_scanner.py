@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from fuscan.cache.hashes import hash_bytes
+from fuscan.extractors import extract_content_from_bytes
 from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
@@ -1541,6 +1543,49 @@ class TestScannerCache:
         finally:
             cache.close()
 
+    def test_extract_content_cache_skips_extract_on_second_path(self, tmp_path: Path) -> None:
+        """同内容不同路径的文件，第二次扫描应命中提取内容缓存，跳过 extract。"""
+        from fuscan.cache import CacheStore
+
+        # 写入两个内容相同的文件
+        content = "password content here"
+        p1 = tmp_path / "a.txt"
+        p2 = tmp_path / "b.txt"
+        p1.write_text(content, encoding="utf-8")
+        p2.write_text(content, encoding="utf-8")
+
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        cache = CacheStore(tmp_path / "cache.db")
+        try:
+            # 第一次扫描：p1 提取并写入 extracted_contents
+            scanner1 = Scanner(rs, cache=cache)
+            scanner1.scan_file(p1)
+            file_hash = hash_bytes(content.encode("utf-8"))
+            assert cache.get_extracted_content(file_hash) is not None
+
+            # 第二次扫描 p2（同内容不同路径）：mtime 预筛不命中（p2 未登记），
+            # 但提取内容缓存应命中，跳过 extract_content_from_bytes
+            extract_call_count = 0
+            original_extract = extract_content_from_bytes
+
+            def counting_extract(data: bytes, extension: str) -> str:
+                nonlocal extract_call_count
+                extract_call_count += 1
+                return original_extract(data, extension)
+
+            scanner2 = Scanner(rs, cache=cache)
+            # 注入计数器：通过 monkeypatch 替换模块级函数
+            import fuscan.scanner.scanner as scanner_module
+
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(scanner_module, "extract_content_from_bytes", counting_extract)
+                result2 = scanner2.scan_file(p2)
+            # 提取内容缓存应命中，extract 不应被调用
+            assert extract_call_count == 0, "提取内容缓存未命中，extract 仍被调用"
+            assert result2.has_hit
+        finally:
+            cache.close()
+
     def test_default_extract_content_with_hash(self, tmp_path: Path) -> None:
         """default_extract_content_with_hash 返回内容和哈希。"""
         import hashlib
@@ -1553,7 +1598,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(path)
         content, file_hash = default_extract_content_with_hash(entry)
         assert "password" in content
-        expected = hashlib.blake2b(b"password content", digest_size=32).hexdigest()
+        expected = hashlib.sha256(b"password content").hexdigest()
         assert file_hash == expected
 
     def test_default_extract_content_with_hash_empty_for_dir(self, tmp_path: Path) -> None:
@@ -1567,7 +1612,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(tmp_path / "subdir")
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
+        assert file_hash == hashlib.sha256(b"").hexdigest()
 
     def test_default_extract_content_with_hash_single_io(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """default_extract_content_with_hash 只读一次磁盘（消除双重 I/O）。"""
@@ -1593,7 +1638,7 @@ class TestScannerCache:
         content, file_hash = default_extract_content_with_hash(entry)
         assert call_count == 1, "read_bytes 应只调用一次（消除双重 I/O）"
         assert "password" in content
-        assert file_hash == hashlib.blake2b(b"password content", digest_size=32).hexdigest()
+        assert file_hash == hashlib.sha256(b"password content").hexdigest()
 
     def test_default_extract_content_with_hash_oversize_returns_empty(self, tmp_path: Path) -> None:
         """超过 100MB 的文件返回空内容和空哈希。"""
@@ -1608,7 +1653,7 @@ class TestScannerCache:
         entry = FileEntry.from_path(path)
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
+        assert file_hash == hashlib.sha256(b"").hexdigest()
 
     def test_default_extract_content_with_hash_read_os_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1631,7 +1676,7 @@ class TestScannerCache:
         monkeypatch.setattr(Path, "read_bytes", mock_read_bytes)
         content, file_hash = default_extract_content_with_hash(entry)
         assert content == ""
-        assert file_hash == hashlib.blake2b(b"", digest_size=32).hexdigest()
+        assert file_hash == hashlib.sha256(b"").hexdigest()
 
     def test_default_extract_content_with_hash_extractor_error_fallback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1651,3 +1696,118 @@ class TestScannerCache:
         content, file_hash = default_extract_content_with_hash(entry)
         assert "password content" in content  # 回退到 UTF-8 解码
         assert len(file_hash) == 64  # 哈希仍正确计算
+
+
+class TestScannerBatchFlush:
+    """扫描器批量写入 flush 集成测试（iter-39 P2）。"""
+
+    def test_scan_flushes_batch_on_completion(self, tmp_path: Path) -> None:
+        """扫描完成后 _pending_batch 应已 flush，缓存中能查到结果。"""
+        from fuscan.cache import CacheStore
+
+        (tmp_path / "secret.txt").write_text("password=abc", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner = Scanner(rs, cache=cache)
+            # 扫描前 batch 为空
+            assert scanner._pending_batch == []
+            scanner.scan(tmp_path)
+            # 扫描后 batch 应已 flush
+            assert scanner._pending_batch == []
+            # cache 中应有 scan_results 记录
+            assert cache.stats().scan_results >= 1
+        finally:
+            cache.close()
+
+    def test_scan_with_many_files_triggers_auto_flush(self, tmp_path: Path) -> None:
+        """扫描超过 _BATCH_THRESHOLD 个文件时中途自动 flush。"""
+        from fuscan.cache import BatchWriteItem, CacheStore
+
+        # 写入 60 个文件（> _BATCH_THRESHOLD=50）
+        for i in range(60):
+            (tmp_path / f"f{i}.txt").write_text(f"password_{i}", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner = Scanner(rs, cache=cache)
+            # 计数 batch_put_results 调用次数（至少 1 次自动 + 1 次末尾 flush）
+            call_count = 0
+            original = cache.batch_put_results
+
+            def counting_batch(items: list[BatchWriteItem]) -> None:
+                nonlocal call_count
+                call_count += 1
+                original(items)
+
+            cache.batch_put_results = counting_batch  # type: ignore[method-assign]
+            scanner.scan(tmp_path)
+            # 至少触发 1 次自动 flush（达到阈值时）
+            assert call_count >= 1
+            # 最终全部 flush 完成
+            assert scanner._pending_batch == []
+            # 60 个 .txt 文件都被登记到 cache（cache.db 等 SQLite 文件不算）
+            assert cache.stats().scanned_files >= 60
+        finally:
+            cache.close()
+
+    def test_pipeline_scan_batch_flushes_correctly(self, tmp_path: Path) -> None:
+        """流水线模式下扫描完成后 batch 应正确 flush，缓存一致。"""
+        from fuscan.cache import CacheStore
+
+        # 写入多个内容不同的文件
+        for i in range(10):
+            (tmp_path / f"f{i}.txt").write_text(f"password_{i}", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner = Scanner(rs, cache=cache, max_workers=4)
+            scanner.scan(tmp_path)
+            # 扫描后 batch 应已 flush
+            assert scanner._pending_batch == []
+            # 二次扫描应命中缓存（mtime 预筛命中）
+            scanner2 = Scanner(rs, cache=cache, max_workers=4)
+            report2 = scanner2.scan(tmp_path)
+            assert report2.stats.matched_files == 10
+            # 二次扫描全部走预筛路径（无 errors）
+            assert report2.stats.errors == 0
+        finally:
+            cache.close()
+
+    def test_scan_cancelled_still_flushes_pending(self, tmp_path: Path) -> None:
+        """扫描取消后已累积的 batch 仍应 flush（避免数据丢失）。"""
+        from fuscan.cache import CacheStore
+
+        # 写入大量文件
+        for i in range(100):
+            (tmp_path / f"f{i}.txt").write_text(f"password_{i}", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache_path = tmp_path / "cache.db"
+        cache = CacheStore(cache_path)
+        try:
+            scanner = Scanner(rs, cache=cache)
+            # 在第 10 个文件后取消
+            call_count = 0
+
+            def on_progress(info: ProgressInfo) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count >= 5:
+                    scanner.cancel()
+
+            scanner._on_progress = on_progress
+            scanner._progress_interval = 0.0
+            scanner.scan(tmp_path)
+            # 取消后 batch 仍应 flush（_flush_batch 在 scan() 末尾调用）
+            assert scanner._pending_batch == []
+            # cache 中应有部分结果（已 flush 的批次）
+            assert cache.stats().scanned_files >= 1
+        finally:
+            cache.close()

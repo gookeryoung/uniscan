@@ -14,10 +14,12 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from fuscan.cache import (
+    BatchWriteItem,
     CacheStats,
     CacheStore,
     compute_file_hash,
@@ -212,7 +214,7 @@ class TestRuleHashCompute:
 
     def test_rule_hash_is_sha256_hex(self) -> None:
         h = compute_rule_hash(_filename_rule())
-        # BLAKE2b digest_size=32 输出 64 字符 hex（与 SHA-256 长度一致）
+        # 规则序列化字节远小于分流阈值，始终走 SHA-256，输出 64 字符 hex
         assert len(h) == 64
         # 全部为十六进制字符
         int(h, 16)
@@ -224,13 +226,29 @@ class TestRuleHashCompute:
         assert "match" in data
 
     def test_hash_bytes_empty(self) -> None:
-        # 空字节返回固定摘要（BLAKE2b digest_size=32）
-        assert hash_bytes(b"") == hashlib.blake2b(b"", digest_size=32).hexdigest()
+        # 空字节 < 阈值，走 SHA-256
+        assert hash_bytes(b"") == hashlib.sha256(b"").hexdigest()
+
+    def test_hash_bytes_small_uses_sha256(self) -> None:
+        """小文件（< 8KB）走 SHA-256 路径。"""
+        data = b"hello"
+        assert hash_bytes(data) == hashlib.sha256(data).hexdigest()
+
+    def test_hash_bytes_large_uses_blake2b(self) -> None:
+        """大文件（≥ 8KB）走 BLAKE2b digest_size=32 路径。"""
+        data = b"x" * (8 * 1024)
+        assert hash_bytes(data) == hashlib.blake2b(data, digest_size=32).hexdigest()
+
+    def test_hash_bytes_threshold_boundary(self) -> None:
+        """阈值边界：恰好 8192 字节走 BLAKE2b，8191 字节走 SHA-256。"""
+        assert hash_bytes(b"x" * 8191) == hashlib.sha256(b"x" * 8191).hexdigest()
+        assert hash_bytes(b"x" * 8192) == hashlib.blake2b(b"x" * 8192, digest_size=32).hexdigest()
 
     def test_compute_file_hash(self, tmp_path: Path) -> None:
         p = tmp_path / "a.txt"
         p.write_bytes(b"hello")
-        assert compute_file_hash(p) == hashlib.blake2b(b"hello", digest_size=32).hexdigest()
+        # 小文件走 SHA-256
+        assert compute_file_hash(p) == hashlib.sha256(b"hello").hexdigest()
 
     def test_compute_file_hash_missing(self, tmp_path: Path) -> None:
         with pytest.raises(OSError):
@@ -844,7 +862,7 @@ class TestCacheCompatVersion:
         # 触发迁移：应清空 scanned_files
         from fuscan.cache.schema import CACHE_COMPAT_VERSION
 
-        assert CACHE_COMPAT_VERSION >= 2  # 当前为 2，旧库 v1 应被清空
+        assert CACHE_COMPAT_VERSION >= 2  # 当前为 3，旧库 v1 应被清空
         migrate(conn)
         # 旧数据应被清空
         rows = conn.execute("SELECT * FROM scanned_files").fetchall()
@@ -1123,3 +1141,385 @@ class TestLookupFileHash:
 
             assert store.lookup_file_hash(p1, st1.st_mtime, st1.st_size) == file_hash
             assert store.lookup_file_hash(p2, st2.st_mtime, st2.st_size) == file_hash
+
+
+class TestExtractedContent:
+    """提取器结果缓存：get/put_extracted_content（iter-39）。"""
+
+    def test_put_and_get_roundtrip(self, tmp_path: Path) -> None:
+        """写入提取内容后能查回。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"doc-bytes")
+            store.register_file(file_hash, 100)
+            store.put_extracted_content(file_hash, "提取的文本", "docx")
+
+            assert store.get_extracted_content(file_hash) == "提取的文本"
+
+    def test_get_returns_none_when_not_cached(self, tmp_path: Path) -> None:
+        """未缓存的 file_hash 返回 None。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            assert store.get_extracted_content(hash_bytes(b"unknown")) is None
+
+    def test_put_empty_content_skipped(self, tmp_path: Path) -> None:
+        """空内容不缓存（避免哨兵值污染）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"empty")
+            store.register_file(file_hash, 0)
+            store.put_extracted_content(file_hash, "", "txt")
+            assert store.get_extracted_content(file_hash) is None
+
+    def test_put_overwrites_on_conflict(self, tmp_path: Path) -> None:
+        """同一 file_hash 重复写入时覆盖旧内容。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"content")
+            store.register_file(file_hash, 100)
+            store.put_extracted_content(file_hash, "v1", "docx")
+            store.put_extracted_content(file_hash, "v2", "docx")
+            assert store.get_extracted_content(file_hash) == "v2"
+
+    def test_put_creates_scanned_files_placeholder_if_missing(self, tmp_path: Path) -> None:
+        """put 时 scanned_files 无该 file_hash 会自动占位插入（满足外键约束）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"new")
+            # 不调 register_file，直接 put_extracted_content
+            store.put_extracted_content(file_hash, "内容", "docx")
+            assert store.get_extracted_content(file_hash) == "内容"
+            # stats 应反映 scanned_files 有 1 条
+            assert store.stats().scanned_files == 1
+
+    def test_extracted_contents_counted_in_stats(self, tmp_path: Path) -> None:
+        """stats 应统计 extracted_contents 表行数。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            fh1 = hash_bytes(b"a")
+            fh2 = hash_bytes(b"b")
+            store.register_file(fh1, 10)
+            store.register_file(fh2, 20)
+            store.put_extracted_content(fh1, "content-a", "docx")
+            store.put_extracted_content(fh2, "content-b", "pptx")
+            stats = store.stats()
+            assert stats.extracted_contents == 2
+
+    def test_cascade_delete_when_scanned_file_deleted(self, tmp_path: Path) -> None:
+        """scanned_files 删除时 extracted_contents 级联删除。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"to-delete")
+            store.register_file(file_hash, 100)
+            store.put_extracted_content(file_hash, "内容", "docx")
+            assert store.get_extracted_content(file_hash) is not None
+            # 直接删除 scanned_files 记录（模拟 prune_stale_files）
+            store._conn.execute("DELETE FROM scanned_files WHERE file_hash = ?", (file_hash,))
+            # extracted_contents 应被级联删除
+            assert store.get_extracted_content(file_hash) is None
+
+
+# ---------------------------------------------------------------- 批量写入
+
+
+def _make_hit(detail: str = "d", match_count: int = 1) -> RuleHit:
+    """构造测试用 RuleHit（避免每个测试重复样板）。"""
+    return RuleHit(
+        rule_name="r1",
+        severity=Severity.WARNING,
+        detail=detail,
+        match_text="m",
+        match_count=match_count,
+        target="filename",
+    )
+
+
+def _register_rule(store: CacheStore, rule: Rule | None = None) -> str:
+    """注册一条测试规则到 store，返回其 rule_hash。
+
+    ``scan_results.rule_hash`` 有外键约束指向 ``rules(rule_hash)``，
+    测试批量写入前需先注册规则。
+    """
+    rule = rule or _filename_rule()
+    rs = RuleSet(version="1.0", rules=(rule,))
+    return store.register_ruleset(rs)[rule.name]
+
+
+class TestBatchPutResults:
+    """批量写入接口 batch_put_results（iter-39 P2）。"""
+
+    def test_empty_items_is_noop(self, tmp_path: Path) -> None:
+        """空列表直接返回，不触发任何写入。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            store.batch_put_results([])
+            stats = store.stats()
+            assert stats.scanned_files == 0
+            assert stats.file_paths == 0
+            assert stats.scan_results == 0
+
+    def test_single_item_writes_all_three_tables(self, tmp_path: Path) -> None:
+        """单条写入：scanned_files、file_paths、scan_results 三表同时更新。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"doc")
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=100,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, _make_hit()),),
+                    ),
+                ]
+            )
+            stats = store.stats()
+            assert stats.scanned_files == 1
+            assert stats.file_paths == 1
+            assert stats.scan_results == 1
+            # 内容正确性
+            cached = store.get_cached_hits(file_hash, [rule_hash])
+            assert rule_hash in cached
+            assert cached[rule_hash] is not None
+            assert cached[rule_hash].detail == "d"
+            # file_paths 已登记，lookup_file_hash 应命中
+            assert store.lookup_file_hash(tmp_path / "a.txt", 1.0, 100) == file_hash
+
+    def test_multiple_items_single_transaction(self, tmp_path: Path) -> None:
+        """多条 BatchWriteItem 一次性写入（同一条规则匹配多个文件）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            items = [
+                BatchWriteItem(
+                    file_hash=hash_bytes(f"doc{i}".encode()),
+                    size=i * 10,
+                    path=tmp_path / f"f{i}.txt",
+                    mtime=float(i),
+                    hits=((rule_hash, _make_hit(detail=f"d{i}")),),
+                )
+                for i in range(5)
+            ]
+            store.batch_put_results(items)
+            stats = store.stats()
+            assert stats.scanned_files == 5
+            assert stats.file_paths == 5
+            assert stats.scan_results == 5
+            for i in range(5):
+                assert store.lookup_file_hash(tmp_path / f"f{i}.txt", float(i), i * 10) is not None
+
+    def test_none_hit_means_no_match_cached(self, tmp_path: Path) -> None:
+        """``(rule_hash, None)`` 表示该规则未命中且已缓存（避免重复扫描）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"doc")
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, None),),
+                    ),
+                ]
+            )
+            cached = store.get_cached_hits(file_hash, [rule_hash])
+            # None 在缓存里：表示该规则已扫描且未命中
+            assert cached == {rule_hash: None}
+
+    def test_mixed_hit_and_none(self, tmp_path: Path) -> None:
+        """同一文件多规则：部分命中部分未命中。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            # 注册两条规则
+            rs = RuleSet(version="1.0", rules=(_filename_rule(name="r1"), _filename_rule(name="r2")))
+            rule_hashes = store.register_ruleset(rs)
+            r1, r2 = rule_hashes["r1"], rule_hashes["r2"]
+            file_hash = hash_bytes(b"doc")
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((r1, _make_hit(detail="hit")), (r2, None)),
+                    ),
+                ]
+            )
+            cached = store.get_cached_hits(file_hash, [r1, r2])
+            assert cached[r1] is not None
+            assert cached[r1].detail == "hit"
+            assert cached[r2] is None
+
+    def test_empty_hits_only_refreshes_metadata(self, tmp_path: Path) -> None:
+        """``hits=()`` 时仅刷新 scanned_files/file_paths，scan_results 不写入。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"doc")
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=(),
+                    ),
+                ]
+            )
+            stats = store.stats()
+            assert stats.scanned_files == 1
+            assert stats.file_paths == 1
+            assert stats.scan_results == 0  # 没有结果写入
+
+    def test_upsert_overwrites_existing(self, tmp_path: Path) -> None:
+        """重复写入相同 (file_hash, rule_hash) 时覆盖旧值。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"doc")
+            # 第一次：命中
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, _make_hit(detail="v1")),),
+                    ),
+                ]
+            )
+            # 第二次：未命中（覆盖）
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, None),),
+                    ),
+                ]
+            )
+            cached = store.get_cached_hits(file_hash, [rule_hash])
+            assert cached == {rule_hash: None}
+
+    def test_size_zero_does_not_overwrite_existing_size(self, tmp_path: Path) -> None:
+        """``size=0`` 不覆盖已登记的真实 size（与 _register_file_locked 语义一致）。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            file_hash = hash_bytes(b"doc")
+            # 先登记真实 size=500
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=500,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=(),
+                    ),
+                ]
+            )
+            # 后续 size=0 不应覆盖
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=0,
+                        path=tmp_path / "a.txt",
+                        mtime=2.0,
+                        hits=(),
+                    ),
+                ]
+            )
+            # lookup_file_hash 按 size 匹配，应仍为 500
+            assert store.lookup_file_hash(tmp_path / "a.txt", 2.0, 500) == file_hash
+
+    def test_invalidates_lru_cache(self, tmp_path: Path) -> None:
+        """写入后 LRU 中对应 file_hash 的条目失效，下次查询走 SQLite 取最新。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"doc")
+            # 先用 put_result 写入并触发 LRU 缓存
+            store.put_result(file_hash, rule_hash, _make_hit(detail="v1"))
+            # 触发 LRU 加载
+            cached1 = store.get_cached_hits(file_hash, [rule_hash])
+            assert cached1[rule_hash].detail == "v1"
+            # 批量写入覆盖
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=0,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, _make_hit(detail="v2")),),
+                    ),
+                ]
+            )
+            # LRU 应已失效，下次查询从 SQLite 取最新
+            cached2 = store.get_cached_hits(file_hash, [rule_hash])
+            assert cached2[rule_hash].detail == "v2"
+
+    def test_same_file_hash_multiple_paths(self, tmp_path: Path) -> None:
+        """同内容不同路径：两个 BatchWriteItem 共享 file_hash。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            file_hash = hash_bytes(b"same-content")
+            store.batch_put_results(
+                [
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "a.txt",
+                        mtime=1.0,
+                        hits=((rule_hash, _make_hit()),),
+                    ),
+                    BatchWriteItem(
+                        file_hash=file_hash,
+                        size=10,
+                        path=tmp_path / "b.txt",
+                        mtime=2.0,
+                        hits=((rule_hash, _make_hit()),),
+                    ),
+                ]
+            )
+            stats = store.stats()
+            assert stats.scanned_files == 1  # 同 file_hash 去重
+            assert stats.file_paths == 2  # 两个不同路径
+            assert stats.scan_results == 1  # UPSERT 不重复
+
+    def test_transaction_rollback_on_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """异常时整批 ROLLBACK，已写入数据不受影响。"""
+        with CacheStore(tmp_path / "c.db") as store:
+            rule_hash = _register_rule(store)
+            # 预先写入一条
+            existing_hash = hash_bytes(b"existing")
+            store.put_result(existing_hash, rule_hash, _make_hit(detail="old"))
+            assert store.stats().scan_results == 1
+            # 包装 connection，使第 3 次 executemany 调用抛异常（scan_results 写入阶段）
+            real_conn = store._conn
+            original_executemany = real_conn.executemany
+            call_count = {"n": 0}
+
+            class _FailingConn:
+                """代理 sqlite3.Connection，仅覆盖 executemany；其余属性转发到原连接。"""
+
+                def __getattr__(self, name: str) -> Any:
+                    return getattr(real_conn, name)
+
+                def executemany(self, sql: str, params: Any) -> object:
+                    call_count["n"] += 1
+                    if call_count["n"] == 3:
+                        raise sqlite3.OperationalError("模拟写入失败")
+                    return original_executemany(sql, params)
+
+            monkeypatch.setattr(store, "_conn", _FailingConn())
+            with pytest.raises(sqlite3.OperationalError, match="模拟写入失败"):
+                store.batch_put_results(
+                    [
+                        BatchWriteItem(
+                            file_hash=hash_bytes(b"new1"),
+                            size=10,
+                            path=tmp_path / "a.txt",
+                            mtime=1.0,
+                            hits=((rule_hash, _make_hit()),),
+                        ),
+                    ]
+                )
+            # ROLLBACK 后 scan_results 仍只有原 1 条
+            assert store.stats().scan_results == 1
+            assert store.stats().scanned_files == 1  # 原有 1 条
+            assert store.stats().file_paths == 0  # 新增的 a.txt 被回滚

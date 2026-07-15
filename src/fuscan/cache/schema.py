@@ -40,13 +40,15 @@ __all__ = ["CACHE_COMPAT_VERSION", "CURRENT_VERSION", "SCHEMA_SQL", "migrate"]
 logger = logging.getLogger(__name__)
 
 # schema DDL 版本号：每次 DDL 变更递增，对应一次 migrate 步骤
-CURRENT_VERSION: int = 2
+CURRENT_VERSION: int = 3
 
 # 缓存数据兼容版本号：仅在哈希算法/序列化格式等数据语义变更时递增。
 # v1：SHA-256 哈希
 # v2：BLAKE2b digest_size=32 哈希（iter-38）
+# v3：按数据大小分流算法（iter-39）——小文件 SHA-256、大文件 BLAKE2b，
+#     修复 iter-38 在小文件场景的性能回退
 # 后续重大变更（如换 BLAKE3、修改 RuleHit 字段语义）才递增此值。
-CACHE_COMPAT_VERSION: int = 2
+CACHE_COMPAT_VERSION: int = 3
 
 
 SCHEMA_SQL: str = """
@@ -115,6 +117,18 @@ CREATE TABLE IF NOT EXISTS scan_results (
 
 CREATE INDEX IF NOT EXISTS idx_results_file ON scan_results(file_hash);
 CREATE INDEX IF NOT EXISTS idx_results_rule ON scan_results(rule_hash);
+
+-- 提取器结果缓存（iter-39）：按 file_hash 缓存提取后的纯文本，
+-- 同内容不同路径（如 node_modules 重复依赖）可跳过 extract_content_from_bytes。
+-- 仅缓存高开销格式（docx/pptx/xlsx 等），纯文本不缓存。
+-- 通过外键级联删除：scanned_files 删除时自动清理对应提取内容。
+CREATE TABLE IF NOT EXISTS extracted_contents (
+    file_hash   TEXT PRIMARY KEY,
+    content     TEXT NOT NULL,
+    extension   TEXT NOT NULL,
+    cached_at   TEXT NOT NULL,
+    FOREIGN KEY (file_hash) REFERENCES scanned_files(file_hash) ON DELETE CASCADE
+);
 """
 
 
@@ -150,6 +164,7 @@ def _purge_cache_data(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
         PRAGMA foreign_keys = OFF;
+        DROP TABLE IF EXISTS extracted_contents;
         DROP TABLE IF EXISTS scan_results;
         DROP TABLE IF EXISTS file_paths;
         DROP TABLE IF EXISTS scanned_files;
@@ -219,6 +234,8 @@ def migrate(conn: sqlite3.Connection) -> int:
         # v0 → v1：初始化全部表
         # v1 → v2：新增 meta 表（iter-38），SCHEMA_SQL 中已含 IF NOT EXISTS，
         #          旧库通过本路径安全创建 meta 表
+        # v2 → v3：兼容版本号升级触发 purge 后走此路径重建（iter-39）
+        # v3 → v4：新增 extracted_contents 表（iter-39），IF NOT EXISTS 安全升级
         conn.executescript(SCHEMA_SQL)
         current = CURRENT_VERSION
         conn.execute(f"PRAGMA user_version = {current}")

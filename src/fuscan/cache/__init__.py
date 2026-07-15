@@ -22,10 +22,11 @@ from fuscan.cache.hashes import (
 )
 from fuscan.cache.schema import CURRENT_VERSION
 from fuscan.cache.sources import compute_source_files
-from fuscan.cache.store import CacheStats, CacheStore, default_cache_path
+from fuscan.cache.store import BatchWriteItem, CacheStats, CacheStore, default_cache_path
 
 __all__ = [
     "CURRENT_VERSION",
+    "BatchWriteItem",
     "CacheStats",
     "CacheStore",
     "compute_file_hash",

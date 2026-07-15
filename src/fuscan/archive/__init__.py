@@ -12,6 +12,7 @@ from fuscan.archive.base import (
     ArchiveReaderFactory,
     default_factory,
     get_reader,
+    is_archive,
 )
 from fuscan.archive.rar_reader import RarReader
 from fuscan.archive.zip_reader import ZipReader
@@ -26,6 +27,7 @@ __all__ = [
     "ZipReader",
     "default_factory",
     "get_reader",
+    "is_archive",
     "register_all",
 ]
 

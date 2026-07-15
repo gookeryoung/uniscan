@@ -17,6 +17,7 @@ __all__ = [
     "ArchiveReaderFactory",
     "default_factory",
     "get_reader",
+    "is_archive",
 ]
 
 
@@ -102,3 +103,12 @@ default_factory = ArchiveReaderFactory()
 def get_reader(path: Path, password: str | None = None) -> ArchiveReader | None:
     """从默认工厂创建读取器。"""
     return default_factory.create(path, password=password)
+
+
+def is_archive(path: Path) -> bool:
+    """判断文件是否为已注册的压缩文件类型（仅按扩展名，不实例化）。
+
+    用于避免对非压缩文件启动并行扫描任务；损坏的压缩文件仍返回 True，
+    交由 :meth:`ArchiveScanner.scan_archive` 捕获并返回错误结果。
+    """
+    return default_factory.get(path.suffix) is not None

@@ -2,7 +2,8 @@
 
 支持多线程并发扫描以提升 I/O 密集型场景的吞吐量：
 ``max_workers`` 控制线程池大小，``None`` 或 ``<=1`` 时退化为单线程。
-压缩包内条目扫描始终顺序执行（避免 ArchiveScanner 的潜在线程安全问题）。
+压缩包扫描在 ``max_workers > 1`` 时按 archive 文件级别并行：不同 archive
+用线程池并发扫描，单个 archive 内条目顺序执行（避免 reader 共享竞争）。
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
 from fuscan.cache.hashes import hash_bytes
+from fuscan.cache.store import BatchWriteItem
 from fuscan.extractors import extract_content_from_bytes, extract_content_with_fallback
 from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, HashingContentProvider, MatchContext
@@ -29,6 +31,11 @@ if TYPE_CHECKING:
 __all__ = ["Scanner", "default_extract_content", "default_extract_content_with_hash"]
 
 logger = logging.getLogger(__name__)
+
+# 批量写入阈值：累积到该文件数后自动 flush 一次事务。
+# 50 个文件 × 平均 2 条规则 = 100 行 scan_results + 50 行 scanned_files + 50 行 file_paths，
+# 单次事务约 200 行写入，相比逐条 commit（200 次 fsync）减少 99% 提交开销。
+_BATCH_THRESHOLD: int = 50
 
 
 def default_extract_content(entry: FileEntry) -> str:
@@ -171,6 +178,10 @@ class Scanner:
         self._base_matched: int = 0
         self._base_errors: int = 0
         self._base_matches: int = 0
+        # 批量写入缓冲（iter-39 P2）：累积 BatchWriteItem，达到阈值后单次事务 flush。
+        # _batch_lock 保护 _pending_batch 跨 worker 线程的并发累积与 flush。
+        self._pending_batch: list[BatchWriteItem] = []
+        self._batch_lock = threading.Lock()
 
     def pause(self) -> None:
         """暂停扫描，阻塞扫描线程直到 resume。"""
@@ -252,6 +263,9 @@ class Scanner:
 
         # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
         if self._scan_archives and self._archive_scanner is not None and not self.is_cancelled:
+            # archive phase 内部直接调 CacheStore，不走 _pending_batch，需先 flush
+            # 避免批量缓冲与 archive scanner 的写入交错
+            self._flush_batch()
             self._base_scanned = scanned
             self._base_matched = matched
             self._base_errors = errors
@@ -261,6 +275,9 @@ class Scanner:
             matched += d_matched
             errors += d_errors
             matches += d_matches
+
+        # 最终保险 flush：流水线模式下可能有 worker 在 _drain_futures 后又累积
+        self._flush_batch()
 
         # 强制发送最终进度
         self._emit_progress("", scanned, matched, errors, matches, force=True)
@@ -446,50 +463,124 @@ class Scanner:
                 logger.warning("扫描文件失败 %s", entry.path, exc_info=True)
         return scanned, matched, errors, matches
 
+    def _accumulate_archive_results(
+        self,
+        archive_results: tuple[ScanResult, ...],
+        results: list[ScanResult],
+    ) -> tuple[int, int, int, int]:
+        """累积单个 archive 的扫描结果到 results，返回 (scanned, matched, errors, matches) 增量。
+
+        命中结果同步收集到 ``_matched_files`` 供进度回调上报。单线程与多线程
+        archive 路径共用此方法，避免结果累积逻辑重复。
+        """
+        scanned = 0
+        matched = 0
+        errors = 0
+        matches = 0
+        for ar in archive_results:
+            scanned += 1
+            if ar.has_hit:
+                matched += 1
+                matches += ar.total_match_count
+                if self._on_progress is not None:
+                    for hit in ar.hits:
+                        self._matched_files.append((str(ar.path), hit.rule_name))
+            errors += ar.errors
+            results.append(ar)
+        return scanned, matched, errors, matches
+
     def _scan_archive_phase(
         self,
         entries: list[FileEntry],
         results: list[ScanResult],
     ) -> tuple[int, int, int, int]:
-        """顺序扫描压缩包内条目，返回 (scanned, matched, errors, matches) 增量。
+        """扫描压缩包内条目，返回 (scanned, matched, errors, matches) 增量。
 
-        压缩包扫描始终顺序执行以避免 ArchiveScanner 的线程安全问题。
-        进度回调使用累计值（base + delta）。
+        archive 文件级别并行（iter-39 P3）：``max_workers > 1`` 时不同 archive
+        文件用线程池并行扫描，单个 archive 内条目仍顺序执行（避免 reader
+        共享导致的线程安全问题）。每个 archive 在 worker 内创建独立 reader，
+        ArchiveScanner 自身状态（``_compiled`` 等）只读，CacheStore 内部
+        用 RLock 串行化，跨 archive 并发安全。
+
+        进度回调使用累计值（base + delta），按 archive 完成顺序触发。
         """
-        from fuscan.archive import get_reader
+        from fuscan.archive import is_archive
+
+        archive_entries = [e for e in entries if is_archive(e.path)]
+        if not archive_entries:
+            return 0, 0, 0, 0
 
         scanned = 0
         matched = 0
         errors = 0
         matches = 0
-        for entry in entries:
-            if self._check_control():
-                break
-            if get_reader(entry.path) is None:
-                continue
-            try:
-                archive_results = self._archive_scanner.scan_archive(entry.path)  # type: ignore[union-attr]
-            except Exception:
-                errors += 1
-                logger.warning("压缩包扫描失败 %s", entry.path, exc_info=True)
-                continue
-            for ar in archive_results:
-                scanned += 1
-                if ar.has_hit:
-                    matched += 1
-                    matches += ar.total_match_count
-                    if self._on_progress is not None:
-                        for hit in ar.hits:
-                            self._matched_files.append((str(ar.path), hit.rule_name))
-                errors += ar.errors
-                results.append(ar)
-            self._emit_progress(
-                str(entry.path),
-                self._base_scanned + scanned,
-                self._base_matched + matched,
-                self._base_errors + errors,
-                self._base_matches + matches,
-            )
+
+        if not (self._max_workers and self._max_workers > 1):
+            # 单线程退化：顺序扫描
+            for entry in archive_entries:
+                if self._check_control():
+                    break
+                try:
+                    archive_results = self._archive_scanner.scan_archive(entry.path)  # type: ignore[union-attr]
+                except Exception:
+                    errors += 1
+                    logger.warning("压缩包扫描失败 %s", entry.path, exc_info=True)
+                    continue
+                d_scanned, d_matched, d_errors, d_matches = self._accumulate_archive_results(archive_results, results)
+                scanned += d_scanned
+                matched += d_matched
+                errors += d_errors
+                matches += d_matches
+                self._emit_progress(
+                    str(entry.path),
+                    self._base_scanned + scanned,
+                    self._base_matched + matched,
+                    self._base_errors + errors,
+                    self._base_matches + matches,
+                )
+            return scanned, matched, errors, matches
+
+        # 多线程：archive 文件级别并行
+        future_to_entry: dict[Future[tuple[ScanResult, ...]], FileEntry] = {}
+        with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+            for entry in archive_entries:
+                if self._check_control():
+                    break
+                future = pool.submit(self._archive_scanner.scan_archive, entry.path)  # type: ignore[union-attr]
+                future_to_entry[future] = entry
+
+            for future in as_completed(future_to_entry):
+                if self._check_control():
+                    # 取消未启动的 future；已启动的无法中断，结果丢弃
+                    for pending in future_to_entry:
+                        pending.cancel()
+                    break
+                entry = future_to_entry[future]
+                try:
+                    archive_results = future.result()
+                except Exception:
+                    errors += 1
+                    logger.warning("压缩包扫描失败 %s", entry.path, exc_info=True)
+                    self._emit_progress(
+                        str(entry.path),
+                        self._base_scanned + scanned,
+                        self._base_matched + matched,
+                        self._base_errors + errors,
+                        self._base_matches + matches,
+                    )
+                    continue
+                d_scanned, d_matched, d_errors, d_matches = self._accumulate_archive_results(archive_results, results)
+                scanned += d_scanned
+                matched += d_matched
+                errors += d_errors
+                matches += d_matches
+                self._emit_progress(
+                    str(entry.path),
+                    self._base_scanned + scanned,
+                    self._base_matched + matched,
+                    self._base_errors + errors,
+                    self._base_matches + matches,
+                )
         return scanned, matched, errors, matches
 
     def scan_file(self, path: Path) -> ScanResult:
@@ -556,6 +647,42 @@ class Scanner:
 
         return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)
 
+    def _extract_with_cache(self, entry: FileEntry) -> tuple[str, str]:
+        """缓存模式的提取+哈希：优先复用提取内容缓存（iter-39）。
+
+        与 :func:`default_extract_content_with_hash` 的区别：
+
+        - 一次 ``read_bytes`` 算哈希后，先查 :meth:`CacheStore.get_extracted_content`
+        - 命中则跳过 ``extract_content_from_bytes``（docx/pptx 提取 5-8ms）
+        - 未命中则提取并写入缓存（非空内容才写）
+
+        :param entry: 文件元信息
+        :return: ``(content, file_hash)`` 元组
+        """
+        assert self._cache is not None  # 调用方已保证非 None
+        if entry.is_dir or entry.size > 100 * 1024 * 1024:
+            return "", hash_bytes(b"")
+        try:
+            data = entry.path.read_bytes()
+        except OSError:
+            logger.debug("读取文件失败: %s", entry.path, exc_info=True)
+            return "", hash_bytes(b"")
+        file_hash = hash_bytes(data)
+        # 查提取内容缓存
+        cached_content = self._cache.get_extracted_content(file_hash)
+        if cached_content is not None:
+            return cached_content, file_hash
+        # 未命中，执行提取
+        try:
+            content = extract_content_from_bytes(data, entry.extension)
+        except Exception:
+            logger.debug("提取器提取失败，回退到纯文本: %s", entry.path, exc_info=True)
+            content = data.decode("utf-8", errors="ignore")
+        # 写入提取内容缓存（非空才写）
+        if content:
+            self._cache.put_extracted_content(file_hash, content, entry.extension)
+        return content, file_hash
+
     def _scan_entry_cached(self, entry: FileEntry) -> ScanResult:
         """缓存模式扫描：先查缓存，命中直接复用，未命中走匹配器并写入缓存。
 
@@ -566,8 +693,11 @@ class Scanner:
         2. **mtime 预筛跳过 read_bytes**：``CacheStore.lookup_file_hash`` 按
            ``(path, mtime, size)`` 查询已登记的 ``file_hash``。若所有适用规则
            都已缓存（命中或未命中），则**完全跳过文件读取**，仅复用缓存结果
-        3. **常规路径**：一次 I/O 同时取内容和文件哈希
-           （:func:`default_extract_content_with_hash`），静态闭包包装内容
+        3. **提取内容缓存**（iter-39）：``CacheStore.get_extracted_content`` 按
+           ``file_hash`` 查询提取器结果，命中则跳过 ``extract_content_from_bytes``；
+           同内容不同路径（如 node_modules 重复依赖）可跳过 docx/pptx 提取开销
+        4. **常规路径**：一次 I/O 同时取内容和文件哈希
+           （:meth:`_extract_with_cache`），静态闭包包装内容
            传给 :class:`MatchContext`，避免改 MatchContext 接口
         """
         assert self._cache is not None  # 仅类型收窄，调用方已保证非 None
@@ -596,13 +726,20 @@ class Scanner:
             if all(rh in cached for rh in rule_hashes):
                 # 全部规则已缓存命中（含未命中记录），无需读文件
                 hits, rule_errors = self._build_hits_from_cache(applicable, cached)
-                # 仅刷新 last_scanned_at/last_seen_at 元数据
-                self._cache.register_file(cached_file_hash, entry.size)
-                self._cache.register_path(cached_file_hash, entry.path, entry.mtime)
+                # 累积元数据刷新到批量缓冲（无新 scan_results 需写入，hits=()）
+                self._add_to_batch(
+                    BatchWriteItem(
+                        file_hash=cached_file_hash,
+                        size=entry.size,
+                        path=entry.path,
+                        mtime=entry.mtime,
+                        hits=(),
+                    )
+                )
                 return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)
 
-        # 常规路径：读文件 + 算哈希 + 查缓存 + 未命中执行匹配器
-        content, file_hash = self._hashing_content_provider(entry)
+        # 常规路径：读文件 + 算哈希 + 查提取内容缓存 + 未命中执行提取
+        content, file_hash = self._extract_with_cache(entry)
 
         def _static_provider(_fe: FileEntry) -> str:
             return content
@@ -613,6 +750,7 @@ class Scanner:
 
         hits: list[RuleHit] = []
         rule_errors = 0
+        batch_hits: list[tuple[str, RuleHit | None]] = []
         for rule, matcher, rule_hash in applicable:
             if rule_hash in cached:
                 result = cached[rule_hash]
@@ -647,16 +785,57 @@ class Scanner:
                     target=match_result.target,
                 )
                 hits.append(hit)
-                self._cache.put_result(file_hash, rule_hash, hit)
+                batch_hits.append((rule_hash, hit))
             else:
                 # 未命中也缓存，避免重复扫描
-                self._cache.put_result(file_hash, rule_hash, None)
+                batch_hits.append((rule_hash, None))
 
-        # 登记文件元数据
-        self._cache.register_file(file_hash, entry.size)
-        self._cache.register_path(file_hash, entry.path, entry.mtime)
+        # 累积到批量缓冲，达到阈值后由 _add_to_batch 自动 flush
+        self._add_to_batch(
+            BatchWriteItem(
+                file_hash=file_hash,
+                size=entry.size,
+                path=entry.path,
+                mtime=entry.mtime,
+                hits=tuple(batch_hits),
+            )
+        )
 
         return ScanResult(path=entry.path, size=entry.size, hits=tuple(hits), errors=rule_errors)
+
+    def _add_to_batch(self, item: BatchWriteItem) -> None:
+        """累积写入请求到批量缓冲，达到阈值时自动 flush。
+
+        线程安全：通过 ``_batch_lock`` 保护并发累积与 flush。
+        无缓存模式下不应被调用（调用方 :meth:`_scan_entry_cached` 已保证）。
+        """
+        with self._batch_lock:
+            self._pending_batch.append(item)
+            if len(self._pending_batch) >= _BATCH_THRESHOLD:
+                self._flush_batch_locked()
+
+    def _flush_batch(self) -> None:
+        """强制 flush 待写批次。
+
+        在扫描阶段切换（如进入 archive phase）与 ``scan()`` 末尾调用，
+        确保累积的数据不丢失。
+        """
+        with self._batch_lock:
+            self._flush_batch_locked()
+
+    def _flush_batch_locked(self) -> None:
+        """执行批量写入（已持 ``_batch_lock``）。
+
+        先取出并清空 ``_pending_batch``，再释放锁的"持有期间"调用
+        :meth:`CacheStore.batch_put_results`。注意：``_batch_lock`` 仍持锁，
+        但 ``CacheStore`` 内部的 ``RLock`` 是另一把锁，worker 线程在
+        :meth:`_scan_entry_cached` 中查询（``get_cached_hits`` 等）不受影响。
+        """
+        if not self._pending_batch or self._cache is None:
+            return
+        items = self._pending_batch
+        self._pending_batch = []
+        self._cache.batch_put_results(items)
 
     @staticmethod
     def _build_hits_from_cache(

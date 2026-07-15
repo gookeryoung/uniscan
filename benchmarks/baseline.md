@@ -1,6 +1,6 @@
 # fuscan 性能基线
 
-> 测量时间：2026-07-15（缓存性能优化与版本兼容 iter-38 后）
+> 测量时间：2026-07-15（性能优化策略执行 iter-39 后）
 > 测量方式：`uv run pytest -m slow tests/test_benchmark.py` + `uv run python benchmarks/bench_scan.py`
 
 ## 测量环境
@@ -10,7 +10,7 @@
 | 操作系统 | Windows 11 (10.0.26200) |
 | CPU | Intel Core i7-14700K (24 核) |
 | Python | 3.8.20 |
-| fuscan 版本 | iter-38 (commit pending) |
+| fuscan 版本 | iter-39 (commit pending) |
 
 ## 提取器单格式速度
 
@@ -45,22 +45,42 @@
 
 | 场景 | 耗时 (s) | 文件/秒 | MB/秒 | 缓存命中率 |
 |------|--------:|--------:|------:|----------:|
-| S1 单线程无缓存 | 5.86 | 85.4 | 2.1 | - |
-| S2 4 线程无缓存 | 2.90 | 172.5 | 4.3 | - |
-| S3 24 线程无缓存 | 2.94 | 169.9 | 4.2 | - |
+| S1 单线程无缓存 | 4.72 | 106.0 | 2.6 | - |
+| S2 4 线程无缓存 | 2.92 | 171.2 | 4.3 | - |
+| S3 24 线程无缓存 | 2.93 | 170.7 | 4.2 | - |
 | S4 4 线程+冷缓存 | 3.05 | 163.9 | - | 0% |
-| S5 4 线程+热缓存 | 0.08 | 6006.4 | - | 100% |
+| S5 4 线程+热缓存 | 0.08 | 6369.8 | - | 100% |
 
 **观察**：
-- S5 热缓存较 iter-37（167.5 → 6006.4 files/s）提升约 36 倍，主因 mtime 预筛
-  在所有规则都已缓存时跳过 `read_bytes`，热路径从磁盘 I/O 降为纯内存查询
-- LRU 命中缓存（容量 4096）避免对每条规则单独查 SQLite，进一步降低命中延迟
-- S1-S4 较 iter-37 略有回退（约 2-20%），BLAKE2b 在本机冷启动时 OpenSSL 上下文
-  初始化略慢于 SHA-256 内建实现，且 4-6KB 小文件未充分体现算法优势；在 slow
-  回归阈值（≥ 50 files/s）容忍范围内
+- S1 单线程无缓存较 iter-38（85.4 → 106.0 files/s）提升约 24%，主因 P2 批量写入
+  将逐条 commit 改为 50 文件单事务，消除约 99% 的 fsync 开销，对单线程收益最大
+- S5 热缓存较 iter-38（6006.4 → 6369.8 files/s）小幅提升，P4 提取内容缓存跳过
+  重复提取的开销在热路径占比已极小（BLAKE2b + 内存查询为主），收益在测量噪声内
+- S2/S3/S4 与 iter-38 基本持平，P1 大小文件分流哈希对 4-6KB 小文件无显著收益
+  （BLAKE2b 在小文件上与 SHA-256 差异在测量噪声内），P3 archive 并行化在基准
+  测试无压缩包场景下不触发
 - 多线程场景 4 线程已接近最优并发度，24 线程无额外收益
 
 ## 性能优化记录
+
+### iter-39 性能优化策略执行
+
+四项策略执行，S1 单线程无缓存提升 24%，无回退：
+
+1. **P1 大小文件分流哈希**：`< 8KB` 用 SHA-256，`≥ 8KB` 用 BLAKE2b（`hash_bytes`
+   按大小自动选择）。小文件避免 BLAKE2b 上下文初始化开销，大文件利用 BLAKE2b
+   的 GIL 释放与 SIMD 加速。基准测试文件多为 4-6KB，收益在测量噪声内
+2. **P2 SQLite 批量写入**：`BatchWriteItem` 数据类封装单文件元数据 + 所有规则缓存
+   结果，`batch_put_results` 单次事务 `executemany` 写入 scanned_files/file_paths/
+   scan_results 三表，`_BATCH_THRESHOLD=50` 累积后自动 flush。消除约 99% 的逐条
+   commit/fsync 开销，S1 单线程提升 24%。`_batch_lock` 保护跨 worker 并发累积
+3. **P3 Archive 文件级别并行**：`max_workers > 1` 时不同 archive 文件用
+   `ThreadPoolExecutor` 并行扫描，单个 archive 内条目顺序执行（避免 reader 共享
+   竞争）。`is_archive` 仅按扩展名过滤（不实例化），损坏文件交由 `scan_archive`
+   捕获返回错误结果。`_accumulate_archive_results` 提取结果累积公共逻辑
+4. **P4 提取内容缓存**：新增 `extracted_contents` 表按 `file_hash` 缓存提取器结果，
+   同内容不同路径跳过重复提取。`ArchiveScanner._scan_entry_cached` 与
+   `Scanner.default_extract_content_with_hash` 均接入此缓存
 
 ### iter-38 缓存性能优化与版本兼容
 

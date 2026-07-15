@@ -192,10 +192,18 @@ class ArchiveScanner:
             is_dir=False,
         )
 
-        # 读字节并算哈希（BLAKE2b digest_size=32，与 Scanner 主路径一致）
+        # 读字节并算哈希（算法由 hash_bytes 按大小决定）
         data = self._read_entry_bytes(archive_path, entry, reader)
         file_hash = hash_bytes(data)
-        content = self._extract_content_from_bytes(data, entry)
+        # 查提取内容缓存（iter-39）：命中则跳过 extract_content_from_bytes
+        cached_content = self._cache.get_extracted_content(file_hash)
+        if cached_content is not None:
+            content = cached_content
+        else:
+            content = self._extract_content_from_bytes(data, entry)
+            # 写入提取内容缓存（非空才写）
+            if content:
+                self._cache.put_extracted_content(file_hash, content, entry.extension)
 
         def content_provider(_fe: FileEntry) -> str:
             return content
