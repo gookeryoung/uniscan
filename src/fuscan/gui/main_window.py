@@ -1529,11 +1529,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self._ruleset is None:
             return
         for rule in self._ruleset.rules:
-            item = QTreeWidgetItem([
-                rule.name,
-                "",
-                ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
-            ])
+            item = QTreeWidgetItem(
+                [
+                    rule.name,
+                    "",
+                    ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
+                ]
+            )
             _apply_severity_to_tree_item(item, 1, rule.severity)
             self.rules_tree.addTopLevelItem(item)
 
@@ -1655,14 +1657,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in report.hits:
-            file_item = QTreeWidgetItem([
-                str(sr.path),
-                "",
-                "",
-                str(len(sr.hits)),
-                str(sr.total_match_count),
-                sr.summary(),
-            ])
+            file_item = QTreeWidgetItem(
+                [
+                    str(sr.path),
+                    "",
+                    "",
+                    str(len(sr.hits)),
+                    str(sr.total_match_count),
+                    sr.summary(),
+                ]
+            )
             file_item.setData(0, Qt.UserRole, sr)
             _apply_severity_to_tree_item(file_item, 2, sr.max_severity)
             file_item.setTextAlignment(3, Qt.AlignCenter)
@@ -1672,14 +1676,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 for col in range(file_item.columnCount()):
                     file_item.setBackground(col, _SEVERITY_BACKGROUNDS[Severity.CRITICAL])
             for hit in sr.hits:
-                child = QTreeWidgetItem([
-                    "",
-                    hit.rule_name,
-                    "",
-                    "",
-                    str(hit.match_count),
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        "",
+                        hit.rule_name,
+                        "",
+                        "",
+                        str(hit.match_count),
+                        hit.detail,
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 file_item.addChild(child)
@@ -1693,27 +1699,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             entries = rule_map[rule_name]
             hit_count = len(entries)
             match_sum = sum(h.match_count for _, h in entries)
-            top = QTreeWidgetItem([
-                "",
-                rule_name,
-                "",
-                str(hit_count),
-                str(match_sum),
-                f"{hit_count} 个文件 / {match_sum} 处匹配",
-            ])
+            top = QTreeWidgetItem(
+                [
+                    "",
+                    rule_name,
+                    "",
+                    str(hit_count),
+                    str(match_sum),
+                    f"{hit_count} 个文件 / {match_sum} 处匹配",
+                ]
+            )
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
             top.setTextAlignment(4, Qt.AlignCenter)
             for sr, hit in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
-                    "",
-                    "",
-                    "",
-                    str(hit.match_count),
-                    hit.detail,
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        "",
+                        "",
+                        str(hit.match_count),
+                        hit.detail,
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 child.setData(0, Qt.UserRole, sr)
@@ -1728,28 +1738,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             entries = severity_map[severity]
             file_count = len(entries)
             match_sum = sum(sr.total_match_count for sr in entries)
-            top = QTreeWidgetItem([
-                "",
-                "",
-                "",
-                str(file_count),
-                str(match_sum),
-                f"{file_count} 个文件 / {match_sum} 处匹配",
-            ])
+            top = QTreeWidgetItem(
+                [
+                    "",
+                    "",
+                    "",
+                    str(file_count),
+                    str(match_sum),
+                    f"{file_count} 个文件 / {match_sum} 处匹配",
+                ]
+            )
             _apply_severity_to_tree_item(top, 2, severity)
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
             top.setTextAlignment(4, Qt.AlignCenter)
             for sr in entries:
-                child = QTreeWidgetItem([
-                    str(sr.path),
-                    "",
-                    "",
-                    str(len(sr.hits)),
-                    str(sr.total_match_count),
-                    sr.summary(),
-                ])
+                child = QTreeWidgetItem(
+                    [
+                        str(sr.path),
+                        "",
+                        "",
+                        str(len(sr.hits)),
+                        str(sr.total_match_count),
+                        sr.summary(),
+                    ]
+                )
                 _apply_severity_to_tree_item(child, 2, sr.max_severity)
                 child.setData(0, Qt.UserRole, sr)
                 child.setTextAlignment(3, Qt.AlignCenter)
