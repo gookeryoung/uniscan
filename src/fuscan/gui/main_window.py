@@ -170,6 +170,7 @@ _ICON_FOLDER = str(_ICONS_DIR / "folder.svg")
 _ICON_HARD_DISK = str(_ICONS_DIR / "hard_disk.svg")
 _ICON_HISTORY = str(_ICONS_DIR / "history.svg")
 _ICON_LOAD_LIST = str(_ICONS_DIR / "load_list.svg")
+_ICON_MANUAL = str(_ICONS_DIR / "manual.svg")
 _ICON_PAUSE = str(_ICONS_DIR / "pause.svg")
 _ICON_RESCAN = str(_ICONS_DIR / "rescan.svg")
 _ICON_SCAN = str(_ICONS_DIR / "scan.svg")
@@ -391,6 +392,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._icon_folder = _load_themed_icon(_ICON_FOLDER, theme.COLOR_PRIMARY)
         self._icon_history = _load_themed_icon(_ICON_HISTORY, theme.COLOR_PRIMARY)
         self._icon_load_list = _load_themed_icon(_ICON_LOAD_LIST, theme.COLOR_PRIMARY)
+        self._icon_manual = _load_themed_icon(_ICON_MANUAL, theme.COLOR_PRIMARY)
         self._icon_hard_disk = _load_themed_icon(_ICON_HARD_DISK, theme.COLOR_PRIMARY)
         self._icon_edit = _load_themed_icon(_ICON_EDIT, theme.COLOR_PRIMARY)
         self._icon_export = _load_themed_icon(_ICON_EXPORT, theme.COLOR_PRIMARY)
@@ -421,6 +423,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.export_csv_action.setIcon(self._icon_export_csv)
         self.export_json_action.setIcon(self._icon_export_json)
         self.settings_action.setIcon(self._icon_settings)
+        self.manual_action.setIcon(self._icon_manual)
+        self.select_path_action.setIcon(self._icon_folder)
         self.about_action.setIcon(self._icon_about)
         self.rescan_btn.setIcon(self._icon_rescan)
         self.cancel_btn.setIcon(self._icon_stop)
@@ -1522,13 +1526,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self._ruleset is None:
             return
         for rule in self._ruleset.rules:
-            item = QTreeWidgetItem(
-                [
-                    rule.name,
-                    "",
-                    ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
-                ]
-            )
+            item = QTreeWidgetItem([
+                rule.name,
+                "",
+                ", ".join(rule.file_extensions) if rule.file_extensions else "(全部)",
+            ])
             _apply_severity_to_tree_item(item, 1, rule.severity)
             self.rules_tree.addTopLevelItem(item)
 
@@ -1650,16 +1652,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in report.hits:
-            file_item = QTreeWidgetItem(
-                [
-                    str(sr.path),
-                    "",
-                    "",
-                    str(len(sr.hits)),
-                    str(sr.total_match_count),
-                    sr.summary(),
-                ]
-            )
+            file_item = QTreeWidgetItem([
+                str(sr.path),
+                "",
+                "",
+                str(len(sr.hits)),
+                str(sr.total_match_count),
+                sr.summary(),
+            ])
             file_item.setData(0, Qt.UserRole, sr)
             _apply_severity_to_tree_item(file_item, 2, sr.max_severity)
             file_item.setTextAlignment(3, Qt.AlignCenter)
@@ -1669,16 +1669,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 for col in range(file_item.columnCount()):
                     file_item.setBackground(col, _SEVERITY_BACKGROUNDS[Severity.CRITICAL])
             for hit in sr.hits:
-                child = QTreeWidgetItem(
-                    [
-                        "",
-                        hit.rule_name,
-                        "",
-                        "",
-                        str(hit.match_count),
-                        hit.detail,
-                    ]
-                )
+                child = QTreeWidgetItem([
+                    "",
+                    hit.rule_name,
+                    "",
+                    "",
+                    str(hit.match_count),
+                    hit.detail,
+                ])
                 _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 file_item.addChild(child)
@@ -1692,31 +1690,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             entries = rule_map[rule_name]
             hit_count = len(entries)
             match_sum = sum(h.match_count for _, h in entries)
-            top = QTreeWidgetItem(
-                [
-                    "",
-                    rule_name,
-                    "",
-                    str(hit_count),
-                    str(match_sum),
-                    f"{hit_count} 个文件 / {match_sum} 处匹配",
-                ]
-            )
+            top = QTreeWidgetItem([
+                "",
+                rule_name,
+                "",
+                str(hit_count),
+                str(match_sum),
+                f"{hit_count} 个文件 / {match_sum} 处匹配",
+            ])
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
             top.setTextAlignment(4, Qt.AlignCenter)
             for sr, hit in entries:
-                child = QTreeWidgetItem(
-                    [
-                        str(sr.path),
-                        "",
-                        "",
-                        "",
-                        str(hit.match_count),
-                        hit.detail,
-                    ]
-                )
+                child = QTreeWidgetItem([
+                    str(sr.path),
+                    "",
+                    "",
+                    "",
+                    str(hit.match_count),
+                    hit.detail,
+                ])
                 _apply_severity_to_tree_item(child, 2, hit.severity)
                 child.setTextAlignment(4, Qt.AlignCenter)
                 child.setData(0, Qt.UserRole, sr)
@@ -1731,32 +1725,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             entries = severity_map[severity]
             file_count = len(entries)
             match_sum = sum(sr.total_match_count for sr in entries)
-            top = QTreeWidgetItem(
-                [
-                    "",
-                    "",
-                    "",
-                    str(file_count),
-                    str(match_sum),
-                    f"{file_count} 个文件 / {match_sum} 处匹配",
-                ]
-            )
+            top = QTreeWidgetItem([
+                "",
+                "",
+                "",
+                str(file_count),
+                str(match_sum),
+                f"{file_count} 个文件 / {match_sum} 处匹配",
+            ])
             _apply_severity_to_tree_item(top, 2, severity)
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             top.setFlags(top.flags() & ~Qt.ItemIsSelectable)
             top.setTextAlignment(3, Qt.AlignCenter)
             top.setTextAlignment(4, Qt.AlignCenter)
             for sr in entries:
-                child = QTreeWidgetItem(
-                    [
-                        str(sr.path),
-                        "",
-                        "",
-                        str(len(sr.hits)),
-                        str(sr.total_match_count),
-                        sr.summary(),
-                    ]
-                )
+                child = QTreeWidgetItem([
+                    str(sr.path),
+                    "",
+                    "",
+                    str(len(sr.hits)),
+                    str(sr.total_match_count),
+                    sr.summary(),
+                ])
                 _apply_severity_to_tree_item(child, 2, sr.max_severity)
                 child.setData(0, Qt.UserRole, sr)
                 child.setTextAlignment(3, Qt.AlignCenter)
