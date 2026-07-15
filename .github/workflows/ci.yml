@@ -34,6 +34,8 @@ jobs:
         run: uv run ruff format --check src tests
 
       - name: Pyrefly check
+        # 规避 ubuntu 3.8 ctypes 查询 libpython 失败：
+        # 用 --site-package-path 显式指定 site-packages + --skip-interpreter-query 跳过解释器查询
         run: |
           SITE_PACKAGES=$(uv run python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
           uv run pyrefly check --site-package-path "$SITE_PACKAGES" --python-platform linux --skip-interpreter-query
