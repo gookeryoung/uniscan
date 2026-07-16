@@ -729,7 +729,7 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QTreeView" name="result_tree">
+                  <widget class="ResultTreeView" name="result_tree">
                    <property name="alternatingRowColors">
                     <bool>true</bool>
                    </property>
@@ -1020,6 +1020,11 @@
                        <column>
                         <property name="text">
                          <string>详情</string>
+                        </property>
+                       </column>
+                       <column>
+                        <property name="text">
+                         <string>描述</string>
                         </property>
                        </column>
                       </widget>
@@ -1347,6 +1352,13 @@
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ResultTreeView</class>
+   <extends>QTreeView</extends>
+   <header>fuscan.gui.result_tree</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

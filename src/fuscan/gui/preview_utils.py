@@ -27,6 +27,7 @@ __all__ = [
     "KEYWORD_RE",
     "PREVIEW_MAX_CHARS",
     "PREVIEW_STYLE",
+    "SEVERITY_BACKGROUNDS",
     "SEVERITY_COLORS",
     "SEVERITY_LABELS",
     "build_keyword_to_rule_map",
@@ -64,6 +65,13 @@ SEVERITY_COLORS: dict[Severity, QColor] = {
     Severity.CRITICAL: QColor(theme.COLOR_DANGER),
     Severity.WARNING: QColor(theme.COLOR_WARNING),
     Severity.INFO: QColor(theme.COLOR_INFO),
+}
+
+# 严重等级 → 浅色背景（整行高亮，与 SEVERITY_COLORS 前景配对）
+SEVERITY_BACKGROUNDS: dict[Severity, QColor] = {
+    Severity.CRITICAL: QColor(255, 235, 235),  # 浅红
+    Severity.WARNING: QColor(255, 243, 224),  # 浅橙
+    Severity.INFO: QColor(235, 244, 255),  # 浅蓝
 }
 
 

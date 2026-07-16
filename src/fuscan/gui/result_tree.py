@@ -1,0 +1,263 @@
+"""扫描结果树视图（Model/View 架构）。
+
+将结果树的模型管理、分组填充、选中/双击事件处理从 ``main_window.py`` 拆分
+到独立的 ``ResultTreeView`` 控件，使主窗口仅负责筛选控件与信号路由，
+结果树逻辑内聚到本模块。
+
+公共 API：
+
+- :class:`ResultTreeView`：QTreeView 子类，封装 ``QStandardItemModel`` 与三种
+  分组模式（flat/by-rule/by-severity）的填充逻辑
+- 信号 ``result_selected``/``result_activated``/``context_menu_requested``：
+  解耦视图与主窗口，主窗口通过信号接收选中/双击/右键事件
+"""
+
+from __future__ import annotations
+
+from typing import Sequence
+
+try:
+    from PySide2.QtCore import QModelIndex, QPoint, Qt, Signal
+    from PySide2.QtGui import QStandardItem, QStandardItemModel
+    from PySide2.QtWidgets import QTreeView
+except ImportError:  # pragma: no cover
+    from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtGui import QStandardItem, QStandardItemModel  # pyrefly: ignore [missing-import]
+    from PySide6.QtWidgets import QTreeView  # pyrefly: ignore [missing-import]
+
+from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS, SEVERITY_COLORS, SEVERITY_LABELS
+from fuscan.rules.model import Severity
+from fuscan.scanner import ScanReport
+
+__all__ = ["ResultTreeView"]
+
+# 严重等级 → 排序权重（CRITICAL 优先）
+_SEVERITY_RANK: dict[Severity, int] = {
+    Severity.INFO: 0,
+    Severity.WARNING: 1,
+    Severity.CRITICAL: 2,
+}
+
+
+def _apply_severity_to_standard_item(item: QStandardItem, severity: Severity) -> None:
+    """为 QStandardItem 设置中文严重等级标签、前景色和背景色。
+
+    :param item: 结果树中代表"严重等级"列的 QStandardItem
+    :param severity: 严重等级枚举值
+    """
+    item.setText(SEVERITY_LABELS.get(severity, severity.value))
+    item.setForeground(SEVERITY_COLORS[severity])
+    item.setBackground(SEVERITY_BACKGROUNDS[severity])
+
+
+def _make_result_row(texts: Sequence[str]) -> list[QStandardItem]:
+    """根据文本序列构造一行不可编辑的 QStandardItem 列表。
+
+    :param texts: 各列文本（顺序对应表头：路径/规则/严重等级/命中数/条数/详情）
+    :returns: QStandardItem 列表，长度与 ``texts`` 相同，每项已禁用编辑
+    """
+    row: list[QStandardItem] = []
+    for text in texts:
+        cell = QStandardItem(text)
+        cell.setEditable(False)
+        row.append(cell)
+    return row
+
+
+def _clear_row_selectable(row: list[QStandardItem]) -> None:
+    """清除一行 QStandardItem 的选择标志（用于分组顶层项不可选）。
+
+    :param row: QStandardItem 列表，每个 cell 将清除 ``Qt.ItemIsSelectable`` 标志
+    """
+    for cell in row:
+        cell.setFlags(cell.flags() & ~Qt.ItemIsSelectable)
+
+
+class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
+    """扫描结果树视图，封装模型与三种分组模式的填充逻辑。
+
+    主窗口通过 :meth:`populate` 传入报告，通过 :meth:`refresh` 触发按当前
+    筛选条件与分组模式重建模型。选中/双击/右键事件通过信号抛出，由主窗口
+    路由到详情区或上下文菜单。
+    """
+
+    # 选中项变化：携带 ScanResult 或 None（空选/分组顶层项）
+    result_selected = Signal(object)
+    # 双击项：携带 ScanResult（用于弹出独立详情对话框）
+    result_activated = Signal(object)
+    # 右键菜单：携带右键位置的 viewport 坐标
+    context_menu_requested = Signal(QPoint)
+
+    def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]
+        """初始化结果树：创建模型、绑定视图、设置列宽、连接内部信号。"""
+        super().__init__(parent)
+        self._result_model: QStandardItemModel = QStandardItemModel()
+        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self.setModel(self._result_model)
+        # 当前暂存的扫描报告（populate 设置，clear_results 重置为 None）
+        self._last_report: ScanReport | None = None
+        # 列宽与原 _setup_results_tree 一致
+        self.setColumnWidth(0, 400)
+        self.setColumnWidth(1, 150)
+        self.setColumnWidth(2, 80)
+        self.setColumnWidth(3, 60)
+        self.setColumnWidth(4, 60)
+        # 连接内部信号到本类的信号转发槽
+        self.doubleClicked.connect(self._handle_double_clicked)
+        selection_model = self.selectionModel()
+        if selection_model is not None:
+            selection_model.selectionChanged.connect(self._handle_selection_changed)
+
+    def populate(self, report: ScanReport) -> None:
+        """存储当前报告数据，供 :meth:`refresh` 读取。"""
+        self._result_model.clear()
+        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        # 直接刷新需传入筛选条件，此处仅暂存报告，刷新由主窗口触发
+        self._last_report = report
+
+    @property
+    def last_report(self) -> ScanReport | None:
+        """当前存储的扫描报告（由 :meth:`populate` 设置）。"""
+        return self._last_report
+
+    def refresh(self, report: ScanReport, path_query: str = "", rule_name: str = "", group_mode: str = "flat") -> None:
+        """按筛选条件与分组模式重建结果树模型。
+
+        :param report: 当前扫描报告（已通过 :meth:`populate` 暂存）
+        :param path_query: 路径子串筛选（大小写不敏感，空字符串跳过）
+        :param rule_name: 规则名精确筛选（空字符串跳过）
+        :param group_mode: 分组模式 ``flat``/``rule``/``severity``
+        """
+        # 批量插入期间禁用重绘，避免每个 appendRow 触发一次重绘
+        self.setUpdatesEnabled(False)
+        try:
+            self._result_model.clear()
+            self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+            # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
+            filtered_report = report.filter(path_query=path_query, rule_name=rule_name)
+            if group_mode == "rule":
+                self._populate_grouped_by_rule(filtered_report)
+            elif group_mode == "severity":
+                self._populate_grouped_by_severity(filtered_report)
+            else:
+                self._populate_flat(filtered_report)
+        finally:
+            self.setUpdatesEnabled(True)
+
+    def clear_results(self) -> None:
+        """清空结果树模型与暂存报告。"""
+        self._result_model.clear()
+        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self._last_report = None
+
+    def _populate_flat(self, report: ScanReport) -> None:
+        """不分组：文件为顶层项，规则命中为子项。"""
+        for sr in report.hits:
+            file_row = _make_result_row(
+                [str(sr.path), "", "", str(len(sr.hits)), str(sr.total_match_count), sr.summary()]
+            )
+            # ScanResult 存在该行第 0 列 UserRole，双击/选中时通过 sibling(row, 0) 取回
+            file_row[0].setData(sr, Qt.UserRole)
+            _apply_severity_to_standard_item(file_row[2], sr.max_severity)
+            file_row[3].setTextAlignment(Qt.AlignCenter)
+            file_row[4].setTextAlignment(Qt.AlignCenter)
+            # critical 整行背景高亮，区别于仅 severity 列着色
+            if sr.max_severity == Severity.CRITICAL:
+                for cell in file_row:
+                    cell.setBackground(SEVERITY_BACKGROUNDS[Severity.CRITICAL])
+            for hit in sr.hits:
+                child_row = _make_result_row(["", hit.rule_name, "", "", str(hit.match_count), hit.detail])
+                _apply_severity_to_standard_item(child_row[2], hit.severity)
+                child_row[4].setTextAlignment(Qt.AlignCenter)
+                # 子行挂载在第 0 列 cell 上（QStandardItem.appendRow 是 cell 方法）
+                file_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(file_row)  # pyrefly: ignore [missing-argument]
+
+    def _populate_grouped_by_rule(self, report: ScanReport) -> None:
+        """按规则分组：规则名为顶层项，文件为子项。"""
+        rule_map = report.group_by_rule()
+
+        for rule_name in sorted(rule_map.keys()):
+            entries = rule_map[rule_name]
+            hit_count = len(entries)
+            match_sum = sum(h.match_count for _, h in entries)
+            top_row = _make_result_row(
+                ["", rule_name, "", str(hit_count), str(match_sum), f"{hit_count} 个文件 / {match_sum} 处匹配"]
+            )
+            # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
+            _clear_row_selectable(top_row)
+            top_row[3].setTextAlignment(Qt.AlignCenter)
+            top_row[4].setTextAlignment(Qt.AlignCenter)
+            for sr, hit in entries:
+                child_row = _make_result_row([str(sr.path), "", "", "", str(hit.match_count), hit.detail])
+                _apply_severity_to_standard_item(child_row[2], hit.severity)
+                child_row[4].setTextAlignment(Qt.AlignCenter)
+                child_row[0].setData(sr, Qt.UserRole)
+                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
+
+    def _populate_grouped_by_severity(self, report: ScanReport) -> None:
+        """按严重等级分组：等级为顶层项，文件为子项。"""
+        severity_map = report.group_by_severity()
+
+        for severity in sorted(severity_map.keys(), key=lambda s: _SEVERITY_RANK[s], reverse=True):
+            entries = severity_map[severity]
+            file_count = len(entries)
+            match_sum = sum(sr.total_match_count for sr in entries)
+            top_row = _make_result_row(
+                ["", "", "", str(file_count), str(match_sum), f"{file_count} 个文件 / {match_sum} 处匹配"]
+            )
+            _apply_severity_to_standard_item(top_row[2], severity)
+            # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
+            _clear_row_selectable(top_row)
+            top_row[3].setTextAlignment(Qt.AlignCenter)
+            top_row[4].setTextAlignment(Qt.AlignCenter)
+            for sr in entries:
+                child_row = _make_result_row(
+                    [str(sr.path), "", "", str(len(sr.hits)), str(sr.total_match_count), sr.summary()]
+                )
+                _apply_severity_to_standard_item(child_row[2], sr.max_severity)
+                child_row[0].setData(sr, Qt.UserRole)
+                child_row[3].setTextAlignment(Qt.AlignCenter)
+                child_row[4].setTextAlignment(Qt.AlignCenter)
+                # critical 整行背景高亮，区别于仅 severity 列着色
+                if sr.max_severity == Severity.CRITICAL:
+                    for cell in child_row:
+                        cell.setBackground(SEVERITY_BACKGROUNDS[Severity.CRITICAL])
+                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
+            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
+
+    def _handle_selection_changed(self, *_args: object) -> None:
+        """选中变化：从 selectedIndexes 取当前项，发出 result_selected 信号。"""
+        indexes = self.selectedIndexes()
+        if not indexes:
+            self.result_selected.emit(None)  # pyrefly: ignore [missing-attribute]
+            return
+        # selectedIndexes 可能包含多列；取第一个 index 所在行第 0 列 cell
+        first = indexes[0]
+        first_col = self._result_model.itemFromIndex(first.sibling(first.row(), 0))
+        result = first_col.data(Qt.UserRole)
+        if result is None:
+            # _populate_flat 中命中规则子行未存 data，向上取父行（文件项）第 0 列
+            parent = first_col.parent()
+            if parent is not None:
+                result = parent.data(Qt.UserRole)
+        self.result_selected.emit(result)  # pyrefly: ignore [missing-attribute]
+
+    def _handle_double_clicked(self, index: QModelIndex) -> None:
+        """双击：取该行 ScanResult，发出 result_activated 信号。"""
+        # itemFromIndex 对有效 index 必返回 QStandardItem（model 中所有 cell 均由 _make_result_row 创建）
+        first_col = self._result_model.itemFromIndex(index.sibling(index.row(), 0))
+        result = first_col.data(Qt.UserRole)
+        if result is None:
+            # _populate_flat 中命中规则子行未存 data，向上取父行（文件项）第 0 列
+            parent = first_col.parent()
+            if parent is not None:
+                result = parent.data(Qt.UserRole)
+        if result is not None:
+            self.result_activated.emit(result)  # pyrefly: ignore [missing-attribute]
+
+    def contextMenuEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        """右键菜单：发出 context_menu_requested 信号，携带 viewport 坐标。"""
+        self.context_menu_requested.emit(event.pos())  # pyrefly: ignore [missing-attribute]
+        event.accept()

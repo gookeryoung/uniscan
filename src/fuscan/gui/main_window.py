@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 try:
-    from PySide2.QtCore import QByteArray, QFile, QModelIndex, QPoint, QSize, Qt, QTimer, QUrl, Slot
+    from PySide2.QtCore import QByteArray, QFile, QPoint, QSize, Qt, QTimer, QUrl, Slot
     from PySide2.QtGui import (
         QColor,
         QDesktopServices,
@@ -36,8 +36,6 @@ try:
         QKeySequence,
         QPainter,
         QPixmap,
-        QStandardItem,
-        QStandardItemModel,
         QTextCharFormat,
         QTextCursor,
     )
@@ -72,7 +70,6 @@ except ImportError:  # pragma: no cover
         QIcon,
         QKeySequence,
         QShortcut,
-        QStandardItemModel,
         QTextCharFormat,
         QTextCursor,
     )
@@ -105,6 +102,7 @@ from fuscan.gui.detail_dialog import HitDetailDialog
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.preview_utils import (
     PREVIEW_MAX_CHARS,
+    SEVERITY_BACKGROUNDS,
     SEVERITY_COLORS,
     SEVERITY_LABELS,
     build_keyword_to_rule_map,
@@ -116,6 +114,7 @@ from fuscan.gui.worker import ScanWorker
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport, list_drives
+from fuscan.scanner.export import save_report
 from fuscan.scanner.result import RuleHit, ScanResult
 
 if TYPE_CHECKING:
@@ -124,20 +123,6 @@ if TYPE_CHECKING:
 __all__ = ["MainWindow", "ScanState", "WorkflowStage"]
 
 logger = logging.getLogger(__name__)
-
-# 严重等级 → 背景色（浅色，用于整行高亮）
-_SEVERITY_BACKGROUNDS: dict[Severity, QColor] = {
-    Severity.CRITICAL: QColor(255, 235, 235),  # 浅红
-    Severity.WARNING: QColor(255, 243, 224),  # 浅橙
-    Severity.INFO: QColor(235, 244, 255),  # 浅蓝
-}
-
-# 严重等级 → 排序权重（CRITICAL 优先）
-_SEVERITY_RANK: dict[Severity, int] = {
-    Severity.INFO: 0,
-    Severity.WARNING: 1,
-    Severity.CRITICAL: 2,
-}
 
 
 def _severity_text(severity: Severity) -> str:
@@ -149,48 +134,14 @@ def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: S
     """为 QTreeWidgetItem 的指定列设置中文标签、前景色和背景色。"""
     item.setText(column, _severity_text(severity))
     item.setForeground(column, SEVERITY_COLORS[severity])
-    item.setBackground(column, _SEVERITY_BACKGROUNDS[severity])
-
-
-def _apply_severity_to_standard_item(item: QStandardItem, severity: Severity) -> None:
-    """为 QStandardItem 设置中文严重等级标签、前景色和背景色（Model/View 架构）。
-
-    :param item: 结果树中代表"严重等级"列的 QStandardItem
-    :param severity: 严重等级枚举值
-    """
-    item.setText(_severity_text(severity))
-    item.setForeground(SEVERITY_COLORS[severity])
-    item.setBackground(_SEVERITY_BACKGROUNDS[severity])
-
-
-def _make_result_row(texts: Sequence[str]) -> list[QStandardItem]:
-    """根据文本序列构造一行不可编辑的 QStandardItem 列表（Model/View 架构）。
-
-    :param texts: 各列文本（顺序对应表头：路径/规则/严重等级/命中数/条数/详情）
-    :returns: QStandardItem 列表，长度与 ``texts`` 相同，每项已禁用编辑
-    """
-    row: list[QStandardItem] = []
-    for text in texts:
-        cell = QStandardItem(text)
-        cell.setEditable(False)
-        row.append(cell)
-    return row
-
-
-def _clear_row_selectable(row: list[QStandardItem]) -> None:
-    """清除一行 QStandardItem 的选择标志（用于分组顶层项不可选）。
-
-    :param row: QStandardItem 列表，每个 cell 将清除 ``Qt.ItemIsSelectable`` 标志
-    """
-    for cell in row:
-        cell.setFlags(cell.flags() & ~Qt.ItemIsSelectable)
+    item.setBackground(column, SEVERITY_BACKGROUNDS[severity])
 
 
 def _apply_severity_to_table_item(item: QTableWidgetItem, severity: Severity) -> None:
     """为 QTableWidgetItem 设置中文标签、前景色和背景色。"""
     item.setText(_severity_text(severity))
     item.setForeground(SEVERITY_COLORS[severity])
-    item.setBackground(_SEVERITY_BACKGROUNDS[severity])
+    item.setBackground(SEVERITY_BACKGROUNDS[severity])
 
 
 # 图标路径（.qrc 资源系统，:/ 前缀引用编译嵌入的资源）
@@ -333,9 +284,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._result_filter_timer.setSingleShot(True)
         self._result_filter_timer.setInterval(300)
         self._result_filter_timer.timeout.connect(self._refresh_result_tree)
-        # 结果树 Model/View 架构（rule-12）：QStandardItemModel 驱动 QTreeView
-        self._result_model: QStandardItemModel = QStandardItemModel()
-        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
 
         self._configure_ui()
         self._apply_config()
@@ -346,7 +294,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性、layout stretch 与信号槽连接。"""
         self._setup_status_bar()
-        self._setup_results_tree()
         self._setup_detail_table()
         self._setup_comboboxes()
         self._setup_splitters()
@@ -380,20 +327,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.progress.setValue(0)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
-
-    def _setup_results_tree(self) -> None:
-        """设置结果树列宽与 Model/View 架构（.ui 不支持每列独立宽度与 setModel）。
-
-        rule-12：result_tree 是大数据量控件，从 QTreeWidget 便利类迁移到
-        QStandardItemModel + QTreeView。模型在 ``__init__`` 中创建并配置表头，
-        此处绑定到视图，触发 QTreeView 创建默认 selectionModel。
-        """
-        self.result_tree.setModel(self._result_model)
-        self.result_tree.setColumnWidth(0, 400)
-        self.result_tree.setColumnWidth(1, 150)
-        self.result_tree.setColumnWidth(2, 80)
-        self.result_tree.setColumnWidth(3, 60)
-        self.result_tree.setColumnWidth(4, 60)
 
     def _setup_detail_table(self) -> None:
         """设置详情区命中表：全列拉伸 + 行点击信号（editTriggers/selectionBehavior 已在 .ui 中声明）。"""
@@ -587,9 +520,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 规则
         self.load_rules_btn.clicked.connect(self._on_load_rules)
         self.edit_rule_btn.clicked.connect(self._on_edit_rules)
-        # 结果树（rule-12 Model/View：doubleClicked 携带 QModelIndex，selectionModel().selectionChanged 双参槽）
-        self.result_tree.doubleClicked.connect(self._on_result_double_clicked)
-        self.result_tree.selectionModel().selectionChanged.connect(self._on_result_selection_changed)
+        # 结果树（ResultTreeView 信号路由：选中/双击/右键均通过自定义信号转发）
+        self.result_tree.result_selected.connect(self._on_result_selected)  # pyrefly: ignore [missing-attribute]
+        self.result_tree.result_activated.connect(self._on_result_activated)  # pyrefly: ignore [missing-attribute]
+        self.result_tree.context_menu_requested.connect(self._on_result_tree_context_menu)  # pyrefly: ignore [missing-attribute]
         # 筛选（需求9：路径输入节流 300ms，避免连续按键触发全量重建；combo 切换立即响应）
         self.path_filter_input.textChanged.connect(self._schedule_result_refresh)
         self.rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
@@ -621,9 +555,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.settings_action.triggered.connect(self._on_settings)
 
     def _setup_context_menus(self) -> None:
-        """为结果树和规则文件列表配置右键菜单策略。"""
-        self.result_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.result_tree.customContextMenuRequested.connect(self._on_result_tree_context_menu)
+        """为规则文件列表配置右键菜单策略（结果树右键由 ResultTreeView 信号路由）。"""
         self.rules_file_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.rules_file_list.customContextMenuRequested.connect(self._on_rules_file_list_context_menu)
 
@@ -1069,9 +1001,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
             return
 
-        self.result_tree.model().clear()
-        # model.clear() 会清除表头，需重新设置（QStandardItemModel 与 QTreeWidget.clear() 行为差异）
-        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self.result_tree.clear_results()
         self._detail_clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
@@ -1283,7 +1213,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         """导出按钮：弹出格式选择对话框。
 
         支持 CSV/JSON/PDF/Excel 四种格式，PDF 与 Excel 为二进制格式，
-        通过 ``ScanReport.save_report`` 统一写入（按扩展名自动选择序列化方式）。
+        通过 :func:`fuscan.scanner.export.save_report` 统一写入（按扩展名自动选择序列化方式）。
         """
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
@@ -1307,7 +1237,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         :param fmt: 格式标识，``csv``/``json``/``pdf``/``excel``。
             文本格式（csv/json）按 UTF-8 写入；二进制格式（pdf/excel）写 bytes。
-            统一委托给 ``ScanReport.save_report``，由其按扩展名自动选择序列化方式。
+            统一委托给 :func:`fuscan.scanner.export.save_report`，由其按扩展名自动选择序列化方式。
         """
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
@@ -1327,7 +1257,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             return
         path = Path(path_str)
         try:
-            self._last_report.save_report(path)
+            save_report(self._last_report, path)
             QMessageBox.information(self, "导出成功", f"已导出到:\n{path}")
         except OSError as exc:
             QMessageBox.warning(self, "导出失败", str(exc))
@@ -1387,31 +1317,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     # ----------------------------- 详情区更新 -----------------------------
 
-    def _on_result_selection_changed(self, *_args: object) -> None:
+    def _on_result_selected(self, result: object) -> None:
         """结果树选中变化：更新详情区主体。
 
-        ``selectionModel().selectionChanged`` 信号传递 (selected, deselected) 两个
-        QItemSelection 参数，本槽通过 ``*_args`` 忽略，统一从 ``selectedIndexes()``
-        取当前选中项。
+        由 :attr:`ResultTreeView.result_selected` 信号触发，``result`` 为
+        :class:`ScanResult` 或 ``None``（空选/分组顶层项）。
         """
-        indexes = self.result_tree.selectionModel().selectedIndexes()
-        if not indexes:
+        if result is None:
             self._detail_clear()
             return
-        # selectedIndexes 可能包含多列；取第一个 index 所在行第 0 列 cell
-        # itemFromIndex 对有效 index 必返回 QStandardItem（model.clear 触发的空选已由 not indexes 处理）
-        first = indexes[0]
-        first_col = self._result_model.itemFromIndex(first.sibling(first.row(), 0))
-        result = first_col.data(Qt.UserRole)
-        if result is None:
-            # _populate_flat 中命中规则子行未存 data，向上取父行（文件项）第 0 列
-            parent = first_col.parent()
-            if parent is not None:
-                result = parent.data(Qt.UserRole)
-        if result is None:
-            # 选中分组顶层项（无文件数据）：保持详情区空态，避免误显示"无命中"
-            self._detail_clear()
-            return
+        assert isinstance(result, ScanResult)
         logger.debug("选中结果项: %s, 命中数=%d", result.path, len(result.hits))
         self._detail_show_result(result)
 
@@ -1800,6 +1715,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 取消挂起的节流刷新，避免与下方立即刷新重复触发（需求9）
         self._result_filter_timer.stop()
         self._last_report = report
+        self.result_tree.populate(report)
         self._update_rule_filter_options(report)
         self._refresh_result_tree()
         # 有结果时启用导出按钮
@@ -1832,125 +1748,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _refresh_result_tree(self) -> None:
         """根据当前筛选条件与分组模式刷新结果树。"""
-        # 需求9：批量插入期间禁用重绘，避免每个 appendRow 触发一次重绘
-        self.result_tree.setUpdatesEnabled(False)
-        try:
-            self._result_model.clear()
-            # model.clear() 会清除表头，需重新设置（QStandardItemModel 与 QTreeWidget.clear() 行为差异）
-            self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
-            if self._last_report is None:
-                return
+        if self._last_report is None:
+            self.result_tree.clear_results()
+            return
 
-            path_filter = self.path_filter_input.text().strip()
-            rule_filter = self.rule_filter_combo.currentData() or ""
-            group_mode = self.group_mode_combo.currentData() or "flat"
+        path_filter = self.path_filter_input.text().strip()
+        rule_filter = self.rule_filter_combo.currentData() or ""
+        group_mode = self.group_mode_combo.currentData() or "flat"
 
-            # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
-            filtered_report = self._last_report.filter(path_query=path_filter, rule_name=rule_filter)
+        self.result_tree.refresh(
+            self._last_report,
+            path_query=path_filter,
+            rule_name=rule_filter,
+            group_mode=group_mode,
+        )
 
-            if group_mode == "rule":
-                self._populate_grouped_by_rule(filtered_report)
-            elif group_mode == "severity":
-                self._populate_grouped_by_severity(filtered_report)
-            else:
-                self._populate_flat(filtered_report)
-        finally:
-            self.result_tree.setUpdatesEnabled(True)
-
-    def _populate_flat(self, report: ScanReport) -> None:
-        """不分组：文件为顶层项，规则命中为子项。"""
-        for sr in report.hits:
-            file_row = _make_result_row(
-                [str(sr.path), "", "", str(len(sr.hits)), str(sr.total_match_count), sr.summary()]
-            )
-            # ScanResult 存在该行第 0 列 UserRole，双击/选中时通过 sibling(row, 0) 取回
-            file_row[0].setData(sr, Qt.UserRole)
-            _apply_severity_to_standard_item(file_row[2], sr.max_severity)
-            file_row[3].setTextAlignment(Qt.AlignCenter)
-            file_row[4].setTextAlignment(Qt.AlignCenter)
-            # critical 整行背景高亮，区别于仅 severity 列着色
-            if sr.max_severity == Severity.CRITICAL:
-                for cell in file_row:
-                    cell.setBackground(_SEVERITY_BACKGROUNDS[Severity.CRITICAL])
-            for hit in sr.hits:
-                child_row = _make_result_row(["", hit.rule_name, "", "", str(hit.match_count), hit.detail])
-                _apply_severity_to_standard_item(child_row[2], hit.severity)
-                child_row[4].setTextAlignment(Qt.AlignCenter)
-                # 子行挂载在第 0 列 cell 上（QStandardItem.appendRow 是 cell 方法）
-                file_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
-            self._result_model.appendRow(file_row)  # pyrefly: ignore [missing-argument]
-
-    def _populate_grouped_by_rule(self, report: ScanReport) -> None:
-        """按规则分组：规则名为顶层项，文件为子项。"""
-        rule_map = report.group_by_rule()
-
-        for rule_name in sorted(rule_map.keys()):
-            entries = rule_map[rule_name]
-            hit_count = len(entries)
-            match_sum = sum(h.match_count for _, h in entries)
-            top_row = _make_result_row(
-                ["", rule_name, "", str(hit_count), str(match_sum), f"{hit_count} 个文件 / {match_sum} 处匹配"]
-            )
-            # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
-            _clear_row_selectable(top_row)
-            top_row[3].setTextAlignment(Qt.AlignCenter)
-            top_row[4].setTextAlignment(Qt.AlignCenter)
-            for sr, hit in entries:
-                child_row = _make_result_row([str(sr.path), "", "", "", str(hit.match_count), hit.detail])
-                _apply_severity_to_standard_item(child_row[2], hit.severity)
-                child_row[4].setTextAlignment(Qt.AlignCenter)
-                child_row[0].setData(sr, Qt.UserRole)
-                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
-            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
-
-    def _populate_grouped_by_severity(self, report: ScanReport) -> None:
-        """按严重等级分组：等级为顶层项，文件为子项。"""
-        severity_map = report.group_by_severity()
-
-        for severity in sorted(severity_map.keys(), key=lambda s: _SEVERITY_RANK[s], reverse=True):
-            entries = severity_map[severity]
-            file_count = len(entries)
-            match_sum = sum(sr.total_match_count for sr in entries)
-            top_row = _make_result_row(
-                ["", "", "", str(file_count), str(match_sum), f"{file_count} 个文件 / {match_sum} 处匹配"]
-            )
-            _apply_severity_to_standard_item(top_row[2], severity)
-            # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
-            _clear_row_selectable(top_row)
-            top_row[3].setTextAlignment(Qt.AlignCenter)
-            top_row[4].setTextAlignment(Qt.AlignCenter)
-            for sr in entries:
-                child_row = _make_result_row(
-                    [str(sr.path), "", "", str(len(sr.hits)), str(sr.total_match_count), sr.summary()]
-                )
-                _apply_severity_to_standard_item(child_row[2], sr.max_severity)
-                child_row[0].setData(sr, Qt.UserRole)
-                child_row[3].setTextAlignment(Qt.AlignCenter)
-                child_row[4].setTextAlignment(Qt.AlignCenter)
-                # critical 整行背景高亮，区别于仅 severity 列着色
-                if sr.max_severity == Severity.CRITICAL:
-                    for cell in child_row:
-                        cell.setBackground(_SEVERITY_BACKGROUNDS[Severity.CRITICAL])
-                top_row[0].appendRow(child_row)  # pyrefly: ignore [missing-argument]
-            self._result_model.appendRow(top_row)  # pyrefly: ignore [missing-argument]
-
-    def _on_result_double_clicked(self, index: QModelIndex) -> None:
+    def _on_result_activated(self, result: object) -> None:
         """双击结果项：在新窗口打开详情对话框。
 
-        选中变化已通过 selectionModel().selectionChanged 触发详情区更新，
-        双击额外弹出独立对话框供放大查看。
+        由 :attr:`ResultTreeView.result_activated` 信号触发，``result`` 为
+        :class:`ScanResult`（仅文件级项会触发，分组顶层/规则子行已在视图层过滤）。
         """
-        # ScanResult 存在该行第 0 列；双击可能是任意列，统一通过 sibling(row, 0) 取第 0 列 cell
-        # itemFromIndex 对有效 index 必返回 QStandardItem（model 中所有 cell 均由 _make_result_row 创建）
-        first_col = self._result_model.itemFromIndex(index.sibling(index.row(), 0))
-        result = first_col.data(Qt.UserRole)
-        if result is None:
-            # _populate_flat 中命中规则子行未存 data，向上取父行（文件项）第 0 列
-            parent = first_col.parent()
-            if parent is not None:
-                result = parent.data(Qt.UserRole)
-        if result is None:
-            return
+        assert isinstance(result, ScanResult)
         dialog = HitDetailDialog(result, self)
         dialog.exec_()
 

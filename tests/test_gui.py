@@ -146,8 +146,8 @@ rules:
 
         window = MainWindow()
         window._populate_results(report)
-        assert window._result_model.rowCount() == 1
-        item = window._result_model.item(0, 0)
+        assert window.result_tree.model().rowCount() == 1
+        item = window.result_tree.model().item(0, 0)
         assert "secret.txt" in item.text()
         window.close()
 
@@ -1044,7 +1044,7 @@ class TestScanControlIntegration:
 
         assert window._scan_state == ScanState.IDLE
         assert window.main_stack.currentIndex() == 2
-        assert window._result_model.rowCount() >= 1
+        assert window.result_tree.model().rowCount() >= 1
         assert window._worker is None
         window.close()
 
@@ -1604,18 +1604,18 @@ class TestSeverityDisplay:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_model.item(0, 0)
+        top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
-        sev_cell = window._result_model.item(0, 2)
+        sev_cell = window.result_tree.model().item(0, 2)
         assert sev_cell is not None
         assert sev_cell.text() == "警告"
-        assert sev_cell.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
+        assert sev_cell.foreground().color().name() == "#f0883e"
 
         assert top_item.rowCount() > 0
         child_sev_cell = top_item.child(0, 2)
         assert child_sev_cell is not None
         assert child_sev_cell.text() == "警告"
-        assert child_sev_cell.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
+        assert child_sev_cell.foreground().color().name() == "#f0883e"
         window.close()
 
     def test_detail_hits_table_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -1631,9 +1631,9 @@ class TestSeverityDisplay:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_model.item(0, 0)
+        top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         qapp.processEvents()
 
         item = window.detail_hits_table.item(0, 1)
@@ -2761,16 +2761,16 @@ class TestHitDetailDialog:
         monkeypatch.setattr(mw_module.HitDetailDialog, "exec_", fake_exec)
 
         # 双击顶层项
-        top_item = window._result_model.item(0, 0)
+        top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
-        window._on_result_double_clicked(top_item.index())
+        window.result_tree._handle_double_clicked(top_item.index())
         assert called["count"] == 1
 
         # 双击子项也应触发
         if top_item.rowCount() > 0:
             child_item = top_item.child(0, 0)
             assert child_item is not None
-            window._on_result_double_clicked(child_item.index())
+            window.result_tree._handle_double_clicked(child_item.index())
             assert called["count"] == 2
 
         window.close()
@@ -2785,9 +2785,9 @@ class TestHitDetailDialog:
         window = MainWindow()
         # 创建一个没有 UserRole 数据的项
         item = QStandardItem("test")
-        window._result_model.appendRow([item])  # pyrefly: ignore [missing-argument]
+        window.result_tree.model().appendRow([item])
         # 不应抛异常
-        window._on_result_double_clicked(item.index())
+        window.result_tree._handle_double_clicked(item.index())
         window.close()
 
 
@@ -3362,7 +3362,7 @@ class TestResultFilterAndGroup:
     def test_column_count_includes_hit_count(self, qapp: QApplication) -> None:
         """结果树应包含命中数与条数列。"""
         window = MainWindow()
-        assert window._result_model.columnCount() == 6
+        assert window.result_tree.model().columnCount() == 6
         window.close()
 
     def test_rule_filter_populated_after_scan(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3383,13 +3383,13 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        assert window._result_model.rowCount() == 2  # secret.txt + key.txt
+        assert window.result_tree.model().rowCount() == 2  # secret.txt + key.txt
 
         window.path_filter_input.setText("secret")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 1
-        assert "secret.txt" in window._result_model.item(0, 0).text()
+        assert window.result_tree.model().rowCount() == 1
+        assert "secret.txt" in window.result_tree.model().item(0, 0).text()
         window.close()
 
     def test_path_filter_case_insensitive(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3400,7 +3400,7 @@ class TestResultFilterAndGroup:
         window.path_filter_input.setText("SECRET")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 1
+        assert window.result_tree.model().rowCount() == 1
         window.close()
 
     def test_rule_filter(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3413,7 +3413,7 @@ class TestResultFilterAndGroup:
         assert idx >= 0
         window.rule_filter_combo.setCurrentIndex(idx)
         # secret.txt 同时命中"密钥内容"（内容含 key），key.txt 也命中"密钥内容"
-        count = window._result_model.rowCount()
+        count = window.result_tree.model().rowCount()
         assert count >= 1
         window.close()
 
@@ -3428,8 +3428,8 @@ class TestResultFilterAndGroup:
         window._refresh_result_tree()
         idx = window.rule_filter_combo.findData("密钥内容")
         window.rule_filter_combo.setCurrentIndex(idx)
-        assert window._result_model.rowCount() == 1
-        assert "key.txt" in window._result_model.item(0, 0).text()
+        assert window.result_tree.model().rowCount() == 1
+        assert "key.txt" in window.result_tree.model().item(0, 0).text()
         window.close()
 
     def test_no_results_after_filter(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3440,7 +3440,7 @@ class TestResultFilterAndGroup:
         window.path_filter_input.setText("nonexistent_path")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 0
+        assert window.result_tree.model().rowCount() == 0
         window.close()
 
     def test_clear_path_filter_restores_results(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3451,10 +3451,10 @@ class TestResultFilterAndGroup:
         window.path_filter_input.setText("secret")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 1
+        assert window.result_tree.model().rowCount() == 1
         window.path_filter_input.setText("")
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 2
+        assert window.result_tree.model().rowCount() == 2
         window.close()
 
     def test_path_filter_throttled_by_timer(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3462,7 +3462,7 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
-        assert window._result_model.rowCount() == 2
+        assert window.result_tree.model().rowCount() == 2
 
         # 验证 timer 配置：singleShot、300ms
         assert window._result_filter_timer.isSingleShot()
@@ -3472,12 +3472,12 @@ class TestResultFilterAndGroup:
         window.path_filter_input.setText("secret")
         assert window._result_filter_timer.isActive()
         # timer 未到期前结果树保持原样
-        assert window._result_model.rowCount() == 2
+        assert window.result_tree.model().rowCount() == 2
 
         # 模拟 timer 到期：直接调用槽函数（timeout 信号连接的目标）
         window._result_filter_timer.stop()
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 1
+        assert window.result_tree.model().rowCount() == 1
         window.close()
 
     def test_populate_results_stops_pending_filter_timer(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3502,9 +3502,9 @@ class TestResultFilterAndGroup:
 
         idx = window.group_mode_combo.findData("rule")
         window.group_mode_combo.setCurrentIndex(idx)
-        top_count = window._result_model.rowCount()
+        top_count = window.result_tree.model().rowCount()
         assert top_count == 2  # 两个规则
-        rule_names = {window._result_model.item(i, 1).text() for i in range(top_count)}
+        rule_names = {window.result_tree.model().item(i, 1).text() for i in range(top_count)}
         assert "敏感文件名" in rule_names
         assert "密钥内容" in rule_names
         window.close()
@@ -3517,9 +3517,9 @@ class TestResultFilterAndGroup:
 
         idx = window.group_mode_combo.findData("severity")
         window.group_mode_combo.setCurrentIndex(idx)
-        top_count = window._result_model.rowCount()
+        top_count = window.result_tree.model().rowCount()
         assert top_count == 2  # warning + critical
-        severities = {window._result_model.item(i, 2).text() for i in range(top_count)}
+        severities = {window.result_tree.model().item(i, 2).text() for i in range(top_count)}
         assert "警告" in severities
         assert "严重" in severities
         window.close()
@@ -3532,7 +3532,7 @@ class TestResultFilterAndGroup:
 
         idx = window.group_mode_combo.findData("rule")
         window.group_mode_combo.setCurrentIndex(idx)
-        top = window._result_model.item(0, 0)
+        top = window.result_tree.model().item(0, 0)
         assert top is not None
         assert top.rowCount() > 0
         child = top.child(0, 0)
@@ -3560,11 +3560,11 @@ class TestResultFilterAndGroup:
 
         monkeypatch_obj = pytest.MonkeyPatch()
         monkeypatch_obj.setattr(dd_module.HitDetailDialog, "exec_", fake_exec)
-        top = window._result_model.item(0, 0)
+        top = window.result_tree.model().item(0, 0)
         assert top is not None
         child = top.child(0, 0)
         assert child is not None
-        window._on_result_double_clicked(child.index())
+        window.result_tree._handle_double_clicked(child.index())
         assert called["count"] == 1
         monkeypatch_obj.undo()
         window.close()
@@ -3574,7 +3574,7 @@ class TestResultFilterAndGroup:
         window = MainWindow()
         window._last_report = None
         window._refresh_result_tree()
-        assert window._result_model.rowCount() == 0
+        assert window.result_tree.model().rowCount() == 0
         window.close()
 
     def test_rule_filter_restored_after_repopulate(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3693,16 +3693,16 @@ class TestMatchCountDisplay:
         # key.txt：1 条规则命中（密钥），匹配 3 处
         key_item = None
         key_row = -1
-        for i in range(window._result_model.rowCount()):
-            item = window._result_model.item(i, 0)
+        for i in range(window.result_tree.model().rowCount()):
+            item = window.result_tree.model().item(i, 0)
             if item is not None and item.text().endswith("key.txt"):
                 key_item = item
                 key_row = i
                 break
         assert key_item is not None
         # 列 3=命中数（规则数），列 4=条数（匹配处数）
-        assert window._result_model.item(key_row, 3).text() == "1"
-        assert window._result_model.item(key_row, 4).text() == "3"
+        assert window.result_tree.model().item(key_row, 3).text() == "1"
+        assert window.result_tree.model().item(key_row, 4).text() == "3"
         window.close()
 
     def test_flat_child_item_shows_rule_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3713,8 +3713,8 @@ class TestMatchCountDisplay:
 
         # 找到 key.txt 顶层项，检查其子项
         key_item = None
-        for i in range(window._result_model.rowCount()):
-            item = window._result_model.item(i, 0)
+        for i in range(window.result_tree.model().rowCount()):
+            item = window.result_tree.model().item(i, 0)
             if item is not None and item.text().endswith("key.txt"):
                 key_item = item
                 break
@@ -3737,14 +3737,14 @@ class TestMatchCountDisplay:
         # "密钥"规则在 key.txt 命中 3 处
         rule_item = None
         rule_row = -1
-        for i in range(window._result_model.rowCount()):
-            item = window._result_model.item(i, 1)
+        for i in range(window.result_tree.model().rowCount()):
+            item = window.result_tree.model().item(i, 1)
             if item is not None and item.text() == "密钥":
                 rule_item = item
                 rule_row = i
                 break
         assert rule_item is not None
-        assert window._result_model.item(rule_row, 4).text() == "3"
+        assert window.result_tree.model().item(rule_row, 4).text() == "3"
         window.close()
 
     def test_detail_hits_table_shows_match_count(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3754,10 +3754,10 @@ class TestMatchCountDisplay:
         window._populate_results(report)
 
         # 选中 key.txt 触发详情区更新
-        for i in range(window._result_model.rowCount()):
-            item = window._result_model.item(i, 0)
+        for i in range(window.result_tree.model().rowCount()):
+            item = window.result_tree.model().item(i, 0)
             if item is not None and item.text().endswith("key.txt"):
-                window.result_tree.setCurrentIndex(window._result_model.index(i, 0))
+                window.result_tree.setCurrentIndex(window.result_tree.model().index(i, 0))
                 break
 
         # 命中表列 2=条数
@@ -3771,10 +3771,10 @@ class TestMatchCountDisplay:
         report = _build_multi_match_report(tmp_path)
         window._populate_results(report)
 
-        for i in range(window._result_model.rowCount()):
-            item = window._result_model.item(i, 0)
+        for i in range(window.result_tree.model().rowCount()):
+            item = window.result_tree.model().item(i, 0)
             if item is not None and item.text().endswith("key.txt"):
-                window.result_tree.setCurrentIndex(window._result_model.index(i, 0))
+                window.result_tree.setCurrentIndex(window.result_tree.model().index(i, 0))
                 break
 
         info_text = window.detail_info_label.text()
@@ -4151,7 +4151,7 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         # 选中第一个结果项
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         # 详情区应切换到非空态
         assert window.detail_action_stack.currentIndex() == 1
         assert window.detail_main_stack.currentIndex() == 1
@@ -4174,7 +4174,7 @@ class TestDetailArea:
         window.group_mode_combo.setCurrentText("按规则分组")
         window._populate_results(report)
         # 选中第一个子项
-        top = window._result_model.item(0, 0)
+        top = window.result_tree.model().item(0, 0)
         assert top is not None
         if top.rowCount() > 0:
             child = top.child(0, 0)
@@ -4186,7 +4186,7 @@ class TestDetailArea:
     def test_detail_show_result_flat_child(self, qapp: QApplication, tmp_path: Path) -> None:
         """flat 模式下选中命中子行应通过父行查找展示文件详情。
 
-        覆盖 _on_result_selection_changed 的 parent 查找分支：
+        覆盖 ResultTreeView._handle_selection_changed 的 parent 查找分支：
         flat 模式命中子行未存 UserRole 数据，需向上取父行（文件项）。
         """
         from fuscan.scanner import Scanner
@@ -4199,7 +4199,7 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         # flat 模式：顶层为文件项（有 data），子项为命中行（无 data，需父行查找）
-        top = window._result_model.item(0, 0)
+        top = window.result_tree.model().item(0, 0)
         assert top is not None
         if top.rowCount() > 0:
             child = top.child(0, 0)
@@ -4215,7 +4215,7 @@ class TestDetailArea:
         window = MainWindow()
         window.detail_action_stack.setCurrentIndex(1)
         window.detail_main_stack.setCurrentIndex(1)
-        window._on_result_selection_changed()
+        window._on_result_selected(None)
         assert window.detail_action_stack.currentIndex() == 0
         assert window.detail_main_stack.currentIndex() == 0
         window.close()
@@ -4223,7 +4223,7 @@ class TestDetailArea:
     def test_detail_selection_no_data_top_item(self, qapp: QApplication) -> None:
         """选中无 data 的顶层项（无父行）应清空详情区。
 
-        覆盖 _on_result_selection_changed 的 parent is None 与 result is None 分支：
+        覆盖 ResultTreeView._handle_selection_changed 的 parent is None 与 result is None 分支：
         顶层项无 UserRole 数据且无父行时，详情区保持空态。
         """
         try:
@@ -4235,10 +4235,10 @@ class TestDetailArea:
         # 创建无 data 的顶层项并选中
         item = QStandardItem("no-data")
         item.setEditable(False)
-        window._result_model.appendRow([item])  # pyrefly: ignore [missing-argument]
+        window.result_tree.model().appendRow([item])
         window.detail_action_stack.setCurrentIndex(1)
         window.detail_main_stack.setCurrentIndex(1)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         # 无 data 且无父行 → 详情区应回到空态
         assert window.detail_action_stack.currentIndex() == 0
         assert window.detail_main_stack.currentIndex() == 0
@@ -4255,7 +4255,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
 
         total = len(window._detail_hit_positions)
         if total > 1:
@@ -4326,7 +4326,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         window._on_copy_path()
         clipboard = QApplication.clipboard()
         assert clipboard is not None
@@ -4356,7 +4356,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         # 空文件应显示提示
         text = window.detail_preview.toPlainText()
         assert "空" in text or "二进制" in text
@@ -4373,7 +4373,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         assert window._detail_current_result is not None
 
         captured: list[Any] = []
@@ -4677,7 +4677,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         assert window._detail_current_result is not None
 
         popen_calls: list[Any] = []
@@ -4710,7 +4710,7 @@ class TestDetailArea:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         assert window._detail_current_result is not None
 
         window._on_copy_path()
@@ -5096,7 +5096,7 @@ class TestScanCallbacks:
 
         window = MainWindow()
         window._populate_results(report)
-        window.result_tree.setCurrentIndex(window._result_model.index(0, 0))
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         assert window._detail_current_result is not None
 
         called: list[Path] = []
@@ -5298,7 +5298,7 @@ class TestScanCallbacks:
         window = MainWindow()
         window._on_scan_cancelled(report)
         assert "已取消" in window.stats_label.text()
-        assert window._result_model.rowCount() > 0
+        assert window.result_tree.model().rowCount() > 0
         window.close()
 
     def test_pause_resume_scan(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -5965,7 +5965,7 @@ class TestSeverityBackground:
 
     def test_critical_tree_item_has_background(self, qapp: QApplication, tmp_path: Path) -> None:
         """critical 等级文件项各列应有浅红背景色。"""
-        from fuscan.gui.main_window import _SEVERITY_BACKGROUNDS
+        from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS
         from fuscan.scanner import Scanner
 
         (tmp_path / "leak.conf").write_text("AKIAIOSFODNN7EXAMPLE", encoding="utf-8")
@@ -5986,11 +5986,11 @@ class TestSeverityBackground:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
-        top_item = window._result_model.item(0, 0)
+        top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
-        expected_bg = _SEVERITY_BACKGROUNDS[Severity.CRITICAL]
-        for col in range(window._result_model.columnCount()):
-            cell = window._result_model.item(0, col)
+        expected_bg = SEVERITY_BACKGROUNDS[Severity.CRITICAL]
+        for col in range(window.result_tree.model().columnCount()):
+            cell = window.result_tree.model().item(0, col)
             assert cell is not None
             bg = cell.background()
             assert bg.color().rgb() == expected_bg.rgb()
@@ -6011,7 +6011,7 @@ class TestSeverityBackground:
         window.group_mode_combo.setCurrentIndex(idx)
         window._refresh_result_tree()
 
-        top_item = window._result_model.item(0, 0)
+        top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
         assert not (top_item.flags() & Qt.ItemIsSelectable)
         window.close()
