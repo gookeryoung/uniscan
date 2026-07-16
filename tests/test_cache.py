@@ -738,9 +738,7 @@ class TestCacheStoreResults:
             assert result.match_texts == ("password", "secret")
             assert result.match_description == "批量凭证描述"
 
-    def test_batch_put_results_rollback_failure_preserves_original_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_batch_put_results_rollback_failure_preserves_original_error(self, tmp_path: Path) -> None:
         """I5 修复：ROLLBACK 失败不应掩盖原始异常。
 
         场景：executemany 抛 ValueError（原始异常），ROLLBACK 也抛 sqlite3.Error，
