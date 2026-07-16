@@ -1143,7 +1143,7 @@ class TestScannerProgress:
         # 统计仍正确（命中数不受影响）
         assert report.stats.matched_files == 5
         # 但内部收集列表应为空（无回调时跳过收集）
-        assert scanner._matched_files == []
+        assert not scanner._matched_files
 
     def test_progress_callback_final_force(self, tmp_path: Path) -> None:
         """最终进度应被强制发送（跳过节流）。"""
@@ -1293,6 +1293,27 @@ class TestScannerControl:
         assert report.cancelled
         assert report.stats.scanned_files == 0
         assert report.stats.matched_files == 0
+
+    def test_scanner_reusable_after_cancel(self, tmp_path: Path) -> None:
+        """C1 修复：取消后 Scanner 可复用，第二次 scan() 正常执行。
+
+        回归场景：scan() 在 finally 中清除 _cancel_event，确保下次 scan()
+        的 is_cancelled 为 False；否则取消后 Scanner 静默跳过全部扫描逻辑。
+        """
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "secret")))
+        # 第一次 scan 前取消
+        scanner.cancel()
+        report1 = scanner.scan(tmp_path)
+        assert report1.cancelled
+        assert report1.stats.scanned_files == 0
+        # 取消标志应已被 scan() finally 清除
+        assert not scanner.is_cancelled
+        # 第二次 scan 应正常执行（C1 修复核心：不再静默跳过）
+        report2 = scanner.scan(tmp_path)
+        assert not report2.cancelled
+        assert report2.stats.scanned_files == 1
+        assert report2.stats.matched_files == 1
 
     def test_cancel_during_scan_returns_partial(self, tmp_path: Path) -> None:
         """扫描中取消：应返回 cancelled=True。"""

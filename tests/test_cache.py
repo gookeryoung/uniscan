@@ -134,6 +134,71 @@ class TestSerializeMatch:
         with pytest.raises(TypeError, match="未知匹配类型"):
             serialize_match("not-a-match")  # type: ignore[arg-type]
 
+    def test_serialize_leaf_includes_description(self) -> None:
+        """C2 修复：LeafMatch 序列化须包含 description 字段，否则描述变更不触发缓存失效。"""
+        m = LeafMatch(
+            target=MatchTarget.FILENAME,
+            mode=MatchMode.CONTAINS,
+            pattern="x",
+            description="敏感文件名",
+        )
+        data = serialize_match(m)
+        assert data["description"] == "敏感文件名"
+
+    def test_serialize_and_includes_description(self) -> None:
+        """C2 修复：AndMatch 序列化须包含 description 字段。"""
+        m = AndMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="a"),
+                LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="b"),
+            ),
+            description="组合匹配描述",
+        )
+        data = serialize_match(m)
+        assert data["description"] == "组合匹配描述"
+
+    def test_serialize_or_includes_description(self) -> None:
+        """C2 修复：OrMatch 序列化须包含 description 字段。"""
+        m = OrMatch(
+            children=(
+                LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="a"),
+                LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="b"),
+            ),
+            description="或匹配描述",
+        )
+        data = serialize_match(m)
+        assert data["description"] == "或匹配描述"
+
+    def test_serialize_not_includes_description(self) -> None:
+        """C2 修复：NotMatch 序列化须包含 description 字段。"""
+        m = NotMatch(
+            child=LeafMatch(target=MatchTarget.PATH, mode=MatchMode.CONTAINS, pattern="backup"),
+            description="排除备份目录",
+        )
+        data = serialize_match(m)
+        assert data["description"] == "排除备份目录"
+
+    def test_serialize_description_affects_rule_hash(self) -> None:
+        """C2 修复验证：description 变更应改变 rule_hash，触发旧缓存失效。
+
+        回归场景：若 serialize_match 遗漏 description 字段，仅修改描述后
+        rule_hash 不变，缓存命中旧结果，描述变更无法生效。
+        """
+        rule_no_desc = Rule(
+            name="r",
+            match=LeafMatch(target=MatchTarget.FILENAME, mode=MatchMode.CONTAINS, pattern="x"),
+        )
+        rule_with_desc = Rule(
+            name="r",
+            match=LeafMatch(
+                target=MatchTarget.FILENAME,
+                mode=MatchMode.CONTAINS,
+                pattern="x",
+                description="新增描述",
+            ),
+        )
+        assert compute_rule_hash(rule_no_desc) != compute_rule_hash(rule_with_desc)
+
     def test_serialize_with_extensions(self) -> None:
         rule = Rule(
             name="ext",
@@ -306,6 +371,46 @@ class TestCacheStoreInit:
         db = tmp_path / "cache.db"
         store = CacheStore(db)
         assert store.db_path == db
+        store.close()
+
+    def test_init_failure_closes_connection(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """I9 修复：_init_db 失败时关闭连接，避免泄漏。
+
+        通过 mock migrate 抛异常模拟 schema 损坏场景，验证异常抛出
+        且 _conn.close() 被调用。sqlite3.Connection 的 close/execute 均为
+        只读属性，用 MagicMock 替换整个连接以跟踪 close 调用。
+        """
+        from unittest.mock import MagicMock
+
+        from fuscan.cache import store as store_mod
+
+        mock_conn = MagicMock()
+
+        def fake_migrate(conn: sqlite3.Connection) -> int:
+            raise RuntimeError("模拟 schema 损坏")
+
+        monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: mock_conn)
+        monkeypatch.setattr(store_mod, "migrate", fake_migrate)
+        with pytest.raises(RuntimeError, match="模拟 schema 损坏"):
+            CacheStore(tmp_path / "cache.db")
+        # _conn.close() 应被调用一次（I9 修复核心）
+        assert mock_conn.close.called
+
+    def test_close_is_idempotent(self, tmp_path: Path) -> None:
+        """S7 修复：close() 重复调用不应抛异常。"""
+        db = tmp_path / "cache.db"
+        store = CacheStore(db)
+        store.close()
+        # 重复调用不应抛异常
+        store.close()
+        store.close()
+
+    def test_context_manager_close_idempotent(self, tmp_path: Path) -> None:
+        """S7 修复：with 语句退出后再次 close 不应抛异常。"""
+        db = tmp_path / "cache.db"
+        with CacheStore(db) as store:
+            store.register_ruleset(RuleSet(version="1.0", rules=(_filename_rule(),)))
+        # with 退出已 close，再调一次不应抛异常
         store.close()
 
 
@@ -632,6 +737,53 @@ class TestCacheStoreResults:
             assert result is not None
             assert result.match_texts == ("password", "secret")
             assert result.match_description == "批量凭证描述"
+
+    def test_batch_put_results_rollback_failure_preserves_original_error(
+        self, tmp_path: Path
+    ) -> None:
+        """I5 修复：ROLLBACK 失败不应掩盖原始异常。
+
+        场景：executemany 抛 ValueError（原始异常），ROLLBACK 也抛 sqlite3.Error，
+        最终应抛出 ValueError 而非 sqlite3.Error，保留原始因果链。
+
+        sqlite3.Connection.execute 为只读属性，用 MagicMock 替换 _conn
+        以注入异常行为。
+        """
+        from unittest.mock import MagicMock
+
+        from fuscan.cache.store import BatchWriteItem
+
+        store = CacheStore(tmp_path / "c.db")
+        rule_hash = _register_rule(store)
+        file_hash = hash_bytes(b"rollback-test")
+
+        # 用 MagicMock 替换 _conn：executemany 抛 ValueError（原始异常），
+        # execute("ROLLBACK") 抛 sqlite3.Error（回滚失败）
+        mock_conn = MagicMock()
+
+        def fake_execute(sql: str, *params: Any) -> Any:
+            if sql == "ROLLBACK":
+                raise sqlite3.Error("模拟 ROLLBACK 失败")
+            return MagicMock()
+
+        def fake_executemany(sql: str, *params: Any) -> Any:
+            raise ValueError("模拟写入失败")
+
+        mock_conn.execute.side_effect = fake_execute
+        mock_conn.executemany.side_effect = fake_executemany
+        store._conn = mock_conn  # type: ignore[assignment]
+
+        item = BatchWriteItem(
+            file_hash=file_hash,
+            size=50,
+            path=tmp_path / "a.txt",
+            mtime=1.0,
+            hits=((rule_hash, None),),
+        )
+        # 应抛出原始的 ValueError，而非 ROLLBACK 的 sqlite3.Error
+        with pytest.raises(ValueError, match="模拟写入失败"):
+            store.batch_put_results([item])
+        store.close()
 
 
 # ---------------------------------------------------------------- 文件登记

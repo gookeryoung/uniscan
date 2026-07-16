@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import os
 import string
 import sys
@@ -12,6 +13,8 @@ from typing import Callable, Iterator
 from fuscan.scanner.context import FileEntry
 
 __all__ = ["FileWalker", "list_drives"]
+
+logger = logging.getLogger(__name__)
 
 
 def list_drives(include_network: bool = False) -> list[Path]:
@@ -99,6 +102,8 @@ class FileWalker:
         self._follow_symlinks = follow_symlinks
         self._root: Path | None = None
         self._on_skip_dir = on_skip_dir
+        # follow_symlinks 时跟踪已访问目录的真实路径，检测环路避免无限递归
+        self._seen_realpaths: set[str] = set()
 
     def walk(self, root: Path) -> Iterator[FileEntry]:
         """遍历根目录，产出 FileEntry（不包含目录本身）。"""
@@ -106,6 +111,8 @@ class FileWalker:
         if not root.exists():
             return
         self._root = root
+        # 每次遍历重置环路检测集合；follow_symlinks 时记录根目录真实路径
+        self._seen_realpaths = {str(root)} if self._follow_symlinks else set()
         if root.is_file():
             yield FileEntry.from_path(root)
             return
@@ -117,6 +124,7 @@ class FileWalker:
         try:
             entries = list(os.scandir(directory))
         except OSError:
+            logger.debug("无法访问目录，已跳过: %s", directory, exc_info=True)
             return
 
         for entry in entries:
@@ -124,6 +132,7 @@ class FileWalker:
             try:
                 is_dir = entry.is_dir(follow_symlinks=self._follow_symlinks)
             except OSError:
+                logger.debug("无法读取目录条目状态，已跳过: %s", entry.path, exc_info=True)
                 continue
 
             if is_dir:
@@ -136,12 +145,33 @@ class FileWalker:
                     if self._on_skip_dir is not None:
                         self._on_skip_dir(str(dir_path))
                     continue
+                # follow_symlinks 时检测符号链接环路（如 a/link -> a），避免无限递归
+                if self._is_symlink_loop(dir_path):
+                    continue
                 yield from self._walk_dir(dir_path, depth + 1)
             else:
                 if self._is_ignored_file(name):
                     continue
                 # 用 DirEntry 构造，复用 scandir 已缓存的 stat，避免 Path.stat() 重复系统调用
                 yield FileEntry.from_direntry(entry)
+
+    def _is_symlink_loop(self, dir_path: Path) -> bool:
+        """检测目录是否为符号链接环路（仅在 follow_symlinks 时生效）。
+
+        跟踪已访问目录的真实路径（``resolve()`` 解析符号链接），
+        若真实路径已访问过则判定为环路。首次访问的目录会登记到集合。
+
+        :param dir_path: 待进入的目录路径
+        :return: True 表示环路，应跳过；False 表示可安全进入
+        """
+        if not self._follow_symlinks:
+            return False
+        real = str(dir_path.resolve())
+        if real in self._seen_realpaths:
+            logger.debug("检测到符号链接环路，跳过: %s", dir_path)
+            return True
+        self._seen_realpaths.add(real)
+        return False
 
     def _matches_ignore_path(self, path: Path) -> bool:
         """检查目录相对路径是否匹配 ignore_paths 中的任一 glob 模式。

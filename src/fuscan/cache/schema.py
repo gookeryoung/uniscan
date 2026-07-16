@@ -50,8 +50,12 @@ CURRENT_VERSION: int = 4
 # v4：scan_results 新增 match_texts/match_description 字段（iter-41）——
 #     AND/OR 组合规则需记录全部命中文本，原 match_text 仅含首条命中，
 #     语义不兼容，需清空旧缓存重新扫描以获取准确的多匹配文本
+# v5：serialize_match 补充 MatchSpec.description 字段（iter-47）——
+#     原序列化遗漏 description，修改 MatchSpec.description 不触发 rule_hash
+#     变化，导致缓存的 match_description 过期。补字段后 rule_hash 语义变化，
+#     递增版本号清空旧缓存
 # 后续重大变更（如换 BLAKE3、修改 RuleHit 字段语义）才递增此值。
-CACHE_COMPAT_VERSION: int = 4
+CACHE_COMPAT_VERSION: int = 5
 
 
 SCHEMA_SQL: str = """

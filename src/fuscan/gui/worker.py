@@ -142,9 +142,13 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
             total_skipped = 0
             total_errors = 0
             total_matches = 0
+            # 基于 report.cancelled 判断取消状态：C1 修复后 scan() 在 finally 中
+            # 清除 _cancel_event，scan() 返回后 self._scanner.is_cancelled 恒为 False，
+            # 必须用 report.cancelled 累积取消标志，否则取消的扫描会被误判为正常完成
+            was_cancelled = False
 
             for root in self._roots:
-                if self._scanner is not None and self._scanner.is_cancelled:
+                if was_cancelled:
                     break
                 report: ScanReport = self._scanner.scan(root)
                 all_results.extend(report.results)
@@ -161,8 +165,8 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                 self._cum_matched = total_matched
                 self._cum_errors = total_errors
                 self._cum_matches = total_matches
-
-            was_cancelled = self._scanner is not None and self._scanner.is_cancelled
+                if report.cancelled:
+                    was_cancelled = True
             elapsed = time.monotonic() - self._start_time
             merged = ScanReport(
                 root=self._roots[0] if len(self._roots) == 1 else Path("（多路径）"),

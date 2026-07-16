@@ -366,3 +366,56 @@ class TestWalkerErrorHandling:
         # walk() 会 resolve 根路径，传入的路径也需 resolve 才能匹配
         result = walker._matches_ignore_path((tmp_path / "vendor").resolve())
         assert result is True
+
+
+class TestSymlinkLoopDetection:
+    """符号链接环路检测测试（I3 修复）。
+
+    直接测试 _is_symlink_loop 方法，避免依赖真实符号链接创建
+    （Windows 需要管理员权限或开发者模式）。
+    """
+
+    def test_no_follow_returns_false(self, tmp_path: Path) -> None:
+        """follow_symlinks=False 时环路检测直接返回 False。"""
+        walker = FileWalker(follow_symlinks=False)
+        # 预填充 _seen_realpaths 模拟已访问场景，确保未启用时不检测
+        walker._seen_realpaths = {str(tmp_path.resolve())}
+        assert walker._is_symlink_loop(tmp_path) is False
+
+    def test_follow_first_visit_returns_false_and_registers(self, tmp_path: Path) -> None:
+        """follow_symlinks=True 时首次访问返回 False 并登记真实路径。"""
+        walker = FileWalker(follow_symlinks=True)
+        resolved = str(tmp_path.resolve())
+        assert resolved not in walker._seen_realpaths
+        assert walker._is_symlink_loop(tmp_path) is False
+        assert resolved in walker._seen_realpaths
+
+    def test_follow_second_visit_returns_true(self, tmp_path: Path) -> None:
+        """follow_symlinks=True 时重复访问同一真实路径判定为环路。"""
+        walker = FileWalker(follow_symlinks=True)
+        # 首次访问登记
+        assert walker._is_symlink_loop(tmp_path) is False
+        # 第二次访问判定为环路
+        assert walker._is_symlink_loop(tmp_path) is True
+
+    def test_walk_resets_seen_realpaths(self, tmp_path: Path) -> None:
+        """每次 walk() 重置 _seen_realpaths，避免跨多次遍历误判。"""
+        (tmp_path / "subdir").mkdir()
+        (tmp_path / "subdir" / "a.txt").write_text("", encoding="utf-8")
+        walker = FileWalker(follow_symlinks=True)
+        # 预填充一个无关路径，模拟上一次 walk 的残留
+        walker._seen_realpaths = {"/stale/path"}
+        list(walker.walk(tmp_path))
+        # walk() 后 stale 路径应被清除，仅保留本次遍历的真实路径
+        assert "/stale/path" not in walker._seen_realpaths
+        assert str(tmp_path.resolve()) in walker._seen_realpaths
+
+    def test_walk_follow_symlinks_normal_tree(self, tmp_path: Path) -> None:
+        """follow_symlinks=True 时正常目录树（无环路）完整遍历。"""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("", encoding="utf-8")
+        (tmp_path / "main.py").write_text("", encoding="utf-8")
+        walker = FileWalker(follow_symlinks=True)
+        entries = list(walker.walk(tmp_path))
+        names = {e.name for e in entries}
+        assert names == {"app.py", "main.py"}

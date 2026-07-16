@@ -119,13 +119,26 @@ def serialize_match(match: MatchSpec) -> dict[str, Any]:
             "mode": match.mode.value,
             "pattern": match.pattern,
             "case_sensitive": match.case_sensitive,
+            "description": match.description,
         }
     if isinstance(match, AndMatch):
-        return {"type": "and", "children": [serialize_match(c) for c in match.children]}
+        return {
+            "type": "and",
+            "children": [serialize_match(c) for c in match.children],
+            "description": match.description,
+        }
     if isinstance(match, OrMatch):
-        return {"type": "or", "children": [serialize_match(c) for c in match.children]}
+        return {
+            "type": "or",
+            "children": [serialize_match(c) for c in match.children],
+            "description": match.description,
+        }
     if isinstance(match, NotMatch):
-        return {"type": "not", "child": serialize_match(match.child)}
+        return {
+            "type": "not",
+            "child": serialize_match(match.child),
+            "description": match.description,
+        }
     raise TypeError(f"未知匹配类型: {type(match).__name__}")
 
 

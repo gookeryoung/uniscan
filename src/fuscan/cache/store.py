@@ -114,6 +114,7 @@ class CacheStore:
         """
         self._db_path: Path = db_path
         self._lock: threading.RLock = threading.RLock()
+        self._closed: bool = False
         # 进程内 LRU 命中缓存：file_hash -> (rule_hashes_tuple, result_dict)
         # 用 OrderedDict 实现 LRU 语义：访问时 move_to_end，超容量时 popitem(last=False)
         self._hit_cache: OrderedDict[str, tuple[tuple[str, ...], dict[str, RuleHit | None]]] = OrderedDict()
@@ -124,8 +125,13 @@ class CacheStore:
             check_same_thread=False,
             isolation_level=None,  # 自动提交模式，事务显式管理
         )
-        self._conn.row_factory = sqlite3.Row
-        self._init_db()
+        try:
+            self._conn.row_factory = sqlite3.Row
+            self._init_db()
+        except Exception:
+            # _init_db 失败（如磁盘满、schema 损坏）时关闭连接，避免泄漏
+            self._conn.close()
+            raise
 
     def _init_db(self) -> None:
         """初始化数据库：启用 WAL、外键，迁移 schema。"""
@@ -547,7 +553,11 @@ class CacheStore:
                     )
                 self._conn.execute("COMMIT")
             except Exception:
-                self._conn.execute("ROLLBACK")
+                try:
+                    self._conn.execute("ROLLBACK")
+                except sqlite3.Error:
+                    # ROLLBACK 失败不应掩盖原始异常，仅记录警告
+                    logger.warning("ROLLBACK 失败", exc_info=True)
                 raise
             # 仅 COMMIT 成功后失效 LRU
             for item in items:
@@ -715,8 +725,11 @@ class CacheStore:
     # ------------------------------------------------------------------ 资源管理
 
     def close(self) -> None:
-        """关闭数据库连接。"""
+        """关闭数据库连接。重复调用安全（幂等）。"""
         with self._lock:
+            if self._closed:
+                return
+            self._closed = True
             self._hit_cache.clear()
             self._conn.close()
 

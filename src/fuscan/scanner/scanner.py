@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
@@ -36,6 +37,11 @@ logger = logging.getLogger(__name__)
 # 50 个文件 × 平均 2 条规则 = 100 行 scan_results + 50 行 scanned_files + 50 行 file_paths，
 # 单次事务约 200 行写入，相比逐条 commit（200 次 fsync）减少 99% 提交开销。
 _BATCH_THRESHOLD: int = 50
+
+# 进度收集列表上限：_skipped_dirs 与 _matched_files 使用 deque(maxlen=) 防止
+# 大规模扫描（如全盘跳过 node_modules）时列表无界增长导致内存膨胀。
+# _emit_progress 取该上限条 recent 条目，足够 GUI 展示近期跳过/命中情况。
+_PROGRESS_LIST_MAX: int = 200
 
 
 def default_extract_content(entry: FileEntry) -> str:
@@ -126,8 +132,8 @@ class Scanner:
         # 预计算规则集扩展名并集，避免 _should_scan 对每个文件重算
         self._has_unrestricted_rule: bool = any(not rule.file_extensions for rule in ruleset.rules)
         self._all_extensions: frozenset[str] = frozenset(ext for rule in ruleset.rules for ext in rule.file_extensions)
-        self._skipped_dirs: list[str] = []
-        self._matched_files: list[tuple[str, str]] = []
+        self._skipped_dirs: deque[str] = deque(maxlen=_PROGRESS_LIST_MAX)
+        self._matched_files: deque[tuple[str, str]] = deque(maxlen=_PROGRESS_LIST_MAX)
         self._walker = FileWalker(
             ignore_dirs=ignore_dirs,
             ignore_extensions=ignore_extensions,
@@ -227,9 +233,11 @@ class Scanner:
         压缩包内条目始终顺序扫描。``on_progress`` 回调在遍历和扫描阶段按时间节流反馈进度。
         """
         self._progress_start = time.perf_counter()
+        # 重置暂停状态（取消状态在 finally 中清除，保留"scan() 前取消"语义）
+        self._pause_event.set()
         # 重置每次扫描的收集列表，避免跨多次 scan() 累积
-        self._skipped_dirs = []
-        self._matched_files = []
+        self._skipped_dirs.clear()
+        self._matched_files.clear()
 
         results: list[ScanResult] = []
         entries: list[FileEntry] = []
@@ -239,45 +247,52 @@ class Scanner:
         matched = 0
         errors = 0
         matches = 0
+        cancelled = self.is_cancelled
 
-        if not self.is_cancelled:
-            if self._max_workers and self._max_workers > 1:
-                # 流水线模式：walk 与 scan 并行
-                total, skipped, scanned, matched, errors, matches, entries = self._scan_pipelined(root, results)
-            else:
-                # 阶段 1：遍历收集待扫描 entry（单线程，I/O 轻量）
-                for entry in self._walker.walk(root):
-                    if self._check_control():
-                        break
-                    total += 1
-                    if not self._should_scan(entry):
-                        skipped += 1
-                        continue
-                    entries.append(entry)
-                    if total % 200 == 0:
-                        self._emit_progress(str(entry.path), 0, 0, 0)
-                self._progress_total = total
-                self._progress_skipped = skipped
-                # 阶段 2：顺序扫描
-                scanned, matched, errors, matches = self._scan_sequential(entries, results)
+        try:
+            if not cancelled:
+                if self._max_workers and self._max_workers > 1:
+                    # 流水线模式：walk 与 scan 并行
+                    total, skipped, scanned, matched, errors, matches, entries = self._scan_pipelined(root, results)
+                else:
+                    # 阶段 1：遍历收集待扫描 entry（单线程，I/O 轻量）
+                    for entry in self._walker.walk(root):
+                        if self._check_control():
+                            break
+                        total += 1
+                        if not self._should_scan(entry):
+                            skipped += 1
+                            continue
+                        entries.append(entry)
+                        if total % 200 == 0:
+                            self._emit_progress(str(entry.path), 0, 0, 0)
+                    self._progress_total = total
+                    self._progress_skipped = skipped
+                    # 阶段 2：顺序扫描
+                    scanned, matched, errors, matches = self._scan_sequential(entries, results)
 
-        # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
-        if self._scan_archives and self._archive_scanner is not None and not self.is_cancelled:
-            # archive phase 内部直接调 CacheStore，不走 _pending_batch，需先 flush
-            # 避免批量缓冲与 archive scanner 的写入交错
+            # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
+            if self._scan_archives and self._archive_scanner is not None and not self.is_cancelled:
+                # archive phase 内部直接调 CacheStore，不走 _pending_batch，需先 flush
+                # 避免批量缓冲与 archive scanner 的写入交错
+                self._flush_batch()
+                self._base_scanned = scanned
+                self._base_matched = matched
+                self._base_errors = errors
+                self._base_matches = matches
+                d_scanned, d_matched, d_errors, d_matches = self._scan_archive_phase(entries, results)
+                scanned += d_scanned
+                matched += d_matched
+                errors += d_errors
+                matches += d_matches
+        finally:
+            # 异常路径（如 MemoryError、walker 未捕获错误）也 flush 已累积批次，
+            # 避免最后一批（最多 _BATCH_THRESHOLD 个文件）缓存数据丢失
             self._flush_batch()
-            self._base_scanned = scanned
-            self._base_matched = matched
-            self._base_errors = errors
-            self._base_matches = matches
-            d_scanned, d_matched, d_errors, d_matches = self._scan_archive_phase(entries, results)
-            scanned += d_scanned
-            matched += d_matched
-            errors += d_errors
-            matches += d_matches
-
-        # 最终保险 flush：流水线模式下可能有 worker 在 _drain_futures 后又累积
-        self._flush_batch()
+            # 记录取消状态后清除标志，使 Scanner 可在取消/异常后复用（C1 修复）：
+            # 否则下次 scan() 的 is_cancelled 仍为 True，静默跳过全部扫描逻辑
+            cancelled = self.is_cancelled
+            self._cancel_event.clear()
 
         # 强制发送最终进度
         self._emit_progress("", scanned, matched, errors, matches, force=True)
@@ -292,7 +307,7 @@ class Scanner:
             duration_seconds=duration,
             total_matches=matches,
         )
-        return ScanReport(root=root, results=tuple(results), stats=stats, cancelled=self.is_cancelled)
+        return ScanReport(root=root, results=tuple(results), stats=stats, cancelled=cancelled)
 
     def _emit_progress(
         self,
@@ -314,9 +329,9 @@ class Scanner:
         if not force and now - self._last_progress_time < self._progress_interval:
             return
         self._last_progress_time = now
-        # 截断到最近 200 条，避免大扫描量时 ProgressInfo 过大且 addItems 阻塞主线程
-        recent_skipped = tuple(self._skipped_dirs[-200:])
-        recent_matched = tuple(self._matched_files[-200:])
+        # deque(maxlen=_PROGRESS_LIST_MAX) 已自动截断到最近条目，直接转 tuple
+        recent_skipped = tuple(self._skipped_dirs)
+        recent_matched = tuple(self._matched_files)
         self._on_progress(
             ProgressInfo(
                 current_file=current_file,
