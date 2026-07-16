@@ -31,6 +31,7 @@ from fuscan.builtin import load_with_builtin
 from fuscan.config import load_config
 from fuscan.rules import RuleError, RuleSet, load_ruleset, merge_multiple_rulesets
 from fuscan.scanner import Scanner, ScanReport
+from fuscan.scanner.export import export_excel, export_pdf
 
 __all__ = ["build_parser", "main"]
 
@@ -415,14 +416,14 @@ def _output_report(report: ScanReport, fmt: str, output_file: Path | None) -> No
             logger.error("PDF 格式必须配合 -f/--output-file 输出到文件")
             return
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_bytes(report.to_pdf())
+        output_file.write_bytes(export_pdf(report))
         return
     if fmt == "excel":
         if output_file is None:
             logger.error("Excel 格式必须配合 -f/--output-file 输出到文件")
             return
         output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_bytes(report.to_excel())
+        output_file.write_bytes(export_excel(report))
         return
     _write_output(report.to_format(fmt), output_file)
 
