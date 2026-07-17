@@ -46,6 +46,8 @@ class Ui_HitDetailDialog:
         __qtablewidgetitem5 = QTableWidgetItem()
         self.hits_table.setHorizontalHeaderItem(5, __qtablewidgetitem5)
         self.hits_table.setObjectName("hits_table")
+        self.hits_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.hits_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.hits_table.horizontalHeader().setStretchLastSection(True)
         self.hits_table.verticalHeader().setVisible(False)
 

@@ -262,6 +262,13 @@ class Ui_MainWindow(object):
 
         self.scanning_layout.addWidget(self.lists_splitter)
 
+        self.scan_stats_label = QLabel(self.scanning_page)
+        self.scan_stats_label.setObjectName(u"scan_stats_label")
+        self.scan_stats_label.setAlignment(Qt.AlignCenter)
+        self.scan_stats_label.setTextFormat(Qt.RichText)
+
+        self.scanning_layout.addWidget(self.scan_stats_label)
+
         self.scanning_btn_row = QHBoxLayout()
         self.scanning_btn_row.setSpacing(12)
         self.scanning_btn_row.setObjectName(u"scanning_btn_row")
@@ -722,6 +729,7 @@ class Ui_MainWindow(object):
         self.scan_btn.setText(QCoreApplication.translate("MainWindow", u"\u5f00\u59cb\u626b\u63cf", None))
         self.skipped_dirs_group.setTitle(QCoreApplication.translate("MainWindow", u"\u8df3\u8fc7\u7684\u6587\u4ef6\u5939", None))
         self.matched_files_group.setTitle(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u7684\u6587\u4ef6", None))
+        self.scan_stats_label.setText("")
         self.pause_resume_btn.setText(QCoreApplication.translate("MainWindow", u"\u6682\u505c\u626b\u63cf", None))
         self.cancel_btn.setText(QCoreApplication.translate("MainWindow", u"\u53d6\u6d88\u626b\u63cf", None))
 #if QT_CONFIG(tooltip)

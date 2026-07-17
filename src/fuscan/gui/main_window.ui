@@ -490,6 +490,19 @@
               </widget>
              </item>
              <item>
+              <widget class="QLabel" name="scan_stats_label">
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::RichText</enum>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item>
               <layout class="QHBoxLayout" name="scanning_btn_row">
                <property name="spacing">
                 <number>12</number>

@@ -15,7 +15,6 @@ try:
     from PySide2.QtWidgets import (
         QDialog,
         QHeaderView,
-        QTableWidget,
         QTableWidgetItem,
         QTextEdit,
         QWidget,
@@ -26,7 +25,6 @@ except ImportError:  # pragma: no cover
     from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
         QDialog,
         QHeaderView,
-        QTableWidget,
         QTableWidgetItem,
         QTextEdit,
         QWidget,
@@ -86,10 +84,8 @@ class HitDetailDialog(QDialog, Ui_HitDetailDialog):  # pyrefly: ignore [invalid-
 
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性与信号槽连接。"""
-        # 命中规则表：列头拉伸模式、只读、整行选择
+        # 命中规则表：列头拉伸模式（editTriggers/selectionBehavior 已在 .ui 中声明）
         self.hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # pyrefly: ignore [missing-argument]
-        self.hits_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.hits_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.hits_table.cellClicked.connect(self._on_hits_row_clicked)
 
         # 命中导航按钮信号槽

@@ -378,10 +378,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.detail_nonempty_main_layout.setStretch(5, 0)
 
     def _setup_scan_stats_panel(self) -> None:
-        """创建扫描中页的已扫描文件分类统计面板（需求6/7）。
+        """初始化扫描中页的已扫描文件分类统计面板。
 
-        在 ``lists_splitter`` 与 ``scanning_btn_row`` 之间插入一个 QLabel，
-        用 HTML 富文本显示四类计数与颜色标识：
+        ``scan_stats_label`` 已在 ``main_window.ui`` 中声明（位于 ``lists_splitter``
+        与 ``scanning_btn_row`` 之间），本方法仅设置初始文本。面板用 HTML 富文本
+        显示四类计数与颜色标识：
 
         - 绿色：已通过（已扫描且未命中且未错误的文件）
         - 红色：命中
@@ -390,12 +391,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         颜色标识使用 ``<span style="color: ...">`` 内联样式，避免引入 QSS 样式表。
         """
-        self.scan_stats_label = QLabel()
-        self.scan_stats_label.setObjectName("scan_stats_label")
-        self.scan_stats_label.setAlignment(Qt.AlignCenter)
-        self.scan_stats_label.setTextFormat(Qt.RichText)
-        # 插入到 scanning_layout 的 index 1（lists_splitter=0, scanning_btn_row=1→2）
-        self.scanning_layout.insertWidget(1, self.scan_stats_label)
         self._update_scan_stats(0, 0, 0, 0)
 
     def _update_scan_stats(self, passed: int, matched: int, skipped: int, errors: int) -> None:
