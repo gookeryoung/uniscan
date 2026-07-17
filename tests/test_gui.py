@@ -3265,8 +3265,8 @@ class TestMatchTextHighlighting:
             hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer\n  eyJhbGci"),),
         )
         window = MainWindow()
-        window._detail_show_result(result)
-        assert len(window._detail_hit_positions) >= 1
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
         assert "1 /" in window.detail_nav_label.text()
         window.close()
 
@@ -3283,8 +3283,8 @@ class TestMatchTextHighlighting:
             hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text=r"mongodb://user:pass\123@"),),
         )
         window = MainWindow()
-        window._detail_show_result(result)
-        assert len(window._detail_hit_positions) >= 1
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
         assert "1 /" in window.detail_nav_label.text()
         window.close()
 
@@ -3301,8 +3301,8 @@ class TestMatchTextHighlighting:
             hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text="mongodb://user:pa'ss@"),),
         )
         window = MainWindow()
-        window._detail_show_result(result)
-        assert len(window._detail_hit_positions) >= 1
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
         assert "1 /" in window.detail_nav_label.text()
         window.close()
 
@@ -4124,19 +4124,19 @@ class TestDetailArea:
         window.close()
 
     def test_detail_clear(self, qapp: QApplication) -> None:
-        """_detail_clear 应切换到空态并清空内容。"""
+        """_detail_panel.clear 应切换到空态并清空内容。"""
         window = MainWindow()
         window.detail_action_stack.setCurrentIndex(1)
         window.detail_main_stack.setCurrentIndex(1)
-        window._detail_current_result = object()  # type: ignore[assignment]
-        window._detail_hit_positions = [(0, 1, 0)]
-        window._detail_current_hit_index = 0
-        window._detail_clear()
+        window._detail_panel._current_result = object()  # type: ignore[assignment]
+        window._detail_panel._hit_positions = [(0, 1, 0)]
+        window._detail_panel._current_hit_index = 0
+        window._detail_panel.clear()
         assert window.detail_action_stack.currentIndex() == 0
         assert window.detail_main_stack.currentIndex() == 0
-        assert window._detail_current_result is None
-        assert window._detail_hit_positions == []
-        assert window._detail_current_hit_index == -1
+        assert window._detail_panel._current_result is None
+        assert window._detail_panel._hit_positions == []
+        assert window._detail_panel._current_hit_index == -1
         window.close()
 
     def test_detail_show_result(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4155,7 +4155,7 @@ class TestDetailArea:
         # 详情区应切换到非空态
         assert window.detail_action_stack.currentIndex() == 1
         assert window.detail_main_stack.currentIndex() == 1
-        assert window._detail_current_result is not None
+        assert window._detail_panel._current_result is not None
         # 命中表应有行
         assert window.detail_hits_table.rowCount() > 0
         window.close()
@@ -4207,7 +4207,7 @@ class TestDetailArea:
             window.result_tree.setCurrentIndex(child.index())
             # 子行无 data，但应通过父行查找展示详情
             assert window.detail_action_stack.currentIndex() == 1
-            assert window._detail_current_result is not None
+            assert window._detail_panel._current_result is not None
         window.close()
 
     def test_detail_selection_no_items(self, qapp: QApplication) -> None:
@@ -4257,14 +4257,14 @@ class TestDetailArea:
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
 
-        total = len(window._detail_hit_positions)
+        total = len(window._detail_panel._hit_positions)
         if total > 1:
             # 下一个命中
-            window._on_next_detail_hit()
-            assert window._detail_current_hit_index == 1
+            window._detail_panel.next_hit()
+            assert window._detail_panel._current_hit_index == 1
             # 上一个命中（回到 0）
-            window._on_prev_detail_hit()
-            assert window._detail_current_hit_index == 0
+            window._detail_panel.prev_hit()
+            assert window._detail_panel._current_hit_index == 0
             # 导航标签应显示 "1 / total"
             assert "1" in window.detail_nav_label.text()
             assert str(total) in window.detail_nav_label.text()
@@ -4273,9 +4273,9 @@ class TestDetailArea:
     def test_detail_nav_label_no_hits(self, qapp: QApplication) -> None:
         """无命中时导航标签应显示"无命中"且按钮禁用。"""
         window = MainWindow()
-        window._detail_hit_positions = []
-        window._detail_current_hit_index = -1
-        window._update_detail_nav_label()
+        window._detail_panel._hit_positions = []
+        window._detail_panel._current_hit_index = -1
+        window._detail_panel._update_nav_label()
         assert "无命中" in window.detail_nav_label.text()
         assert not window.detail_prev_btn.isEnabled()
         assert not window.detail_next_btn.isEnabled()
@@ -4284,9 +4284,9 @@ class TestDetailArea:
     def test_detail_nav_label_with_hits(self, qapp: QApplication) -> None:
         """有命中时导航标签应显示进度且按钮启用。"""
         window = MainWindow()
-        window._detail_hit_positions = [(0, 1, 0), (5, 6, 0)]
-        window._detail_current_hit_index = 0
-        window._update_detail_nav_label()
+        window._detail_panel._hit_positions = [(0, 1, 0), (5, 6, 0)]
+        window._detail_panel._current_hit_index = 0
+        window._detail_panel._update_nav_label()
         assert "1 / 2" in window.detail_nav_label.text()
         assert window.detail_prev_btn.isEnabled()
         assert window.detail_next_btn.isEnabled()
@@ -4295,24 +4295,24 @@ class TestDetailArea:
     def test_detail_prev_next_wrap_around(self, qapp: QApplication) -> None:
         """命中导航应在到达首尾时循环。"""
         window = MainWindow()
-        window._detail_hit_positions = [(0, 1, 0), (5, 6, 0)]
-        window._detail_current_hit_index = 0
+        window._detail_panel._hit_positions = [(0, 1, 0), (5, 6, 0)]
+        window._detail_panel._current_hit_index = 0
         # 在索引 0 时上一个应循环到最后
-        window._on_prev_detail_hit()
-        assert window._detail_current_hit_index == 1
+        window._detail_panel.prev_hit()
+        assert window._detail_panel._current_hit_index == 1
         # 在索引 1 时下一个应循环到第一个
-        window._on_next_detail_hit()
-        assert window._detail_current_hit_index == 0
+        window._detail_panel.next_hit()
+        assert window._detail_panel._current_hit_index == 0
         window.close()
 
     def test_detail_prev_next_no_hits(self, qapp: QApplication) -> None:
         """无命中时上一个/下一个不应崩溃。"""
         window = MainWindow()
-        window._detail_hit_positions = []
-        window._detail_current_hit_index = -1
-        window._on_prev_detail_hit()
-        window._on_next_detail_hit()
-        assert window._detail_current_hit_index == -1
+        window._detail_panel._hit_positions = []
+        window._detail_panel._current_hit_index = -1
+        window._detail_panel.prev_hit()
+        window._detail_panel.next_hit()
+        assert window._detail_panel._current_hit_index == -1
         window.close()
 
     def test_detail_copy_path(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4327,7 +4327,7 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        window._on_copy_path()
+        window._detail_panel.copy_path()
         clipboard = QApplication.clipboard()
         assert clipboard is not None
         assert "secret.txt" in clipboard.text()  # pyrefly: ignore [missing-argument]
@@ -4336,13 +4336,38 @@ class TestDetailArea:
     def test_detail_copy_path_no_result(self, qapp: QApplication) -> None:
         """无选中结果时复制路径不应崩溃。"""
         window = MainWindow()
-        window._on_copy_path()
+        window._detail_panel.copy_path()
         window.close()
 
     def test_detail_open_in_window_no_result(self, qapp: QApplication) -> None:
         """无选中结果时打开窗口不应崩溃。"""
         window = MainWindow()
-        window._on_open_in_window()
+        window._detail_panel.open_in_window()
+        window.close()
+
+    def test_detail_open_in_window_with_result(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """有选中结果时打开窗口应创建 HitDetailDialog 并调用 exec_。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._populate_results(report)
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
+        assert window._detail_panel._current_result is not None
+
+        exec_calls: list[Any] = []
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.HitDetailDialog",
+            lambda result, parent: exec_calls.append(result) or type("FakeDialog", (), {"exec_": lambda self: None})(),
+        )
+        window._detail_panel.open_in_window()
+        assert len(exec_calls) == 1
         window.close()
 
     def test_detail_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4374,7 +4399,7 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        assert window._detail_current_result is not None
+        assert window._detail_panel._current_result is not None
 
         captured: list[Any] = []
         from fuscan.gui import main_window as mw_module
@@ -4405,7 +4430,7 @@ class TestDetailArea:
     def test_result_tree_context_menu_no_selection(self, qapp: QApplication) -> None:
         """无选中结果时右键菜单不应弹出。"""
         window = MainWindow()
-        assert window._detail_current_result is None
+        assert window._detail_panel._current_result is None
 
         from fuscan.gui import main_window as mw_module
 
@@ -4479,26 +4504,26 @@ class TestDetailArea:
     def test_shortcut_next_triggers_nav(self, qapp: QApplication) -> None:
         """F3 快捷键的 activated 信号应触发下一条命中导航。"""
         window = MainWindow()
-        window._detail_hit_positions = [(0, 1, 0), (5, 6, 0)]
-        window._detail_current_hit_index = 0
+        window._detail_panel._hit_positions = [(0, 1, 0), (5, 6, 0)]
+        window._detail_panel._current_hit_index = 0
         window._shortcut_next.activated.emit()
-        assert window._detail_current_hit_index == 1
+        assert window._detail_panel._current_hit_index == 1
         window.close()
 
     def test_shortcut_prev_triggers_nav(self, qapp: QApplication) -> None:
         """Shift+F3 快捷键的 activated 信号应触发上一条命中导航。"""
         window = MainWindow()
-        window._detail_hit_positions = [(0, 1, 0), (5, 6, 0)]
-        window._detail_current_hit_index = 1
+        window._detail_panel._hit_positions = [(0, 1, 0), (5, 6, 0)]
+        window._detail_panel._current_hit_index = 1
         window._shortcut_prev.activated.emit()
-        assert window._detail_current_hit_index == 0
+        assert window._detail_panel._current_hit_index == 0
         window.close()
 
     def test_detail_hits_table_has_position_count_column(self, qapp: QApplication, tmp_path: Path) -> None:
         """命中规则表应包含6列，第4列为'位置数'，第6列为'描述'。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         assert window.detail_hits_table.columnCount() == 6
         assert window.detail_hits_table.horizontalHeaderItem(3).text() == "位置数"
         assert window.detail_hits_table.horizontalHeaderItem(5).text() == "描述"
@@ -4508,7 +4533,7 @@ class TestDetailArea:
         """位置数列应显示每条规则在预览中的高亮位置数。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         # 规则0(密码): 2处password, 规则1(令牌): 1处token
         assert window.detail_hits_table.item(0, 3).text() == "2"
         assert window.detail_hits_table.item(1, 3).text() == "1"
@@ -4535,7 +4560,7 @@ class TestDetailArea:
             ),
         )
         window = MainWindow()
-        window._detail_show_result(result)
+        window._detail_panel.show_result(result)
         # 第0行描述列应填充 match_description
         assert window.detail_hits_table.item(0, 5).text() == "敏感凭证关键词"
         # 第1行描述列未设置时应为空字符串
@@ -4546,44 +4571,44 @@ class TestDetailArea:
         """点击规则表行应跳转到该规则对应的高亮位置。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         # 位置排序: [(0,8,0), (13,18,1), (23,31,0)]
         # 初始定位到位置0(规则0的首个password)
-        assert window._detail_current_hit_index == 0
+        assert window._detail_panel._current_hit_index == 0
         # 点击规则1(令牌) → 跳到位置1(token)
-        window._on_detail_hits_row_clicked(1, 0)
-        assert window._detail_current_hit_index == 1
+        window._detail_panel._on_hits_row_clicked(1, 0)
+        assert window._detail_panel._current_hit_index == 1
         window.close()
 
     def test_click_hits_row_cycles_within_rule(self, qapp: QApplication, tmp_path: Path) -> None:
         """重复点击同一规则行应在该规则的位置间循环。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         # 初始在位置0(规则0)
-        assert window._detail_current_hit_index == 0
+        assert window._detail_panel._current_hit_index == 0
         # 再次点击规则0 → 跳到位置2(规则0的第二个password)
-        window._on_detail_hits_row_clicked(0, 0)
-        assert window._detail_current_hit_index == 2
+        window._detail_panel._on_hits_row_clicked(0, 0)
+        assert window._detail_panel._current_hit_index == 2
         # 再次点击规则0 → 回到位置0(循环)
-        window._on_detail_hits_row_clicked(0, 0)
-        assert window._detail_current_hit_index == 0
+        window._detail_panel._on_hits_row_clicked(0, 0)
+        assert window._detail_panel._current_hit_index == 0
         window.close()
 
     def test_click_hits_row_no_positions_no_crash(self, qapp: QApplication) -> None:
         """无高亮位置时点击规则表行不应崩溃。"""
         window = MainWindow()
-        window._detail_hit_positions = []
-        window._detail_current_hit_index = -1
-        window._on_detail_hits_row_clicked(0, 0)
-        assert window._detail_current_hit_index == -1
+        window._detail_panel._hit_positions = []
+        window._detail_panel._current_hit_index = -1
+        window._detail_panel._on_hits_row_clicked(0, 0)
+        assert window._detail_panel._current_hit_index == -1
         window.close()
 
     def test_filename_match_position_count_shows_dash(self, qapp: QApplication, tmp_path: Path) -> None:
         """文件名匹配规则的位置数列应显示'-'而非数字。"""
         report = _build_filename_match_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         # 规则0(文件名): target="filename" → 位置数列显示"-"
         assert window.detail_hits_table.item(0, 3).text() == "-"
         # 规则1(密码): target="content" → 位置数列显示"1"（password在预览中出现1次）
@@ -4594,7 +4619,7 @@ class TestDetailArea:
         """文件名匹配规则的详情列应追加'（仅文件名）'提示。"""
         report = _build_filename_match_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         detail_text = window.detail_hits_table.item(0, 4).text()
         assert "（仅文件名）" in detail_text
         # 内容匹配规则不应有此标记
@@ -4606,11 +4631,11 @@ class TestDetailArea:
         """文件名匹配规则的关键词不应在内容预览中搜索高亮位置。"""
         report = _build_filename_match_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         # 文件名"secret_config.txt"含"secret"，但内容"password=abc\ntoken=xyz"不含"secret"
         # 若错误搜索内容，"secret"不在内容中，不会产生位置；但若文件名恰好也在内容中则会产生误导
         # 此处验证：所有高亮位置都不归属到规则0(文件名)
-        for _, _, rule_idx in window._detail_hit_positions:
+        for _, _, rule_idx in window._detail_panel._hit_positions:
             assert rule_idx != 0, "文件名匹配规则不应有内容高亮位置"
         window.close()
 
@@ -4618,7 +4643,7 @@ class TestDetailArea:
         """详情信息标签应显示'可切换位置'字段。"""
         report = _build_multi_rule_report(tmp_path)
         window = MainWindow()
-        window._detail_show_result(report.hits[0])
+        window._detail_panel.show_result(report.hits[0])
         info_text = window.detail_info_label.text()
         assert "可切换位置" in info_text
         # multi_rule.txt: password×2 + token×1 = 3个位置
@@ -4630,15 +4655,15 @@ class TestDetailArea:
         window = MainWindow()
         window.detail_preview.setPlainText("short")
         # 设置一个超出文档长度的位置
-        window._detail_hit_positions = [(0, 3, 0), (100, 200, 0)]
-        window._detail_current_hit_index = 1
+        window._detail_panel._hit_positions = [(0, 3, 0), (100, 200, 0)]
+        window._detail_panel._current_hit_index = 1
         # 不应抛出异常
-        window._highlight_current_detail_hit()
-        window._scroll_to_current_detail_hit()
+        window._detail_panel._highlight_current_hit()
+        window._detail_panel._scroll_to_current_hit()
         # 第一个位置（在范围内）应正常高亮
-        window._detail_current_hit_index = 0
-        window._highlight_current_detail_hit()
-        window._scroll_to_current_detail_hit()
+        window._detail_panel._current_hit_index = 0
+        window._detail_panel._highlight_current_hit()
+        window._detail_panel._scroll_to_current_hit()
         window.close()
 
     def test_rules_file_list_context_menu_no_selection(self, qapp: QApplication) -> None:
@@ -4667,7 +4692,7 @@ class TestDetailArea:
         window.close()
 
     def test_on_open_file_location_win32(self, qapp: QApplication, tmp_path: Path) -> None:
-        """_on_open_file_location 在 Windows 应调用 explorer 命令。"""
+        """open_location 在 Windows 应触发 explorer 命令（经信号路由到主窗口槽）。"""
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
@@ -4678,7 +4703,7 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        assert window._detail_current_result is not None
+        assert window._detail_panel._current_result is not None
 
         popen_calls: list[Any] = []
         import subprocess as subprocess_mod
@@ -4686,7 +4711,7 @@ class TestDetailArea:
         original_popen = subprocess_mod.Popen
         subprocess_mod.Popen = lambda *args, **kwargs: popen_calls.append(args)  # type: ignore[assignment]
         try:
-            window._on_open_file_location()
+            window._detail_panel.open_location()
         finally:
             subprocess_mod.Popen = original_popen
 
@@ -4696,7 +4721,7 @@ class TestDetailArea:
     def test_on_open_file_location_no_result(self, qapp: QApplication) -> None:
         """无选中结果时打开文件位置不应崩溃。"""
         window = MainWindow()
-        window._on_open_file_location()
+        window._detail_panel.open_location()
         window.close()
 
     def test_on_copy_path_with_result(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -4711,9 +4736,9 @@ class TestDetailArea:
         window = MainWindow()
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        assert window._detail_current_result is not None
+        assert window._detail_panel._current_result is not None
 
-        window._on_copy_path()
+        window._detail_panel.copy_path()
         assert "已复制" in window.stats_label.text()
         window.close()
 
@@ -5086,7 +5111,7 @@ class TestScanCallbacks:
     def test_on_open_file_location_delegates_to_open_path(
         self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        """_on_open_file_location 应委托给 _open_path_in_explorer。"""
+        """open_location 经信号路由后应委托给 _open_path_in_explorer。"""
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
@@ -5097,13 +5122,13 @@ class TestScanCallbacks:
         window = MainWindow()
         window._populate_results(report)
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        assert window._detail_current_result is not None
+        assert window._detail_panel._current_result is not None
 
         called: list[Path] = []
         monkeypatch.setattr(window, "_open_path_in_explorer", called.append)
-        window._on_open_file_location()
+        window._detail_panel.open_location()
         assert len(called) == 1
-        assert called[0] == window._detail_current_result.path
+        assert called[0] == window._detail_panel._current_result.path
         window.close()
 
     def test_on_scan_progress_throttles_list_update(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6034,7 +6059,7 @@ class TestDetailPreviewFallback:
         )
 
         window = MainWindow()
-        window._detail_show_result(result)
+        window._detail_panel.show_result(result)
         text = window.detail_preview.toPlainText()
         assert "无内容关键词可高亮" in text
         assert "路径规则" in text

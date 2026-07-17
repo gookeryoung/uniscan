@@ -25,19 +25,16 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 try:
     from PySide2.QtCore import QByteArray, QFile, QPoint, QSize, Qt, QTimer, QUrl, Slot
     from PySide2.QtGui import (
-        QColor,
         QDesktopServices,
         QIcon,
         QKeySequence,
         QPainter,
         QPixmap,
-        QTextCharFormat,
-        QTextCursor,
     )
     from PySide2.QtSvg import QSvgRenderer
     from PySide2.QtWidgets import (
@@ -47,7 +44,6 @@ try:
         QButtonGroup,
         QDialog,
         QFileDialog,
-        QHeaderView,
         QInputDialog,
         QLabel,
         QListWidgetItem,
@@ -57,8 +53,6 @@ try:
         QProgressBar,
         QPushButton,
         QShortcut,
-        QTableWidgetItem,
-        QTextEdit,
         QTreeWidgetItem,
         QWidget,
     )
@@ -66,12 +60,9 @@ except ImportError:  # pragma: no cover
     from PySide6.QtCore import QFile, QPoint, QSize, Qt, QUrl, Slot  # pyrefly: ignore [missing-import]
     from PySide6.QtGui import (  # pyrefly: ignore [missing-import]
         QAction,
-        QColor,
         QIcon,
         QKeySequence,
         QShortcut,
-        QTextCharFormat,
-        QTextCursor,
     )
     from PySide6.QtWidgets import (  # pyrefly: ignore [missing-import]
         QAbstractButton,
@@ -79,7 +70,6 @@ except ImportError:  # pragma: no cover
         QButtonGroup,
         QDialog,
         QFileDialog,
-        QHeaderView,
         QInputDialog,
         QLabel,
         QListWidgetItem,
@@ -87,8 +77,6 @@ except ImportError:  # pragma: no cover
         QMenu,
         QMessageBox,
         QPushButton,
-        QTableWidgetItem,
-        QTextEdit,
         QTreeWidgetItem,
         QWidget,
     )
@@ -96,26 +84,21 @@ except ImportError:  # pragma: no cover
 from fuscan import __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MAX_HISTORY, Config, load_config, save_config
-from fuscan.extractors import extract_content_with_fallback
 from fuscan.gui import resources_rc  # noqa: F401 注册 .qrc 资源（:/ 前缀图标）
 from fuscan.gui.detail_dialog import HitDetailDialog
+from fuscan.gui.detail_panel import DetailControls, DetailPanel
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.preview_utils import (
-    PREVIEW_MAX_CHARS,
     SEVERITY_BACKGROUNDS,
     SEVERITY_COLORS,
     SEVERITY_LABELS,
-    build_keyword_to_rule_map,
-    build_preview_html,
-    compile_keyword_pattern,
-    extract_keywords,
 )
 from fuscan.gui.worker import ScanWorker
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport, list_drives
 from fuscan.scanner.export import save_report
-from fuscan.scanner.result import RuleHit, ScanResult
+from fuscan.scanner.result import ScanResult
 
 if TYPE_CHECKING:
     from fuscan.cache import CacheStore
@@ -135,13 +118,6 @@ def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: S
     item.setText(column, _severity_text(severity))
     item.setForeground(column, SEVERITY_COLORS[severity])
     item.setBackground(column, SEVERITY_BACKGROUNDS[severity])
-
-
-def _apply_severity_to_table_item(item: QTableWidgetItem, severity: Severity) -> None:
-    """为 QTableWidgetItem 设置中文标签、前景色和背景色。"""
-    item.setText(_severity_text(severity))
-    item.setForeground(SEVERITY_COLORS[severity])
-    item.setBackground(SEVERITY_BACKGROUNDS[severity])
 
 
 # 图标路径（.qrc 资源系统，:/ 前缀引用编译嵌入的资源）
@@ -261,10 +237,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._use_builtin: bool = True
         # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
         self._scan_mode: str = "folder"
-        # 详情区命中导航状态：每个位置记录 (start, end, rule_index)
-        self._detail_hit_positions: list[tuple[int, int, int]] = []
-        self._detail_current_hit_index: int = -1
-        self._detail_current_result: ScanResult | None = None
+        # 详情面板控制器：setupUi 已创建详情区 UI 控件，立即构造 DetailPanel，
+        # 使后续 _connect_signals/_setup_shortcuts 可安全引用（非 None）
+        self._detail_panel: DetailPanel = self._create_detail_panel()
         # 扫描历史记录
         self._scan_history: list[str] = []
         # 盘符按钮组（平铺选择，替代下拉）
@@ -291,10 +266,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     # ----------------------------- UI 配置 -----------------------------
 
+    def _create_detail_panel(self) -> DetailPanel:
+        """构造详情面板控制器：封装详情区状态、填充、导航与文件操作。
+
+        详情区 UI 控件由 ``setupUi`` 创建，本方法构造 :class:`DetailControls` 引用集合
+        并传入 :class:`DetailPanel`，后续主窗口通过 ``self._detail_panel`` 公共 API 驱动详情区。
+        信号路由：``path_copy_requested`` / ``open_location_requested`` /
+        ``open_in_window_requested`` 连接到主窗口槽，由主窗口更新状态栏或创建对话框。
+        """
+        controls = DetailControls(
+            action_stack=self.detail_action_stack,
+            main_stack=self.detail_main_stack,
+            prev_btn=self.detail_prev_btn,
+            next_btn=self.detail_next_btn,
+            nav_label=self.detail_nav_label,
+            open_location_btn=self.detail_open_location_btn,
+            info_label=self.detail_info_label,
+            hits_table=self.detail_hits_table,
+            preview=self.detail_preview,
+            note_edit=self.note_edit,
+        )
+        return DetailPanel(controls, parent=self)
+
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性、layout stretch 与信号槽连接。"""
         self._setup_status_bar()
-        self._setup_detail_table()
         self._setup_comboboxes()
         self._setup_splitters()
         self._setup_layouts()
@@ -327,11 +323,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.progress.setValue(0)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
-
-    def _setup_detail_table(self) -> None:
-        """设置详情区命中表：全列拉伸 + 行点击信号（editTriggers/selectionBehavior 已在 .ui 中声明）。"""
-        self.detail_hits_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # pyrefly: ignore [missing-argument]
-        self.detail_hits_table.cellClicked.connect(self._on_detail_hits_row_clicked)
 
     def _setup_comboboxes(self) -> None:
         """填充 QComboBox 初始项（带 userData，.ui 不便表达）。"""
@@ -532,9 +523,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
         # 详情区
         self.export_btn.clicked.connect(self._on_export_menu)
-        self.detail_prev_btn.clicked.connect(self._on_prev_detail_hit)
-        self.detail_next_btn.clicked.connect(self._on_next_detail_hit)
-        self.detail_open_location_btn.clicked.connect(self._on_open_file_location)
+        # 详情面板信号路由：复制路径/打开位置/新窗口打开由 DetailPanel 发信号，主窗口响应
+        self._detail_panel.path_copy_requested.connect(self._on_path_copy_requested)  # pyrefly: ignore [missing-attribute]
+        self._detail_panel.open_location_requested.connect(self._on_open_location_requested)  # pyrefly: ignore [missing-attribute]
+        self._detail_panel.open_in_window_requested.connect(self._on_open_in_window_requested)  # pyrefly: ignore [missing-attribute]
         # 扫描中页命中文件列表双击：弹出简化详情与定位按钮（需求5）
         self.matched_files_list.itemDoubleClicked.connect(self._on_matched_file_double_clicked)
         # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
@@ -561,15 +553,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _on_result_tree_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
         """结果树右键菜单：复制路径 / 在新窗口打开 / 打开文件位置。"""
-        if self._detail_current_result is None:
+        if self._detail_panel.current_result is None:
             return
         menu = QMenu(self.result_tree)
         action_copy = QAction("复制路径", menu)
         action_open_window = QAction("在新窗口打开", menu)
         action_open_location = QAction("打开文件位置", menu)
-        action_copy.triggered.connect(self._on_copy_path)
-        action_open_window.triggered.connect(self._on_open_in_window)
-        action_open_location.triggered.connect(self._on_open_file_location)
+        action_copy.triggered.connect(self._detail_panel.copy_path)
+        action_open_window.triggered.connect(self._detail_panel.open_in_window)
+        action_open_location.triggered.connect(self._detail_panel.open_location)
         menu.addAction(action_copy)  # pyrefly: ignore [missing-argument]
         menu.addAction(action_open_window)  # pyrefly: ignore [missing-argument]
         menu.addAction(action_open_location)  # pyrefly: ignore [missing-argument]
@@ -595,9 +587,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _setup_shortcuts(self) -> None:
         """创建全局快捷键：F3 下一条命中、Shift+F3 上一条命中、Delete 移除规则文件。"""
         self._shortcut_next = QShortcut(QKeySequence("F3"), self)
-        self._shortcut_next.activated.connect(self._on_next_detail_hit)
+        self._shortcut_next.activated.connect(self._detail_panel.next_hit)
         self._shortcut_prev = QShortcut(QKeySequence("Shift+F3"), self)
-        self._shortcut_prev.activated.connect(self._on_prev_detail_hit)
+        self._shortcut_prev.activated.connect(self._detail_panel.prev_hit)
         self._shortcut_remove_rule = QShortcut(QKeySequence.Delete, self.rules_file_list)
         self._shortcut_remove_rule.activated.connect(self._on_remove_rule)
 
@@ -1002,7 +994,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             return
 
         self.result_tree.clear_results()
-        self._detail_clear()
+        self._detail_panel.clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
         self.current_file_label.setText("准备扫描...")
@@ -1324,261 +1316,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         :class:`ScanResult` 或 ``None``（空选/分组顶层项）。
         """
         if result is None:
-            self._detail_clear()
+            self._detail_panel.clear()
             return
         assert isinstance(result, ScanResult)
         logger.debug("选中结果项: %s, 命中数=%d", result.path, len(result.hits))
-        self._detail_show_result(result)
+        self._detail_panel.show_result(result)
 
-    def _detail_clear(self) -> None:
-        """清空详情区，切换到空态。"""
-        self.detail_action_stack.setCurrentIndex(0)
-        self.detail_main_stack.setCurrentIndex(0)
-        self._detail_current_result = None
-        self._detail_hit_positions = []
-        self._detail_current_hit_index = -1
-        self.detail_preview.clear()
-        self.detail_hits_table.setRowCount(0)
-        self.detail_info_label.setText("")
+    def _on_path_copy_requested(self, _path_str: str) -> None:
+        """响应 DetailPanel 复制路径信号：更新状态栏提示。
 
-    def _detail_show_result(self, result: ScanResult) -> None:
-        """在详情区展示选中项的详情，切换到非空态。"""
-        self._detail_current_result = result
-        self.detail_action_stack.setCurrentIndex(1)
-        self.detail_main_stack.setCurrentIndex(1)
-        # 先填充预览以计算高亮位置，再填充文件信息和命中表（均依赖位置数据）
-        self._populate_detail_preview(result)
-        self._populate_detail_file_info(result)
-        self._populate_detail_hits_table(result)
-        # 强制刷新当前详情页，避免 Qt 渲染时序导致 stack 未生效
-        self.detail_main_stack.currentWidget().update()  # pyrefly: ignore [missing-argument]
-
-    def _populate_detail_file_info(self, result: ScanResult) -> None:
-        """填充详情区文件元信息。"""
-        # 文件信息 HTML 由 ScanResult.file_info_html 构造，GUI 仅追加自身状态字段
-        extra = f"<b>可切换位置:</b> {len(self._detail_hit_positions)}"
-        self.detail_info_label.setText(result.file_info_html(extra=extra))
-
-    def _populate_detail_hits_table(self, result: ScanResult) -> None:
-        """填充详情区命中规则表。"""
-        hits = result.hits
-        logger.debug("填充命中表: %s, 命中数=%d", result.path, len(hits))
-        self.detail_hits_table.setRowCount(len(hits))
-        # 统计每条规则在预览中的高亮位置数
-        position_counts: dict[int, int] = {}
-        for _, _, rule_idx in self._detail_hit_positions:
-            position_counts[rule_idx] = position_counts.get(rule_idx, 0) + 1
-        for row, hit in enumerate(hits):
-            self.detail_hits_table.setItem(row, 0, QTableWidgetItem(hit.rule_name))
-            sev_item = QTableWidgetItem("")
-            _apply_severity_to_table_item(sev_item, hit.severity)
-            self.detail_hits_table.setItem(row, 1, sev_item)
-            count_item = QTableWidgetItem(str(hit.match_count))
-            count_item.setTextAlignment(Qt.AlignCenter)
-            self.detail_hits_table.setItem(row, 2, count_item)
-            if hit.target == "filename":
-                pos_item = QTableWidgetItem("-")
-                pos_item.setToolTip("仅匹配文件名，无内容高亮位置")
-            else:
-                pos_item = QTableWidgetItem(str(position_counts.get(row, 0)))
-                pos_item.setToolTip("该规则在预览中可高亮跳转的位置数")
-            pos_item.setTextAlignment(Qt.AlignCenter)
-            self.detail_hits_table.setItem(row, 3, pos_item)
-            detail_text = hit.detail
-            if hit.target == "filename":
-                detail_text = f"{detail_text}（仅文件名）"
-            self.detail_hits_table.setItem(row, 4, QTableWidgetItem(detail_text))
-            # 描述列：来自 MatchSpec.description，可为空
-            desc_item = QTableWidgetItem(hit.match_description)
-            if hit.match_description:
-                desc_item.setToolTip(hit.match_description)
-            self.detail_hits_table.setItem(row, 5, desc_item)
-
-    def _populate_detail_preview(self, result: ScanResult) -> None:
-        """填充详情区内容预览，命中关键词高亮并定位到首个命中。"""
-        path = result.path
-        truncated = False
-
-        # 优先使用提取器（支持 PDF/DOCX 等格式），失败回退到纯文本
-        try:
-            content = extract_content_with_fallback(path)
-        except OSError as exc:
-            logger.warning("读取内容预览失败 %s", path, exc_info=True)
-            self.detail_preview.setPlainText(f"无法读取文件内容: {exc}")
-            self._update_detail_nav_label()
-            return
-
-        if not content:
-            self.detail_preview.setPlainText("(文件内容为空或为二进制)")
-            self._update_detail_nav_label()
-            return
-
-        # 截断过长内容
-        if len(content) > PREVIEW_MAX_CHARS:
-            content = content[:PREVIEW_MAX_CHARS]
-            truncated = True
-
-        keywords = extract_keywords(result.hits)
-        # 命中规则但无法提取关键词（如纯文件名/路径匹配），显示提示避免误判为"无命中"
-        if not keywords and result.hits:
-            rule_names = "、".join(h.rule_name for h in result.hits)
-            self.detail_preview.setPlainText(
-                f"（此文件因【{rule_names}】规则命中，但无内容关键词可高亮。命中详情见上方表格。）"
-            )
-            self._detail_hit_positions = []
-            self._detail_current_hit_index = -1
-            self._update_detail_nav_label()
-            return
-        html_content = build_preview_html(content, keywords)
-        if truncated:
-            html_content += "<p style='color: #888; font-size: 11px;'>(内容已截断，仅显示前 100KB)</p>"
-        self.detail_preview.setHtml(html_content)
-
-        # 查找所有关键词位置并定位到首个命中
-        self._find_detail_hit_positions(result.hits)
-        if self._detail_hit_positions:
-            self._detail_current_hit_index = 0
-            self._highlight_current_detail_hit()
-            self._scroll_to_current_detail_hit()
-        self._update_detail_nav_label()
-
-    def _find_detail_hit_positions(self, hits: Sequence[RuleHit]) -> None:
-        """在详情区预览文档中查找所有关键词出现位置，按位置排序后存储。
-
-        使用 Python :func:`re.finditer` 在 :meth:`toPlainText` 返回的纯文本上查找，
-        避免 :meth:`QTextDocument.find` 无法跨越段落边界的限制。
-        关键词中的换行符（\\r\\n/\\r/\\n）规范化为 ``\\s+`` 正则，支持跨行命中的定位。
-
-        每个位置记录为 ``(start, end, rule_index)`` 三元组，``rule_index`` 为命中
-        规则在 ``hits`` 中的索引，用于点击规则表行时跳转到对应高亮位置。
-        同一关键词若被多条规则命中，仅归属到首条规则（避免位置重复计数）。
+        :param _path_str: 已复制到剪贴板的路径字符串（未使用，仅匹配信号签名）
         """
-        self._detail_hit_positions = []
-        if not hits:
-            return
-        plain = self.detail_preview.toPlainText()
-        if not plain:
-            return
-        keyword_to_rule = build_keyword_to_rule_map(hits)
-        seen: set[tuple[int, int]] = set()
-        for kw, rule_idx in sorted(keyword_to_rule.items(), key=lambda x: len(x[0]), reverse=True):
-            pattern = compile_keyword_pattern(kw)
-            try:
-                regex = re.compile(pattern, re.IGNORECASE)
-            except re.error:
-                continue
-            for m in regex.finditer(plain):
-                pos = (m.start(), m.end())
-                if pos not in seen:
-                    seen.add(pos)
-                    self._detail_hit_positions.append((m.start(), m.end(), rule_idx))
-        self._detail_hit_positions.sort()
+        self.stats_label.setText("已复制路径到剪贴板")
 
-    def _highlight_current_detail_hit(self) -> None:
-        """用橙色背景高亮当前命中位置，区别于其他命中的黄色高亮。"""
-        if self._detail_current_hit_index < 0 or self._detail_current_hit_index >= len(self._detail_hit_positions):
-            self.detail_preview.setExtraSelections([])
-            return
-        start, end, _ = self._detail_hit_positions[self._detail_current_hit_index]
-        doc_length = len(self.detail_preview.toPlainText())
-        if start >= doc_length or end > doc_length:
-            self.detail_preview.setExtraSelections([])
-            return
-        sel = QTextEdit.ExtraSelection()
-        cursor = self.detail_preview.textCursor()
-        cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.KeepAnchor)
-        sel.cursor = cursor
-        fmt = QTextCharFormat()
-        fmt.setBackground(QColor(255, 165, 0))
-        sel.format = fmt
-        self.detail_preview.setExtraSelections([sel])
+    def _on_open_location_requested(self, path: object) -> None:
+        """响应 DetailPanel 打开文件位置信号：在文件管理器中定位文件。
 
-    def _scroll_to_current_detail_hit(self) -> None:
-        """滚动详情区预览使当前命中位置可见。"""
-        if self._detail_current_hit_index < 0 or self._detail_current_hit_index >= len(self._detail_hit_positions):
-            return
-        start, _, _ = self._detail_hit_positions[self._detail_current_hit_index]
-        doc_length = len(self.detail_preview.toPlainText())
-        if start >= doc_length:
-            return
-        cursor = self.detail_preview.textCursor()
-        cursor.setPosition(start)
-        self.detail_preview.setTextCursor(cursor)
-        self.detail_preview.ensureCursorVisible()
-
-    def _on_prev_detail_hit(self) -> None:
-        """跳转到上一个命中位置。"""
-        if not self._detail_hit_positions:
-            return
-        self._detail_current_hit_index = (self._detail_current_hit_index - 1) % len(self._detail_hit_positions)
-        self._highlight_current_detail_hit()
-        self._scroll_to_current_detail_hit()
-        self._update_detail_nav_label()
-
-    def _on_next_detail_hit(self) -> None:
-        """跳转到下一个命中位置。"""
-        if not self._detail_hit_positions:
-            return
-        self._detail_current_hit_index = (self._detail_current_hit_index + 1) % len(self._detail_hit_positions)
-        self._highlight_current_detail_hit()
-        self._scroll_to_current_detail_hit()
-        self._update_detail_nav_label()
-
-    def _on_detail_hits_row_clicked(self, row: int, _col: int) -> None:
-        """点击命中规则表行，跳转到该规则对应的高亮位置。
-
-        若当前已处于该规则的某个位置，则跳转到该规则的下一个位置（循环）；
-        否则跳转到该规则的首个高亮位置。
+        :param path: 待定位的文件路径（:class:`Path`）
         """
-        if not self._detail_hit_positions:
-            return
-        rule_indices = [i for i, (_, _, ri) in enumerate(self._detail_hit_positions) if ri == row]
-        if not rule_indices:
-            return
-        target = rule_indices[0]
-        for i in rule_indices:
-            if i > self._detail_current_hit_index:
-                target = i
-                break
-        self._detail_current_hit_index = target
-        self._highlight_current_detail_hit()
-        self._scroll_to_current_detail_hit()
-        self._update_detail_nav_label()
+        assert isinstance(path, Path)
+        self._open_path_in_explorer(path)
 
-    def _update_detail_nav_label(self) -> None:
-        """更新详情区导航标签与按钮状态。"""
-        total = len(self._detail_hit_positions)
-        if total == 0:
-            self.detail_nav_label.setText("无命中")
-            self.detail_prev_btn.setEnabled(False)
-            self.detail_next_btn.setEnabled(False)
-        else:
-            self.detail_nav_label.setText(f"{self._detail_current_hit_index + 1} / {total}")
-            self.detail_prev_btn.setEnabled(True)
-            self.detail_next_btn.setEnabled(True)
+    def _on_open_in_window_requested(self, result: object) -> None:
+        """响应 DetailPanel 新窗口打开信号：创建独立详情对话框。
 
-    def _on_open_in_window(self) -> None:
-        """在新窗口打开完整详情对话框。"""
-        if self._detail_current_result is None:
-            return
-        dialog = HitDetailDialog(self._detail_current_result, self)
+        :param result: 待展示的扫描结果（:class:`ScanResult`）
+        """
+        assert isinstance(result, ScanResult)
+        dialog = HitDetailDialog(result, self)
         dialog.exec_()
-
-    def _on_copy_path(self) -> None:
-        """复制文件路径到剪贴板。"""
-        if self._detail_current_result is None:
-            return
-        clipboard = QApplication.clipboard()
-        if clipboard is not None:
-            clipboard.setText(str(self._detail_current_result.path))
-            self.stats_label.setText("已复制路径到剪贴板")
-
-    def _on_open_file_location(self) -> None:
-        """在文件管理器中打开所在目录。"""
-        if self._detail_current_result is None:
-            return
-        self._open_path_in_explorer(self._detail_current_result.path)
 
     def _open_path_in_explorer(self, path: Path) -> None:
         """在文件管理器中打开指定文件所在目录并选中该文件。
