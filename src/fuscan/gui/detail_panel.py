@@ -132,6 +132,9 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         self._current_result: ScanResult | None = None
         self._hit_positions: list[tuple[int, int, int]] = []
         self._current_hit_index: int = -1
+        # 预览纯文本缓存：_find_hit_positions 时一次性取 toPlainText()，
+        # 后续 _highlight/_scroll 导航复用，避免每次 F3 分配 100KB 字符串
+        self._plain_text: str = ""
         self._setup_table()
         self._connect_signals()
 
@@ -164,6 +167,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         self._current_result = None
         self._hit_positions = []
         self._current_hit_index = -1
+        self._plain_text = ""
         self._c.preview.clear()
         self._c.hits_table.setRowCount(0)
         self._c.info_label.setText("")
@@ -329,12 +333,17 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         每个位置记录为 ``(start, end, rule_index)`` 三元组，``rule_index`` 为命中
         规则在 ``hits`` 中的索引，用于点击规则表行时跳转到对应高亮位置。
         同一关键词若被多条规则命中，仅归属到首条规则（避免位置重复计数）。
+
+        纯文本一次性缓存到 ``self._plain_text``，后续 :meth:`_highlight_current_hit`/
+        :meth:`_scroll_to_current_hit` 复用，避免每次导航重复调用 ``toPlainText()``
+        分配大字符串（100KB 文档每次约 0.1ms，F3 连续导航累积可感知）。
         """
         self._hit_positions = []
         if not hits:
             return
-        plain = self._c.preview.toPlainText()
-        if not plain:
+        # 缓存纯文本：_highlight/_scroll 复用，避免重复 toPlainText() 调用
+        self._plain_text = self._c.preview.toPlainText()
+        if not self._plain_text:
             return
         keyword_to_rule = build_keyword_to_rule_map(hits)
         seen: set[tuple[int, int]] = set()
@@ -344,7 +353,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
                 regex = re.compile(pattern, re.IGNORECASE)
             except re.error:
                 continue
-            for m in regex.finditer(plain):
+            for m in regex.finditer(self._plain_text):
                 pos = (m.start(), m.end())
                 if pos not in seen:
                     seen.add(pos)
@@ -357,7 +366,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
             self._c.preview.setExtraSelections([])
             return
         start, end, _ = self._hit_positions[self._current_hit_index]
-        doc_length = len(self._c.preview.toPlainText())
+        doc_length = len(self._plain_text)
         if start >= doc_length or end > doc_length:
             self._c.preview.setExtraSelections([])
             return
@@ -376,7 +385,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         if self._current_hit_index < 0 or self._current_hit_index >= len(self._hit_positions):
             return
         start, _, _ = self._hit_positions[self._current_hit_index]
-        doc_length = len(self._c.preview.toPlainText())
+        doc_length = len(self._plain_text)
         if start >= doc_length:
             return
         cursor = self._c.preview.textCursor()

@@ -38,6 +38,9 @@ _SEVERITY_RANK: dict[Severity, int] = {
     Severity.CRITICAL: 2,
 }
 
+# 结果树表头（6 列：路径/规则/严重等级/命中数/条数/详情）
+_HEADERS: list[str] = ["路径", "规则", "严重等级", "命中数", "条数", "详情"]
+
 
 def _apply_severity_to_standard_item(item: QStandardItem, severity: Severity) -> None:
     """为 QStandardItem 设置中文严重等级标签、前景色和背景色。
@@ -92,7 +95,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
         """初始化结果树：创建模型、绑定视图、设置列宽、连接内部信号。"""
         super().__init__(parent)
         self._result_model: QStandardItemModel = QStandardItemModel()
-        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self._result_model.setHorizontalHeaderLabels(_HEADERS)
         self.setModel(self._result_model)
         # 当前暂存的扫描报告（populate 设置，clear_results 重置为 None）
         self._last_report: ScanReport | None = None
@@ -111,7 +114,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
     def populate(self, report: ScanReport) -> None:
         """存储当前报告数据，供 :meth:`refresh` 读取。"""
         self._result_model.clear()
-        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self._result_model.setHorizontalHeaderLabels(_HEADERS)
         # 直接刷新需传入筛选条件，此处仅暂存报告，刷新由主窗口触发
         self._last_report = report
 
@@ -132,7 +135,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
         self.setUpdatesEnabled(False)
         try:
             self._result_model.clear()
-            self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+            self._result_model.setHorizontalHeaderLabels(_HEADERS)
             # 筛选下沉到 ScanReport.filter，仅返回 results 过滤后的新报告
             filtered_report = report.filter(path_query=path_query, rule_name=rule_name)
             if group_mode == "rule":
@@ -147,7 +150,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
     def clear_results(self) -> None:
         """清空结果树模型与暂存报告。"""
         self._result_model.clear()
-        self._result_model.setHorizontalHeaderLabels(["路径", "规则", "严重等级", "命中数", "条数", "详情"])
+        self._result_model.setHorizontalHeaderLabels(_HEADERS)
         self._last_report = None
 
     def _populate_flat(self, report: ScanReport) -> None:

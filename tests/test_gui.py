@@ -4364,7 +4364,9 @@ class TestDetailArea:
         exec_calls: list[Any] = []
         monkeypatch.setattr(
             "fuscan.gui.main_window.HitDetailDialog",
-            lambda result, parent: exec_calls.append(result) or type("FakeDialog", (), {"exec_": lambda self: None})(),
+            lambda result, parent: exec_calls.append(result) or type(
+                "FakeDialog", (), {"exec_": lambda self: None}
+            )(),
         )
         window._detail_panel.open_in_window()
         assert len(exec_calls) == 1
@@ -4654,6 +4656,8 @@ class TestDetailArea:
         """高亮位置超出文档长度时应跳过高亮，不调用 setPosition 越界。"""
         window = MainWindow()
         window.detail_preview.setPlainText("short")
+        # 同步 plain_text 缓存（_highlight/_scroll 复用缓存而非 toPlainText）
+        window._detail_panel._plain_text = "short"
         # 设置一个超出文档长度的位置
         window._detail_panel._hit_positions = [(0, 3, 0), (100, 200, 0)]
         window._detail_panel._current_hit_index = 1
