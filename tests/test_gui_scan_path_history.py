@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -122,9 +121,7 @@ class TestLoadFromConfig:
 
         assert history._path_combo.count() == 2
         assert history._path_combo.itemText(0) == "/new1"
-        assert "/old_path" not in [
-            history._path_combo.itemText(i) for i in range(history._path_combo.count())
-        ]
+        assert "/old_path" not in [history._path_combo.itemText(i) for i in range(history._path_combo.count())]
 
     def test_load_from_config_empty_list_clears_widgets(self, history: ScanPathHistory) -> None:
         """加载空列表应清空两个控件。"""
@@ -177,7 +174,8 @@ class TestSignalBlocking:
     """``ScanPathHistory._sync_combo`` 信号阻塞行为测试。"""
 
     def test_sync_combo_does_not_emit_current_index_changed(
-        self, qapp: QApplication  # type: ignore[misc]
+        self,
+        qapp: QApplication,  # type: ignore[misc]
     ) -> None:
         """``_sync_combo`` 应阻塞 ``currentIndexChanged`` 信号避免循环触发。"""
         combo = QComboBox()
@@ -185,7 +183,7 @@ class TestSignalBlocking:
         history = ScanPathHistory(combo, list_widget)
 
         emitted: list[int] = []
-        combo.currentIndexChanged.connect(lambda idx: emitted.append(idx))
+        combo.currentIndexChanged.connect(emitted.append)
 
         history.add("/path1")
         history.add("/path2")

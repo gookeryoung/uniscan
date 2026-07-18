@@ -218,6 +218,11 @@ _EXPORT_FORMATS: tuple[tuple[str, str, str], ...] = (
     ("Excel 文件 (*.xlsx)", "excel", "xlsx"),
 )
 
+# 扫描模式 ↔ combo index 双向映射（避免 _on_scan_mode_changed 与 _update_target_visibility
+# 各自维护一份字面量字典导致漂移）
+_SCAN_MODE_TO_INDEX: dict[str, int] = {"full": 0, "drive": 1, "folder": 2}
+_INDEX_TO_SCAN_MODE: dict[int, str] = {v: k for k, v in _SCAN_MODE_TO_INDEX.items()}
+
 
 class ScanState(enum.Enum):
     """扫描状态。"""
@@ -233,6 +238,15 @@ class WorkflowStage(enum.Enum):
     SETUP = "setup"
     SCANNING = "scanning"
     RESULTS = "results"
+
+
+# 工作流阶段 ↔ main_stack page index / sidebar row 双向映射（定义在 WorkflowStage 之后）
+_STAGE_TO_PAGE_INDEX: dict[WorkflowStage, int] = {
+    WorkflowStage.SETUP: 0,
+    WorkflowStage.SCANNING: 1,
+    WorkflowStage.RESULTS: 2,
+}
+_SIDEBAR_ROW_TO_STAGE: dict[int, WorkflowStage] = {v: k for k, v in _STAGE_TO_PAGE_INDEX.items()}
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheritance]
@@ -594,10 +608,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         """
         self._use_builtin = enabled
         try:
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
-            self._update_scan_button()
+            self._apply_ruleset_loaded()
             if self._ruleset is not None:
                 self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
             else:
@@ -614,11 +625,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         同步侧边栏选中项，避免循环触发信号。
         """
         self._workflow_stage = stage
-        page_index = {
-            WorkflowStage.SETUP: 0,
-            WorkflowStage.SCANNING: 1,
-            WorkflowStage.RESULTS: 2,
-        }[stage]
+        page_index = _STAGE_TO_PAGE_INDEX[stage]
         self.main_stack.setCurrentIndex(page_index)
         self.sidebar.blockSignals(True)
         self.sidebar.setCurrentRow(page_index)  # pyrefly: ignore [missing-argument]
@@ -638,8 +645,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         :param row: 0=配置 / 1=扫描中 / 2=结果
         """
-        stage_map = {0: WorkflowStage.SETUP, 1: WorkflowStage.SCANNING, 2: WorkflowStage.RESULTS}
-        stage = stage_map.get(row)
+        stage = _SIDEBAR_ROW_TO_STAGE.get(row)
         if stage is not None:
             self._switch_stage(stage)
 
@@ -750,9 +756,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         # 恢复扫描模式
         self._scan_mode = self._config.scan_mode if self._config.scan_mode in ("full", "drive", "folder") else "folder"
-        mode_index_map = {"full": 0, "drive": 1, "folder": 2}
         self.scan_mode_combo.blockSignals(True)
-        self.scan_mode_combo.setCurrentIndex(mode_index_map[self._scan_mode])
+        self.scan_mode_combo.setCurrentIndex(_SCAN_MODE_TO_INDEX[self._scan_mode])
         self.scan_mode_combo.blockSignals(False)
         self._update_target_visibility()
 
@@ -812,10 +817,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _init_rules(self) -> None:
         """启动时加载规则：默认加载内置通用规则。"""
         try:
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
-            self._update_scan_button()
+            self._apply_ruleset_loaded()
             if self._ruleset is not None:
                 self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条通用规则")
         except RuleError as exc:
@@ -832,18 +834,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         else:
             self._ruleset = None
 
+    def _apply_ruleset_loaded(self) -> None:
+        """重新加载规则集并同步刷新 UI（rules_tree / rules_file_list / scan_button）。
+
+        统一封装 4 处重复的 ``_reload_ruleset + _refresh_rules_tree +
+        _refresh_rules_file_list + _update_scan_button`` 调用序列。
+        ``stats_label`` 文案因调用场景不同（内置/用户加载），由调用方在调用后设置。
+        """
+        self._reload_ruleset()
+        self._refresh_rules_tree()
+        self._refresh_rules_file_list()
+        self._update_scan_button()
+
     # ----------------------------- 扫描模式 -----------------------------
 
     def _on_scan_mode_changed(self, index: int) -> None:
         """扫描模式切换：更新目标选择器可见性与扫描按钮状态。"""
-        self._scan_mode = {0: "full", 1: "drive", 2: "folder"}.get(index, "folder")
+        self._scan_mode = _INDEX_TO_SCAN_MODE.get(index, "folder")
         self._update_target_visibility()
         self._update_scan_button()
 
     def _update_target_visibility(self) -> None:
         """根据扫描模式切换目标选择区页面（QStackedWidget 保持布局稳定）。"""
-        page_map = {"full": 0, "drive": 1, "folder": 2}
-        self.target_stack.setCurrentIndex(page_map.get(self._scan_mode, 2))
+        self.target_stack.setCurrentIndex(_SCAN_MODE_TO_INDEX.get(self._scan_mode, 2))
 
     def _refresh_drive_buttons(self) -> None:
         """刷新盘符按钮列表（hard_disk 图标 + 盘符字母，平铺展示）。"""
@@ -900,18 +913,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             return
         self._rules_paths.append(path)
         try:
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
-            self._update_scan_button()
+            self._apply_ruleset_loaded()
             if self._ruleset is not None:
                 self.stats_label.setText(f"已加载 {len(self._ruleset.rules)} 条规则")
         except RuleError as exc:
             self._rules_paths.remove(path)
-            self._reload_ruleset()
-            self._refresh_rules_tree()
-            self._refresh_rules_file_list()
-            self._update_scan_button()
+            self._apply_ruleset_loaded()
             QMessageBox.warning(self, "规则错误", f"加载规则失败:\n{exc}")
 
     def _on_select_path(self) -> None:
