@@ -154,6 +154,8 @@ from fuscan.scanner.export import save_report
 from fuscan.scanner.result import ScanResult
 
 if TYPE_CHECKING:
+    from PySide2.QtGui import QIcon
+
     from fuscan.cache import CacheStore
 
 __all__ = ["MainWindow", "ScanState", "WorkflowStage"]
@@ -171,6 +173,49 @@ def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: S
     item.setText(column, _severity_text(severity))
     item.setForeground(column, SEVERITY_COLORS[severity])
     item.setBackground(column, SEVERITY_BACKGROUNDS[severity])
+
+
+# 主色变体图标 → 控件属性名映射（同一路径在缓存中只加载一次，可绑定多个控件）
+_PRIMARY_ICON_TARGETS: tuple[tuple[str, str], ...] = (
+    (_ICON_SCAN, "scan_btn"),
+    (_ICON_PAUSE, "pause_resume_btn"),
+    (_ICON_RESCAN, "rescan_btn"),
+    (_ICON_LOAD_LIST, "load_rules_btn"),
+    (_ICON_LOAD_LIST, "load_rules_action"),
+    (_ICON_SCAN, "scan_action"),
+    (_ICON_EDIT, "edit_rule_btn"),
+    (_ICON_EDIT, "edit_rules_action"),
+    (_ICON_EXPORT, "export_btn"),
+    (_ICON_EXPORT_CSV, "export_csv_action"),
+    (_ICON_EXPORT_JSON, "export_json_action"),
+    (_ICON_SETTINGS, "settings_action"),
+    (_ICON_MANUAL, "manual_action"),
+    (_ICON_SEARCH, "select_path_action"),
+    (_ICON_ABOUT, "about_action"),
+    (_ICON_STOP, "cancel_btn"),
+)
+
+# scan_mode_combo 下拉项图标（按 index 顺序：全盘 / 盘符 / 文件夹）
+_COMBO_ITEM_ICONS: tuple[str, ...] = (_ICON_ALL_DISK, _ICON_DISK, _ICON_FOLDER)
+
+# 深色背景白色变体图标 → 控件属性名映射（头部 Tab 按钮）
+_ON_PRIMARY_ICON_TARGETS: tuple[tuple[str, str], ...] = (
+    (_ICON_SCAN, "tab_scan_btn"),
+    (_ICON_LOAD_LIST, "tab_rules_btn"),
+    (_ICON_HISTORY, "tab_history_btn"),
+    (_ICON_SETTINGS, "settings_btn"),
+    (_ICON_ABOUT, "about_btn"),
+)
+
+# 导出格式定义：(显示标签, 格式标识, 文件扩展名)。顺序即菜单显示顺序。
+# 同一标识可能与扩展名不同（如 excel → xlsx），通过元组显式表达映射关系，
+# 避免 _on_export 内 ``ext = "xlsx" if fmt == "excel" else fmt`` 的特判分支。
+_EXPORT_FORMATS: tuple[tuple[str, str, str], ...] = (
+    ("CSV 文件 (*.csv)", "csv", "csv"),
+    ("JSON 文件 (*.json)", "json", "json"),
+    ("PDF 文件 (*.pdf)", "pdf", "pdf"),
+    ("Excel 文件 (*.xlsx)", "excel", "xlsx"),
+)
 
 
 class ScanState(enum.Enum):
@@ -379,60 +424,45 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         )
 
     def _setup_icons(self) -> None:
-        """加载主题图标并设置到各按钮、菜单 actions 与下拉项。"""
-        # 主色变体（浅色背景）
-        self._icon_scan = _load_themed_icon(_ICON_SCAN, theme.COLOR_PRIMARY)
-        self._icon_pause = _load_themed_icon(_ICON_PAUSE, theme.COLOR_PRIMARY)
-        self._icon_rescan = _load_themed_icon(_ICON_RESCAN, theme.COLOR_PRIMARY)
-        self._icon_all_disk = _load_themed_icon(_ICON_ALL_DISK, theme.COLOR_PRIMARY)
-        self._icon_disk = _load_themed_icon(_ICON_DISK, theme.COLOR_PRIMARY)
-        self._icon_folder = _load_themed_icon(_ICON_FOLDER, theme.COLOR_PRIMARY)
-        self._icon_history = _load_themed_icon(_ICON_HISTORY, theme.COLOR_PRIMARY)
-        self._icon_load_list = _load_themed_icon(_ICON_LOAD_LIST, theme.COLOR_PRIMARY)
-        self._icon_manual = _load_themed_icon(_ICON_MANUAL, theme.COLOR_PRIMARY)
-        self._icon_hard_disk = _load_themed_icon(_ICON_HARD_DISK, theme.COLOR_PRIMARY)
-        self._icon_edit = _load_themed_icon(_ICON_EDIT, theme.COLOR_PRIMARY)
-        self._icon_export = _load_themed_icon(_ICON_EXPORT, theme.COLOR_PRIMARY)
-        self._icon_export_csv = _load_themed_icon(_ICON_EXPORT_CSV, theme.COLOR_PRIMARY)
-        self._icon_export_json = _load_themed_icon(_ICON_EXPORT_JSON, theme.COLOR_PRIMARY)
-        self._icon_settings = _load_themed_icon(_ICON_SETTINGS, theme.COLOR_PRIMARY)
-        self._icon_search = _load_themed_icon(_ICON_SEARCH, theme.COLOR_PRIMARY)
-        self._icon_about = _load_themed_icon(_ICON_ABOUT, theme.COLOR_PRIMARY)
-        self._icon_stop = _load_themed_icon(_ICON_STOP, theme.COLOR_PRIMARY)
-        # 深色背景（头部栏/侧边栏）专用白色变体
-        self._icon_scan_on_primary = _load_themed_icon(_ICON_SCAN, theme.COLOR_TEXT_ON_PRIMARY)
-        self._icon_folder_on_primary = _load_themed_icon(_ICON_FOLDER, theme.COLOR_TEXT_ON_PRIMARY)
-        self._icon_history_on_primary = _load_themed_icon(_ICON_HISTORY, theme.COLOR_TEXT_ON_PRIMARY)
-        self._icon_load_list_on_primary = _load_themed_icon(_ICON_LOAD_LIST, theme.COLOR_TEXT_ON_PRIMARY)
-        self._icon_settings_on_primary = _load_themed_icon(_ICON_SETTINGS, theme.COLOR_TEXT_ON_PRIMARY)
-        self._icon_about_on_primary = _load_themed_icon(_ICON_ABOUT, theme.COLOR_TEXT_ON_PRIMARY)
-        # 应用到扫描控制按钮
-        self.scan_btn.setIcon(self._icon_scan)
-        self.scan_mode_combo.setItemIcon(0, self._icon_all_disk)
-        self.scan_mode_combo.setItemIcon(1, self._icon_disk)
-        self.scan_mode_combo.setItemIcon(2, self._icon_folder)
-        # 加载规则按钮与菜单
-        self.load_rules_btn.setIcon(self._icon_load_list)
-        self.load_rules_action.setIcon(self._icon_load_list)
-        self.scan_action.setIcon(self._icon_scan)
-        self.edit_rule_btn.setIcon(self._icon_edit)
-        self.edit_rules_action.setIcon(self._icon_edit)
-        self.export_btn.setIcon(self._icon_export)
-        self.export_csv_action.setIcon(self._icon_export_csv)
-        self.export_json_action.setIcon(self._icon_export_json)
-        self.settings_action.setIcon(self._icon_settings)
-        self.manual_action.setIcon(self._icon_manual)
-        self.select_path_action.setIcon(self._icon_search)
-        self.about_action.setIcon(self._icon_about)
-        self.rescan_btn.setIcon(self._icon_rescan)
-        self.cancel_btn.setIcon(self._icon_stop)
-        self.pause_resume_btn.setIcon(self._icon_pause)
-        # 头部栏按钮（深色背景用白色变体，rule-12 HeaderBar）
-        self.tab_scan_btn.setIcon(self._icon_scan_on_primary)
-        self.tab_rules_btn.setIcon(self._icon_load_list_on_primary)
-        self.tab_history_btn.setIcon(self._icon_history_on_primary)
-        self.settings_btn.setIcon(self._icon_settings_on_primary)
-        self.about_btn.setIcon(self._icon_about_on_primary)
+        """加载主题图标并设置到各按钮、菜单 actions 与下拉项。
+
+        采用表驱动模式：``_PRIMARY_ICON_TARGETS`` / ``_ON_PRIMARY_ICON_TARGETS``
+        描述 ``(图标路径, 控件属性名)`` 映射，按需加载并缓存到局部 dict，
+        避免相同路径重复调用 ``_load_themed_icon``（如 ``_ICON_SCAN`` 同时绑定
+        ``scan_btn`` 与 ``scan_action``，``_ICON_LOAD_LIST`` 同时绑定 ``load_rules_btn``
+        与 ``load_rules_action``）。
+        """
+        # 主色变体图标缓存：key=SVG 路径，value=已着色 QIcon
+        primary_cache: dict[str, QIcon] = {}
+        for icon_path, attr_name in _PRIMARY_ICON_TARGETS:
+            if icon_path not in primary_cache:
+                primary_cache[icon_path] = _load_themed_icon(icon_path, theme.COLOR_PRIMARY)
+            getattr(self, attr_name).setIcon(primary_cache[icon_path])
+
+        # scan_mode_combo 下拉项图标（index 顺序对应 _COMBO_ITEM_ICONS）
+        for index, icon_path in enumerate(_COMBO_ITEM_ICONS):
+            if icon_path not in primary_cache:
+                primary_cache[icon_path] = _load_themed_icon(icon_path, theme.COLOR_PRIMARY)
+            self.scan_mode_combo.setItemIcon(index, primary_cache[icon_path])
+
+        # 盘符按钮复用主色 hard_disk 变体（_refresh_drive_buttons 在 _apply_config 时按需读取）
+        if _ICON_HARD_DISK not in primary_cache:
+            primary_cache[_ICON_HARD_DISK] = _load_themed_icon(_ICON_HARD_DISK, theme.COLOR_PRIMARY)
+        self._icon_hard_disk = primary_cache[_ICON_HARD_DISK]
+
+        # 深色背景白色变体图标缓存
+        on_primary_cache: dict[str, QIcon] = {}
+        for icon_path, attr_name in _ON_PRIMARY_ICON_TARGETS:
+            if icon_path not in on_primary_cache:
+                on_primary_cache[icon_path] = _load_themed_icon(icon_path, theme.COLOR_TEXT_ON_PRIMARY)
+            getattr(self, attr_name).setIcon(on_primary_cache[icon_path])
+
+        # 侧边栏阶段项复用白色变体（_setup_sidebar 时按需读取，避免重复加载）
+        if _ICON_FOLDER not in on_primary_cache:
+            on_primary_cache[_ICON_FOLDER] = _load_themed_icon(_ICON_FOLDER, theme.COLOR_TEXT_ON_PRIMARY)
+        self._icon_folder_on_primary = on_primary_cache[_ICON_FOLDER]
+        self._icon_scan_on_primary = on_primary_cache[_ICON_SCAN]
+        self._icon_history_on_primary = on_primary_cache[_ICON_HISTORY]
 
     def _setup_button_groups(self) -> None:
         """初始化头部 Tab 按钮互斥组与盘符按钮组。"""
@@ -1111,19 +1141,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
             return
-        # 格式选项与扩展名映射，顺序即菜单显示顺序
-        items = [
-            ("CSV 文件 (*.csv)", "csv"),
-            ("JSON 文件 (*.json)", "json"),
-            ("PDF 文件 (*.pdf)", "pdf"),
-            ("Excel 文件 (*.xlsx)", "excel"),
-        ]
-        labels = [label for label, _ in items]
+        labels = [label for label, _, _ in _EXPORT_FORMATS]
         choice, ok = QInputDialog.getItem(self, "导出扫描结果", "选择导出格式:", labels, 0, False)
         if not ok:
             return
-        fmt = next(fmt for label, fmt in items if label == choice)
-        self._on_export(fmt)
+        # 通过 label → fmt 的查找表替代 next() 线性遍历，语义更清晰
+        label_to_fmt = {label: fmt for label, fmt, _ in _EXPORT_FORMATS}
+        self._on_export(label_to_fmt[choice])
 
     def _on_export(self, fmt: str) -> None:
         """导出扫描结果到文件。
@@ -1136,8 +1160,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
             return
 
-        # 扩展名映射：excel 用 .xlsx，其他格式直接用同名扩展名
-        ext = "xlsx" if fmt == "excel" else fmt
+        # 从 _EXPORT_FORMATS 查找扩展名，消除 ``ext = "xlsx" if fmt == "excel" else fmt`` 特判
+        fmt_to_ext = {fmt_id: ext for _, fmt_id, ext in _EXPORT_FORMATS}
+        ext = fmt_to_ext.get(fmt, fmt)
         filter_str = f"{fmt.upper()} 文件 (*.{ext})"
         default_name = f"fuscan_report.{ext}"
         path_str, _ = QFileDialog.getSaveFileName(
