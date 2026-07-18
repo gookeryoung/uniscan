@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -6167,7 +6168,7 @@ class TestGuiCache:
         assert window._cache is not None
 
         def raising_close() -> None:
-            raise RuntimeError("close error")
+            raise sqlite3.OperationalError("close error")
 
         monkeypatch.setattr(window._cache, "close", raising_close)
         monkeypatch.setattr("fuscan.gui.main_window.QMainWindow.closeEvent", lambda self, event: None)
@@ -6251,7 +6252,7 @@ class TestGuiCache:
         assert window._cache is not None
 
         def raising_close() -> None:
-            raise RuntimeError("close error")
+            raise sqlite3.OperationalError("close error")
 
         monkeypatch.setattr(window._cache, "close", raising_close)
 

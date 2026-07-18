@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -217,6 +218,9 @@ _EXPORT_FORMATS: tuple[tuple[str, str, str], ...] = (
     ("PDF 文件 (*.pdf)", "pdf", "pdf"),
     ("Excel 文件 (*.xlsx)", "excel", "xlsx"),
 )
+# 从 _EXPORT_FORMATS 派生的查找表（模块级常量避免每次调用重建 dict）
+_EXPORT_LABEL_TO_FMT: dict[str, str] = {label: fmt for label, fmt, _ in _EXPORT_FORMATS}
+_EXPORT_FMT_TO_EXT: dict[str, str] = {fmt: ext for _, fmt, ext in _EXPORT_FORMATS}
 
 # 扫描模式 ↔ combo index 双向映射（避免 _on_scan_mode_changed 与 _update_target_visibility
 # 各自维护一份字面量字典导致漂移）
@@ -726,30 +730,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _apply_config(self) -> None:
         """应用配置：恢复窗口几何、分割器、扫描模式、规则路径、扫描历史。"""
-        min_w, min_h = self.minimumSize().width(), self.minimumSize().height()
-
-        if self._config.window_geometry and len(self._config.window_geometry) == 4:
-            x, y, w, h = self._config.window_geometry
-            w = max(w, min_w)
-            h = max(h, min_h)
-
-            screen_geo = QApplication.primaryScreen().availableGeometry()
-            if screen_geo.width() > w:
-                x = max(0, min(x, screen_geo.width() - w))
-            if screen_geo.height() > h:
-                y = max(0, min(y, screen_geo.height() - h))
-
-            self.setGeometry(x, y, w, h)
-        else:
-            screen_geo = QApplication.primaryScreen().availableGeometry()
-            w, h = self.size().width(), self.size().height()
-            if screen_geo.width() > w and screen_geo.height() > h:
-                x = (screen_geo.width() - w) // 2
-                y = (screen_geo.height() - h) // 2
-                self.move(x, y)
-
-        if self._config.window_state == "maximized":
-            self.showMaximized()
+        self._restore_window_geometry()
 
         if self._config.splitter_sizes:
             self.results_splitter.setSizes(self._config.splitter_sizes)
@@ -782,6 +763,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             first_path = Path(self.path_combo.itemText(0))
             self._scan_root = first_path if first_path.exists() else None
         self._update_scan_button()
+
+    def _restore_window_geometry(self) -> None:
+        """从配置恢复窗口几何（含屏幕边界夹紧算法）。
+
+        若配置中有完整 4 元组 geometry，则按 (x, y, w, h) 恢复并将窗口
+        夹紧到当前屏幕可用区域内（避免恢复到已不存在的多屏坐标）；
+        否则将窗口居中到主屏幕。最后若 ``window_state`` 为 ``maximized`` 则最大化。
+        """
+        min_w, min_h = self.minimumSize().width(), self.minimumSize().height()
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+
+        if self._config.window_geometry and len(self._config.window_geometry) == 4:
+            x, y, w, h = self._config.window_geometry
+            w = max(w, min_w)
+            h = max(h, min_h)
+            if screen_geo.width() > w:
+                x = max(0, min(x, screen_geo.width() - w))
+            if screen_geo.height() > h:
+                y = max(0, min(y, screen_geo.height() - h))
+            self.setGeometry(x, y, w, h)
+        else:
+            w, h = self.size().width(), self.size().height()
+            if screen_geo.width() > w and screen_geo.height() > h:
+                x = (screen_geo.width() - w) // 2
+                y = (screen_geo.height() - h) // 2
+                self.move(x, y)
+
+        if self._config.window_state == "maximized":
+            self.showMaximized()
 
     def _save_config(self) -> None:
         """保存当前状态到配置文件。"""
@@ -1124,9 +1134,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         choice, ok = QInputDialog.getItem(self, "导出扫描结果", "选择导出格式:", labels, 0, False)
         if not ok:
             return
-        # 通过 label → fmt 的查找表替代 next() 线性遍历，语义更清晰
-        label_to_fmt = {label: fmt for label, fmt, _ in _EXPORT_FORMATS}
-        self._on_export(label_to_fmt[choice])
+        self._on_export(_EXPORT_LABEL_TO_FMT[choice])
 
     def _on_export(self, fmt: str) -> None:
         """导出扫描结果到文件。
@@ -1139,9 +1147,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
             return
 
-        # 从 _EXPORT_FORMATS 查找扩展名，消除 ``ext = "xlsx" if fmt == "excel" else fmt`` 特判
-        fmt_to_ext = {fmt_id: ext for _, fmt_id, ext in _EXPORT_FORMATS}
-        ext = fmt_to_ext.get(fmt, fmt)
+        ext = _EXPORT_FMT_TO_EXT.get(fmt, fmt)
         filter_str = f"{fmt.upper()} 文件 (*.{ext})"
         default_name = f"fuscan_report.{ext}"
         path_str, _ = QFileDialog.getSaveFileName(
@@ -1208,7 +1214,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             if prev_cache_enabled and cache_changed and self._cache is not None:
                 try:
                     self._cache.close()
-                except Exception:
+                except (sqlite3.Error, OSError):
                     logger.warning("缓存关闭失败", exc_info=True)
                 self._cache = None
 
@@ -1451,7 +1457,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         if self._cache is not None:
             try:
                 self._cache.close()
-            except Exception:
+            except (sqlite3.Error, OSError):
                 logger.warning("缓存关闭失败", exc_info=True)
             self._cache = None
         self._save_config()
