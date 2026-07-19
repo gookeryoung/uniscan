@@ -41,7 +41,10 @@ _BATCH_THRESHOLD: int = 50
 # 进度收集列表上限：_skipped_dirs 与 _matched_files 使用 deque(maxlen=) 防止
 # 大规模扫描（如全盘跳过 node_modules）时列表无界增长导致内存膨胀。
 # _emit_progress 取该上限条 recent 条目，足够 GUI 展示近期跳过/命中情况。
-_PROGRESS_LIST_MAX: int = 200
+# iter-59 由 200 下调到 50：每次进度回调需将 deque 转为 tuple 跨线程信号传递，
+# 200 项 × 2 列表 = 400 元组拷贝，大规模扫描下高频回调会让主线程信号槽分发
+# 占用可观时间片导致 UI 卡滞；50 项已足够用户感知"近期"上下文（最新命中/跳过）。
+_PROGRESS_LIST_MAX: int = 50
 
 
 def default_extract_content(entry: FileEntry) -> str:

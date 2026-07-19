@@ -265,8 +265,13 @@ class TestListDrives:
             # 至少有一个盘符存在（通常是 C:）
             assert all(isinstance(d, Path) for d in drives)
 
-    def test_list_drives_skips_unready_drive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """盘符 exists() 抛 OSError（如未就绪光驱 G:\\）时跳过而非崩溃。"""
+    def test_list_drives_uses_get_logical_drives_bitmask(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``_list_windows_drives`` 应基于 ``GetLogicalDrives`` 位掩码返回盘符。
+
+        iter-59 改用 Win32 API 单次调用获取位掩码（bit 0=A:、bit 1=B:、...），
+        避免逐个 ``Path.exists()`` 探测未就绪光驱时的 OSError 阻塞。模拟
+        位掩码 0b101（A:、C:）验证仅返回位掩码中已设置的盘符。
+        """
         import sys
 
         if sys.platform != "win32":
@@ -274,19 +279,46 @@ class TestListDrives:
 
         from fuscan.scanner import walker as walker_mod
 
-        real_exists = Path.exists
+        class _FakeWindll:
+            class kernel32:
+                @staticmethod
+                def GetLogicalDrives() -> int:
+                    # bit 0=A:、bit 2=C:，仅返回这两个盘符
+                    return 0b101
 
-        def fake_exists(self: Path, *args: object, **kwargs: object) -> bool:
-            if str(self).upper().startswith("G:"):
-                raise OSError(1, "函数不正确。")
-            return real_exists(self, *args, **kwargs)
+            def __getattr__(self, _name: str) -> object:  # type: ignore[no-untyped-def]
+                raise AttributeError(_name)
 
-        monkeypatch.setattr(Path, "exists", fake_exists)
+        monkeypatch.setattr(walker_mod.ctypes, "windll", _FakeWindll())
+        drives = walker_mod._list_windows_drives()
+        assert drives == [Path("A:\\"), Path("C:\\")]
+
+    def test_list_drives_network_filter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``list_drives`` 默认应排除网络映射盘（DRIVE_REMOTE=4）。"""
+        import sys
+
+        if sys.platform != "win32":
+            return
+
+        from fuscan.scanner import walker as walker_mod
+
+        class _FakeWindll:
+            class kernel32:
+                @staticmethod
+                def GetLogicalDrives() -> int:
+                    # bit 2=C:、bit 6=G:（G: 视为网络盘）
+                    return 0b1000100
+
+            def __getattr__(self, _name: str) -> object:  # type: ignore[no-untyped-def]
+                raise AttributeError(_name)
+
+        monkeypatch.setattr(walker_mod.ctypes, "windll", _FakeWindll())
+        # G:\\ 模拟为网络盘（GetDriveTypeW 返回 DRIVE_REMOTE=4）
+        monkeypatch.setattr(walker_mod, "_is_network_drive", lambda drive: str(drive).upper().startswith("G:"))
         drives = walker_mod.list_drives()
-        # G:\\ 应被跳过，其他盘符仍正常返回
-        assert all(isinstance(d, Path) for d in drives)
+        # 网络盘 G:\\ 应被过滤掉
         assert not any(str(d).upper().startswith("G:") for d in drives)
-        # C:\\ 这类正常盘符应仍在列表中
+        # C:\\ 仍应保留
         assert any(str(d).upper().startswith("C:") for d in drives)
 
 

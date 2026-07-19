@@ -5359,6 +5359,23 @@ class TestScanCallbacks:
         window.close()
 
 
+def _wait_export_worker(window: MainWindow, qapp: QApplication) -> None:
+    """等待 ExportWorker 完成（iter-59 导出异步化后的测试辅助）。
+
+    主线程 ``_on_export`` 启动 ``ExportWorker``（QThread）后立即返回，
+    测试需主动等待后台线程完成 ``save_report`` 并通过信号槽回到主线程
+    处理结果，否则 ``out_path.exists()`` 断言会因竞态失败。
+
+    :param window: 主窗口实例（含 ``_export_worker`` 属性）
+    :param qapp: QApplication 实例，用于 ``processEvents`` 让信号槽分发
+    """
+    worker = getattr(window, "_export_worker", None)
+    if worker is None:
+        return
+    worker.wait(5000)
+    qapp.processEvents()
+
+
 class TestExportAndMenu:
     """导出、菜单与工具栏操作测试。"""
 
@@ -5407,6 +5424,7 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export("csv")
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         assert "secret.txt" in out_path.read_text(encoding="utf-8")
         window.close()
@@ -5457,6 +5475,7 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export_menu()
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         window.close()
 
@@ -5501,6 +5520,7 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export("pdf")
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         assert out_path.read_bytes()[:5] == b"%PDF-"
         window.close()
@@ -5525,6 +5545,7 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export("excel")
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         assert out_path.read_bytes()[:2] == b"PK"
         window.close()
@@ -5553,6 +5574,7 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export_menu()
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         assert out_path.read_bytes()[:5] == b"%PDF-"
         window.close()
@@ -5583,9 +5605,69 @@ class TestExportAndMenu:
             lambda *args, **kwargs: None,
         )
         window._on_export_menu()
+        _wait_export_worker(window, qapp)
         assert out_path.exists()
         assert out_path.read_bytes()[:2] == b"PK"
         window.close()
+
+    def test_export_worker_run_emits_finished_ok(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 ExportWorker.run() 应同步完成并 emit finished_ok 信号。
+
+        iter-59 新增 ExportWorker 异步导出，QThread 子线程代码无法被 coverage
+        捕获（与 ScanWorker 一致），故通过直接调用 ``run()`` 在主线程同步执行
+        以覆盖成功路径，验证信号携带导出路径。
+        """
+        from fuscan.gui.export_worker import ExportWorker
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "direct.csv"
+        worker = ExportWorker(report, out_path)
+
+        results: list[Any] = []
+        failures: list[Any] = []
+        worker.finished_ok.connect(results.append)  # pyrefly: ignore [missing-attribute]
+        worker.failed.connect(failures.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()  # 直接调用，不通过 start()
+
+        assert not failures
+        assert len(results) == 1
+        assert results[0] == out_path
+        assert out_path.exists()
+        assert "secret.txt" in out_path.read_text(encoding="utf-8")
+
+    def test_export_worker_run_emits_failed_on_os_error(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ExportWorker.run() 在 save_report 抛 OSError 时应 emit failed 信号。"""
+        from fuscan.gui import export_worker as export_worker_mod
+        from fuscan.gui.export_worker import ExportWorker
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        report = Scanner(rs).scan(tmp_path)
+
+        out_path = tmp_path / "fail.csv"
+
+        def _raise_oserror(*_args: object, **_kwargs: object) -> None:
+            raise OSError("模拟磁盘已满")
+
+        monkeypatch.setattr(export_worker_mod, "save_report", _raise_oserror)
+        worker = ExportWorker(report, out_path)
+
+        results: list[Any] = []
+        failures: list[Any] = []
+        worker.finished_ok.connect(results.append)  # pyrefly: ignore [missing-attribute]
+        worker.failed.connect(failures.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()
+
+        assert not results
+        assert len(failures) == 1
+        assert "模拟磁盘已满" in failures[0]
 
     def test_about_dialog(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
         """关于对话框应弹出。"""

@@ -141,6 +141,7 @@ from fuscan.gui.icons import (
     load_themed_icon as _load_themed_icon,
 )
 from fuscan.gui.main_window_ui import Ui_MainWindow
+from fuscan.gui.perf import PerfTimer
 from fuscan.gui.preview_utils import (
     SEVERITY_BACKGROUNDS,
     SEVERITY_COLORS,
@@ -152,7 +153,6 @@ from fuscan.gui.worker import ScanWorker
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport, list_drives
-from fuscan.scanner.export import save_report
 from fuscan.scanner.result import ScanResult
 
 if TYPE_CHECKING:
@@ -258,43 +258,48 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setupUi(self)
+        with PerfTimer("MainWindow.__init__"):
+            with PerfTimer("MainWindow.setupUi"):
+                self.setupUi(self)
 
-        self._config: Config = load_config()
-        self._ruleset: RuleSet | None = None
-        self._rules_paths: list[Path] = []
-        self._scan_root: Path | None = None
-        self._last_report: ScanReport | None = None
-        self._worker: ScanWorker | None = None
-        self._scan_state: ScanState = ScanState.IDLE
-        self._workflow_stage: WorkflowStage = WorkflowStage.SETUP
-        self._use_builtin: bool = True
-        # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
-        self._scan_mode: str = "folder"
-        # 详情面板控制器：setupUi 已创建详情区 UI 控件，立即构造 DetailPanel，
-        # 使后续 _connect_signals/_setup_shortcuts 可安全引用（非 None）
-        self._detail_panel: DetailPanel = self._create_detail_panel()
-        # 扫描路径历史：维护去重 + 最近优先 + 限量的路径列表，同步
-        # path_combo 与 history_list 两个控件（单一数据源避免内容漂移）
-        self._path_history: ScanPathHistory = ScanPathHistory(self.path_combo, self.history_list)
-        # 盘符按钮组（平铺选择，替代下拉）
-        self._drive_button_group: QButtonGroup | None = None
-        self._drive_buttons: list[QPushButton] = []
-        self._selected_drive: str | None = None
-        # 扫描结果缓存（启用时惰性创建，关闭窗口时释放）
-        self._cache: CacheStore | None = None
-        # 扫描中列表增量更新器：封装跳过目录与命中文件列表的 0.5 秒节流 + 增量
-        # append 算法，避免每次进度回调全量 clear+重添导致主线程阻塞（点击设置卡滞根因）
-        self._list_updater: ScanListUpdater = ScanListUpdater(self.skipped_dirs_list, self.matched_files_list)
-        # 结果树筛选节流 timer（需求9）：避免每次按键触发全量重建导致 UI 卡滞
-        self._result_filter_timer: QTimer = QTimer(self)
-        self._result_filter_timer.setSingleShot(True)
-        self._result_filter_timer.setInterval(300)
-        self._result_filter_timer.timeout.connect(self._refresh_result_tree)
+            self._config: Config = load_config()
+            self._ruleset: RuleSet | None = None
+            self._rules_paths: list[Path] = []
+            self._scan_root: Path | None = None
+            self._last_report: ScanReport | None = None
+            self._worker: ScanWorker | None = None
+            self._scan_state: ScanState = ScanState.IDLE
+            self._workflow_stage: WorkflowStage = WorkflowStage.SETUP
+            self._use_builtin: bool = True
+            # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
+            self._scan_mode: str = "folder"
+            # 详情面板控制器：setupUi 已创建详情区 UI 控件，立即构造 DetailPanel，
+            # 使后续 _connect_signals/_setup_shortcuts 可安全引用（非 None）
+            self._detail_panel: DetailPanel = self._create_detail_panel()
+            # 扫描路径历史：维护去重 + 最近优先 + 限量的路径列表，同步
+            # path_combo 与 history_list 两个控件（单一数据源避免内容漂移）
+            self._path_history: ScanPathHistory = ScanPathHistory(self.path_combo, self.history_list)
+            # 盘符按钮组（平铺选择，替代下拉）
+            self._drive_button_group: QButtonGroup | None = None
+            self._drive_buttons: list[QPushButton] = []
+            self._selected_drive: str | None = None
+            # 扫描结果缓存（启用时惰性创建，关闭窗口时释放）
+            self._cache: CacheStore | None = None
+            # 扫描中列表增量更新器：封装跳过目录与命中文件列表的 0.5 秒节流 + 增量
+            # append 算法，避免每次进度回调全量 clear+重添导致主线程阻塞（点击设置卡滞根因）
+            self._list_updater: ScanListUpdater = ScanListUpdater(self.skipped_dirs_list, self.matched_files_list)
+            # 结果树筛选节流 timer（需求9）：避免每次按键触发全量重建导致 UI 卡滞
+            self._result_filter_timer: QTimer = QTimer(self)
+            self._result_filter_timer.setSingleShot(True)
+            self._result_filter_timer.setInterval(300)
+            self._result_filter_timer.timeout.connect(self._refresh_result_tree)
 
-        self._configure_ui()
-        self._apply_config()
-        self._init_rules()
+            with PerfTimer("MainWindow._configure_ui"):
+                self._configure_ui()
+            with PerfTimer("MainWindow._apply_config"):
+                self._apply_config()
+            with PerfTimer("MainWindow._init_rules"):
+                self._init_rules()
 
     # ----------------------------- UI 配置 -----------------------------
 
@@ -1137,11 +1142,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._on_export(_EXPORT_LABEL_TO_FMT[choice])
 
     def _on_export(self, fmt: str) -> None:
-        """导出扫描结果到文件。
+        """导出扫描结果到文件（异步：通过 ExportWorker 在后台执行）。
 
         :param fmt: 格式标识，``csv``/``json``/``pdf``/``excel``。
             文本格式（csv/json）按 UTF-8 写入；二进制格式（pdf/excel）写 bytes。
             统一委托给 :func:`fuscan.scanner.export.save_report`，由其按扩展名自动选择序列化方式。
+
+        iter-59 改为异步：PDF/Excel 渲染可能耗时数秒，同步执行会让 UI 完全
+        无响应。导出期间禁用导出按钮，导出完成/失败后通过信号槽回到主线程
+        处理结果对话框与状态栏提示。
         """
         if self._last_report is None:
             QMessageBox.information(self, "提示", "无可导出的扫描结果")
@@ -1159,11 +1168,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         if not path_str:
             return
         path = Path(path_str)
-        try:
-            save_report(self._last_report, path)
-            QMessageBox.information(self, "导出成功", f"已导出到:\n{path}")
-        except OSError as exc:
-            QMessageBox.warning(self, "导出失败", str(exc))
+        # 禁用导出按钮防止重复触发；启用后由 _on_export_finished/_on_export_failed 恢复
+        self.export_btn.setEnabled(False)
+        self.stats_label.setText(f"正在导出 {path.name}...")
+        # 延迟加载 ExportWorker，避免 main_window 顶部依赖 reportlab/openpyxl 触发导入
+        from fuscan.gui.export_worker import ExportWorker
+
+        self._export_worker = ExportWorker(self._last_report, path, parent=self)
+        self._export_worker.finished_ok.connect(self._on_export_finished)  # pyrefly: ignore [missing-attribute]
+        self._export_worker.failed.connect(self._on_export_failed)  # pyrefly: ignore [missing-attribute]
+        self._export_worker.start()
+
+    @Slot(object)  # pyrefly: ignore [not-callable]
+    def _on_export_finished(self, path: Path) -> None:
+        """导出完成回调：恢复按钮状态并提示用户。"""
+        self._cleanup_export_worker()
+        self.export_btn.setEnabled(self._last_report is not None and len(self._last_report.hits) > 0)
+        self.stats_label.setText(f"已导出: {path}")
+        QMessageBox.information(self, "导出成功", f"已导出到:\n{path}")
+
+    @Slot(str)  # pyrefly: ignore [not-callable]
+    def _on_export_failed(self, error: str) -> None:
+        """导出失败回调：恢复按钮状态并提示错误。"""
+        self._cleanup_export_worker()
+        self.export_btn.setEnabled(self._last_report is not None and len(self._last_report.hits) > 0)
+        self.stats_label.setText("导出失败")
+        QMessageBox.warning(self, "导出失败", error)
+
+    def _cleanup_export_worker(self) -> None:
+        """清理后台导出线程：等待退出后释放引用。"""
+        worker = getattr(self, "_export_worker", None)
+        if worker is None:
+            return
+        worker.wait(2000)
+        worker.deleteLater()
+        self._export_worker = None
 
     def _on_about(self) -> None:
         """关于对话框。"""
