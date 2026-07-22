@@ -33,6 +33,12 @@ try:
             QMessageBox,
         )
 
+    from fuscan import (
+        __author__,
+        __description__,
+        __license__,
+        __version__,
+    )
     from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
     from fuscan.gui.preview_utils import build_preview_html, extract_keywords, format_size
     from fuscan.gui.worker import ScanWorker
@@ -5259,15 +5265,25 @@ class TestExportAndMenu:
         assert "模拟磁盘已满" in failures[0]
 
     def test_about_dialog(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
-        """关于对话框应弹出。"""
+        """关于对话框应包含版本、作者、许可证等关键信息。"""
         window = MainWindow()
-        about_called = {"called": False}
+        captured: dict[str, object] = {}
+
+        def _capture(*args: object, **kwargs: object) -> None:
+            captured["args"] = args
+
         monkeypatch.setattr(
             "fuscan.gui.main_window.QMessageBox.about",
-            lambda *args, **kwargs: about_called.update(called=True),
+            _capture,
         )
         window._on_about()
-        assert about_called["called"]
+        assert captured["args"] is not None
+        title, body = captured["args"][1], captured["args"][2]  # type: ignore[index]
+        assert title == "关于 fuscan"
+        assert __version__ in body
+        assert __author__ in body
+        assert __license__ in body
+        assert __description__ in body
         window.close()
 
     def test_history_item_double_clicked(self, qapp: QApplication, tmp_path: Path) -> None:

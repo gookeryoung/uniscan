@@ -73,7 +73,7 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
-from fuscan import __version__, theme
+from fuscan import __author__, __description__, __license__, __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import Config, load_config, save_config
 from fuscan.gui import resources_rc  # noqa: F401 注册 .qrc 资源（:/ 前缀图标）
@@ -1214,7 +1214,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         QMessageBox.about(
             self,
             "关于 fuscan",
-            f"fuscan {__version__}\n\n通用文件扫描器\n支持多格式与压缩文件扫描\n\n技术栈: Python + PySide",
+            (
+                f"<h3>fuscan {__version__}</h3>"
+                f"<p>{__description__}</p>"
+                f"<p>基于 YAML 规则对多种格式文件进行内容匹配，"
+                f"快速发现敏感信息、合规风险与代码安全问题；"
+                f"支持压缩文件扫描与缓存加速。</p>"
+                f"<p><b>技术栈</b>: Python + PySide</p>"
+                f"<p><b>作者</b>: {__author__}<br>"
+                f"<b>许可证</b>: {__license__}</p>"
+            ),
         )
 
     def _on_open_manual(self) -> None:

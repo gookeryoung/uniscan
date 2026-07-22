@@ -1284,7 +1284,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3.3.0" },
-    { name = "extract-msg", specifier = ">=0.48.0" },
+    { name = "extract-msg", specifier = ">=0.48.0,<0.56" },
     { name = "fuscan", extras = ["lint", "test"], marker = "extra == 'dev'" },
     { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=3.0" },
     { name = "odfpy", specifier = ">=1.4.1" },
