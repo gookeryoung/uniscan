@@ -1820,6 +1820,43 @@ class TestThemeColorContrast:
         assert "${COLOR_ACCENT}" not in checked_section  # 占位符应已替换
         assert "#58a6ff" in checked_section  # COLOR_ACCENT 替换后的值
 
+    def test_item_views_have_selection_color_for_inactive_focus(self) -> None:
+        """所有 item view 控件应设置 selection-color/selection-background-color。
+
+        防止 iter-67 修复的"失去焦点选中项变黑"问题回归：QSS ``::item:selected``
+        仅控制有焦点时的样式，失去焦点时 Qt 回退到 QPalette Inactive Highlight
+        （默认灰底黑字）。控件级 ``selection-*`` 属性不论焦点状态都生效。
+        """
+        from fuscan import theme
+        from fuscan.gui.app import load_stylesheet
+
+        qss = load_stylesheet()
+        # 6 处 item view 控件均须显式设置 selection-color 为白色
+        # （QListWidget#sidebar / QTreeWidget#result_tree / QTreeWidget /
+        #  QListWidget / QTableWidget / QComboBox QAbstractItemView）
+        expected_selection_color = theme.COLOR_TEXT_ON_PRIMARY  # #ffffff
+        expected_selection_bg = theme.COLOR_PRIMARY_DARK  # #096dd9
+        # 统计 selection-color 出现次数（应为 6 处控件级 + QLineEdit 1 处 = 7）
+        # QLineEdit 的 selection-* 用于文本选区，不计入 item view 回归保护
+        item_view_selectors = [
+            "QListWidget#sidebar",
+            "QTreeWidget#result_tree",
+            "QTreeWidget {",
+            "QListWidget {",
+            "QTableWidget {",
+            "QComboBox QAbstractItemView",
+        ]
+        for selector in item_view_selectors:
+            block_start = qss.find(selector)
+            assert block_start != -1, f"QSS 缺少选择器: {selector}"
+            # 取该选择器到下一个选择器之间的块（大括号闭合）
+            block_end = qss.find("}", block_start)
+            block = qss[block_start : block_end + 1]
+            assert "selection-background-color" in block, f"{selector} 缺少 selection-background-color"
+            assert "selection-color" in block, f"{selector} 缺少 selection-color"
+            assert expected_selection_bg in block, f"{selector} 选中背景应为 {expected_selection_bg}"
+            assert expected_selection_color in block, f"{selector} 选中文字应为 {expected_selection_color}"
+
 
 class TestSeverityDisplay:
     """严重等级颜色区分测试。"""

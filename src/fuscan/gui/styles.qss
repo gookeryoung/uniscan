@@ -55,6 +55,9 @@ QListWidget#sidebar {
     border-right: 1px solid ${COLOR_PRIMARY_DARK};
     font-size: ${FONT_SIZE_BODY};
     outline: none;
+    /* 控件级选中色：不论是否有焦点，选中项统一深蓝底+白字（iter-67 修复失去焦点变黑） */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QListWidget#sidebar::item {
@@ -449,8 +452,9 @@ QComboBox QAbstractItemView {
     border: 1px solid ${COLOR_BORDER};
     border-radius: ${RADIUS_MD};
     padding: 4px;
-    selection-background-color: ${COLOR_BG_SELECTED};
-    selection-color: ${COLOR_PRIMARY};
+    /* iter-67：与其它列表统一为深蓝底+白字，避免选中项颜色不一致 */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
     outline: none;
 }
 
@@ -563,6 +567,9 @@ QTreeWidget#result_tree {
     border: 1px solid ${COLOR_BORDER};
     border-radius: ${RADIUS_MD};
     outline: none;
+    /* 控件级选中色：不论是否有焦点，选中项统一深蓝底+白字（iter-67 修复失去焦点变黑） */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QTreeWidget#result_tree::item {
@@ -589,6 +596,9 @@ QTreeWidget {
     border: 1px solid ${COLOR_BORDER};
     border-radius: ${RADIUS_MD};
     outline: none;
+    /* 控件级选中色：不论是否有焦点，选中项统一深蓝底+白字（iter-67 修复失去焦点变黑） */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QTreeWidget::item:selected {
@@ -614,6 +624,9 @@ QListWidget {
     border: 1px solid ${COLOR_BORDER};
     border-radius: ${RADIUS_MD};
     outline: none;
+    /* 控件级选中色：不论是否有焦点，选中项统一深蓝底+白字（iter-67 修复失去焦点变黑） */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QListWidget::item {
@@ -636,6 +649,9 @@ QTableWidget {
     border-radius: ${RADIUS_MD};
     font-size: ${FONT_SIZE_BODY};
     outline: none;
+    /* 控件级选中色：不论是否有焦点，选中项统一深蓝底+白字（iter-67 修复失去焦点变黑） */
+    selection-background-color: ${COLOR_PRIMARY_DARK};
+    selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QTableWidget::item:selected {
