@@ -33,11 +33,27 @@ src/fuscan/
 ├── builtin/        # 内置通用规则
 │   ├── __init__.py # load_with_builtin / load_builtin_ruleset
 │   └── rules.yaml  # 8 条通用安全规则 + ignore 配置
-├── gui/            # PySide2 GUI
-│   ├── main_window.py  # MainWindow（杀毒软件风格 UI）
-│   ├── worker.py       # ScanWorker(QThread，多根路径)
-│   ├── detail_panel.py # DetailPanel（右侧详情面板）
-│   └── app.py          # launch() 入口
+├── gui/            # PySide2/PySide6 GUI（GitHub Desktop 风格 5 区布局）
+│   ├── __main__.py         # `python -m fuscan.gui` 入口
+│   ├── app.py              # launch() 入口，构造 QApplication 与主窗口
+│   ├── main_window.py      # MainWindow（主窗口控制器）
+│   ├── main_window.ui      # 主窗口 UI 定义（Qt Designer XML）
+│   ├── main_window_ui.py   # uic 生成产物（勿手改）
+│   ├── worker.py           # ScanWorker(QThread，后台扫描多根路径)
+│   ├── detail_panel.py     # DetailPanel（右侧详情面板控制器）
+│   ├── result_tree.py      # ResultTreeView（Model/View 结果树）
+│   ├── preview_utils.py    # 预览区共用工具：关键词提取、HTML 构建、严重等级配色
+│   ├── icons.py            # 主题图标加载与图标资源常量
+│   ├── explorer.py         # 跨平台文件管理器集成（explorer/open -R/xdg-open）
+│   ├── export_worker.py    # ExportWorker(QThread，异步导出避免阻塞 UI)
+│   ├── perf.py             # 性能测量基础设施（FUSCAN_PERF=1 启用，零开销）
+│   ├── scan_path_history.py    # 扫描路径历史管理
+│   ├── scan_progress_lists.py  # 扫描中页跳过目录与命中文件列表增量更新器
+│   ├── rule_editor.py      # 规则文件编辑对话框
+│   ├── settings_dialog.py  # 设置对话框
+│   ├── *.ui / *_ui.py      # 对应 .ui 源与 uic 产物
+│   ├── styles.qss          # QSS 样式表（用 ${TOKEN} 引用 theme.py 令牌）
+│   └── resources_rc.py     # pyside2-rcc 编译产物（勿手改）
 ├── watcher/        # 托盘驻守与文件监控
 │   ├── monitor.py      # FileMonitor（watchdog）
 │   ├── incremental.py  # IncrementalScanner（mtime 跟踪）

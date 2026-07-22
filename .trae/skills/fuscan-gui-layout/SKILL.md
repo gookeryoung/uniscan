@@ -1,6 +1,6 @@
 # fuscan GUI 界面布局规范（GitHub Desktop 风格）
 
-fuscan 主窗口采用 GitHub Desktop 风格，本规范约束其顶层布局结构与业务映射。通用 PySide2/PySide6 编码规范见 `rule-12-pyqt-standards.md`。
+fuscan 主窗口采用 GitHub Desktop 风格，本规范约束其顶层布局结构与业务映射。通用 PySide2/PySide6 编码规范见 `rule-12-pyside-dev.md`。
 
 ## 5 区布局结构
 
