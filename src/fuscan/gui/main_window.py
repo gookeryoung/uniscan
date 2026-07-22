@@ -782,6 +782,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._scan_root = first_path if first_path.exists() else None
         self._update_scan_button()
 
+        # 恢复性能日志开关（blockSignals 避免 toggled 触发 _save_config 循环）
+        self.perf_log_action.blockSignals(True)
+        self.perf_log_action.setChecked(self._config.perf_log_enabled)
+        self.perf_log_action.blockSignals(False)
+        set_perf_enabled(self._config.perf_log_enabled)
+
     def _restore_window_geometry(self) -> None:
         """从配置恢复窗口几何（含屏幕边界夹紧算法）。
 
@@ -822,11 +828,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._config.rules_paths = [str(p) for p in self._rules_paths]
         self._config.use_builtin = self._use_builtin
         self._config.scan_paths = self._path_history.get_paths()
+        # perf_log_enabled 由 _on_toggle_perf_log 实时更新到 _config，此处无需再读 perf_log_action
         save_config(self._config)
 
     def _add_scan_path_history(self, path_str: str) -> None:
-        """将路径添加到扫描历史（去重、最近优先、限制数量，同步两个控件）。"""
+        """将路径添加到扫描历史（去重、最近优先、限制数量，同步两个控件）。
+
+        立即持久化到配置文件（iter-69），避免应用异常退出时历史丢失。
+        """
         self._path_history.add(path_str)
+        self._save_config()
 
     def _on_history_item_double_clicked(self, item: QListWidgetItem) -> None:
         """双击历史列表项切换到 folder 模式并选择该路径。"""
@@ -1367,8 +1378,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         启用后输出各阶段进入/退出 DEBUG 日志，适合定向卡滞定位。
         PerfStats 聚合统计始终启用，不受此开关影响。
+        状态持久化到配置文件（iter-69），下次启动自动恢复。
         """
         set_perf_enabled(enabled)
+        self._config.perf_log_enabled = enabled
+        self._save_config()
         if enabled:
             logger.info("已启用性能详细日志（PerfTimer），扫描日志将包含各阶段耗时")
         else:

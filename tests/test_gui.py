@@ -1635,6 +1635,52 @@ class TestWorkflowStage:
             perf_mod._PerfState.enabled = original
             window.close()
 
+    def test_toggle_perf_log_persists_to_config(self, qapp: QApplication, tmp_path: Path) -> None:
+        """切换性能日志后应立即持久化到配置文件（iter-69）。"""
+        from fuscan import perf as perf_mod
+        from fuscan.config import load_config as _load_impl
+
+        original = perf_mod._PerfState.enabled
+        window = MainWindow()
+        try:
+            window._on_toggle_perf_log(True)
+            config = _load_impl(tmp_path / "config.yaml")
+            assert config.perf_log_enabled is True
+            window._on_toggle_perf_log(False)
+            config = _load_impl(tmp_path / "config.yaml")
+            assert config.perf_log_enabled is False
+        finally:
+            perf_mod._PerfState.enabled = original
+            window.close()
+
+    def test_perf_log_enabled_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置中 perf_log_enabled=True 时启动应自动恢复 PerfTimer 开关（iter-69）。"""
+        from fuscan import perf as perf_mod
+        from fuscan.config import Config
+        from fuscan.config import save_config as _save_impl
+
+        original = perf_mod._PerfState.enabled
+        _save_impl(Config(perf_log_enabled=True), tmp_path / "config.yaml")
+        window = MainWindow()
+        try:
+            assert perf_mod._PerfState.enabled is True
+            assert window.perf_log_action.isChecked() is True
+        finally:
+            perf_mod._PerfState.enabled = original
+            window.close()
+
+    def test_add_scan_path_history_persists_immediately(self, qapp: QApplication, tmp_path: Path) -> None:
+        """添加路径后应立即持久化，无需关闭窗口（iter-69）。"""
+        from fuscan.config import load_config as _load_impl
+
+        (tmp_path / "scan_dir").mkdir()
+        window = MainWindow()
+        window._add_scan_path_history(str(tmp_path / "scan_dir"))
+        # 不调用 window.close()，直接检查配置文件
+        config = _load_impl(tmp_path / "config.yaml")
+        assert str(tmp_path / "scan_dir") in config.scan_paths
+        window.close()
+
 
 class TestSetupActionBar:
     """配置页操作条（setup_action_bar）结构与样式测试。"""

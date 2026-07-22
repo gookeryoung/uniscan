@@ -44,6 +44,11 @@ class TestConfig:
         assert config.cache_enabled is True
         assert config.cache_path is None
 
+    def test_default_perf_log_enabled(self) -> None:
+        """默认不启用性能详细日志（iter-69）。"""
+        config = Config()
+        assert config.perf_log_enabled is False
+
 
 class TestLoadConfig:
     def test_load_nonexistent_returns_default(self, tmp_path: Path) -> None:
@@ -195,6 +200,14 @@ class TestSaveConfig:
         loaded = load_config(config_file)
         assert loaded.cache_enabled is False
         assert loaded.cache_path == "/tmp/test_cache.db"
+
+    def test_save_and_load_perf_log_enabled(self, tmp_path: Path) -> None:
+        """性能日志开关持久化（iter-69）。"""
+        config_file = tmp_path / "config.yaml"
+        original = Config(perf_log_enabled=True)
+        save_config(original, config_file)
+        loaded = load_config(config_file)
+        assert loaded.perf_log_enabled is True
 
     def test_load_config_os_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """文件打开失败时返回默认配置。"""

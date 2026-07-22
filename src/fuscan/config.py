@@ -64,6 +64,8 @@ class Config:
     max_file_size: int = 100 * 1024 * 1024
     # 是否启用扫描结果缓存（基于内容哈希跳过未变化文件，提升二次扫描速度）
     cache_enabled: bool = True
+    # 是否启用性能详细日志（PerfTimer，iter-69 起持久化）
+    perf_log_enabled: bool = False
     # 缓存数据库路径（None 表示默认 ~/.fuscan/cache.db）
     cache_path: str | None = None
     # 忽略目录名（按目录名匹配任意层级，大小写不敏感）
