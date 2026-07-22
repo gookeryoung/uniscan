@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import warnings
 from pathlib import Path
 from string import Template
 from typing import Sequence
@@ -63,6 +64,8 @@ def launch(argv: Sequence[str] | None = None) -> int:
     :param argv: 命令行参数（默认从 sys.argv 读取）
     :return: 退出码
     """
+    # 抑制 cryptography 对 Python 3.8 的弃用警告（依赖链引入，非 fuscan 可控）
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="cryptography")
     _configure_high_dpi()
     args = list(argv) if argv is not None else sys.argv
     app = QApplication.instance() or QApplication(args)

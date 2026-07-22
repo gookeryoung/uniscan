@@ -739,7 +739,7 @@ QScrollBar::handle:vertical:pressed {
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
-    background: none;
+    background: transparent;
 }
 
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
@@ -770,7 +770,7 @@ QScrollBar::handle:horizontal:pressed {
 
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     height: 0;
-    background: none;
+    background: transparent;
 }
 
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
