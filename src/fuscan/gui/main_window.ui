@@ -1278,6 +1278,9 @@
     </property>
     <addaction name="select_path_action"/>
     <addaction name="scan_action"/>
+    <addaction name="separator"/>
+    <addaction name="perf_stats_action"/>
+    <addaction name="perf_log_action"/>
    </widget>
    <widget class="QMenu" name="help_menu">
     <property name="title">
@@ -1362,6 +1365,19 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+,</string>
+   </property>
+  </action>
+  <action name="perf_stats_action">
+   <property name="text">
+    <string>性能统计...</string>
+   </property>
+  </action>
+  <action name="perf_log_action">
+   <property name="text">
+    <string>启用性能日志</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
    </property>
   </action>
  </widget>

@@ -226,7 +226,7 @@ class Scanner:
         self._pending_batch: list[BatchWriteItem] = []
         self._batch_lock = threading.Lock()
         # 性能聚合统计（iter-65）：FUSCAN_PERF=1 时累计各阶段耗时，扫描末尾输出汇总。
-        # 未启用时 PerfStats.measure/record 零开销（仅一次 bool 检查），不影响生产性能。
+        # PerfStats 始终启用（iter-66 起），仅做聚合统计无日志开销，不影响生产性能。
         self._perf: PerfStats = PerfStats()
 
     @staticmethod
@@ -349,7 +349,7 @@ class Scanner:
 
         # 强制发送最终进度
         self._emit_progress("", scanned, matched, errors, matches, force=True)
-        # 输出性能汇总（FUSCAN_PERF=1 时才产生日志，否则零开销）
+        # 输出性能汇总到 DEBUG 日志（PerfStats 始终启用，但日志需配置 DEBUG 级别才可见）
         self._perf.report(logger)
 
         duration = time.perf_counter() - self._progress_start
@@ -361,6 +361,8 @@ class Scanner:
             errors=errors,
             duration_seconds=duration,
             total_matches=matches,
+            # iter-66：PerfStats 始终启用，导出各阶段统计供 GUI/CLI 展示与持久化
+            perf_summary=self._perf.to_dict(),
         )
         return ScanReport(root=root, results=tuple(results), stats=stats, cancelled=cancelled)
 
@@ -798,7 +800,7 @@ class Scanner:
         - 未命中则提取并写入缓存（非空内容才写）
         - 大文件跳过阈值由 ``Scanner(max_file_size=...)`` 控制，0 表示不限制
 
-        各阶段接入 ``PerfStats`` 计时（``FUSCAN_PERF=1`` 启用）：
+        各阶段接入 ``PerfStats`` 计时（iter-66 起始终启用）：
         ``read_bytes`` / ``hash`` / ``cache_lookup_extract`` / ``extract`` /
         ``cache_put_extract``，便于定位 I/O 与 CPU 瓶颈。
 

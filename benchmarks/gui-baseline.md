@@ -95,25 +95,34 @@ reportlab 渲染大报告可能耗时 3-8 秒，期间菜单/按钮/进度条均
 
 ### 启用方式
 
-环境变量 `FUSCAN_PERF=1` 开启，默认关闭保证零开销：
+`PerfStats` 聚合统计 **始终启用**（iter-66 起），无需任何配置即可在
+`ScanReport.stats.perf_summary` 中获取各阶段统计。`PerfTimer` 详细日志
+需显式启用：
 
 ```bash
-# Windows PowerShell
+# 方式 1：环境变量（GUI/CLI 通用）
 $env:FUSCAN_PERF=1; uv run python -m fuscan.gui
 
-# Linux/macOS
-FUSCAN_PERF=1 uv run python -m fuscan.gui
+# 方式 2：CLI --perf 选项（iter-66 起）
+uv run fuscan scan <path> --perf -vv
+
+# 方式 3：GUI 菜单"扫描 → 启用性能日志"（iter-66 起）
 ```
 
 ### API
 
-`src/fuscan/gui/perf.py` 提供三个公共 API：
+`src/fuscan/perf.py` 公共 API（iter-66 起始终启用 `PerfStats`）：
 
-| API | 用途 |
-|-----|------|
-| `PerfTimer(name, *, threshold_ms=0.0)` | 上下文管理器，记录代码块耗时 |
-| `record_event(name, **fields)` | 记录离散事件及关联字段 |
-| `set_perf_enabled(enabled)` | 运行时切换开关（测试用） |
+| API | 用途 | 启用条件 |
+|-----|------|----------|
+| `PerfTimer(name, *, threshold_ms=0.0)` | 上下文管理器，记录代码块耗时 | `FUSCAN_PERF=1` / `--perf` |
+| `record_event(name, **fields)` | 记录离散事件及关联字段 | `FUSCAN_PERF=1` / `--perf` |
+| `PerfStats` | 聚合统计（多阶段累计） | **始终启用**（iter-66） |
+| `PerfStats.to_dict()` | 导出统计字典 | 始终可用 |
+| `PerfStats.merge_dict(data)` | 合并外部字典（多根路径累计） | 始终可用 |
+| `PerfStats.summary_text(top=3)` | 简要热点文本 | 始终可用 |
+| `PerfStats.save_to_json(path, *, meta=None)` | 持久化到 JSON | 始终可用 |
+| `set_perf_enabled(enabled)` | 运行时切换 PerfTimer 开关 | 测试用 |
 
 ### 已埋点位置
 
@@ -128,7 +137,21 @@ FUSCAN_PERF=1 uv run python -m fuscan.gui
 
 - `ExportWorker.save_report`：导出耗时
 
-### 输出格式
+`Scanner` 关键路径（PerfStats 始终记录）：
+
+| 阶段名 | 度量内容 |
+|--------|----------|
+| `read_bytes` | 文件 I/O 读取 |
+| `hash` | BLAKE2b 哈希计算 |
+| `cache_lookup` | mtime 预筛 + 规则结果缓存查询 |
+| `cache_lookup_extract` | 提取内容缓存查询 |
+| `cache_lookup_hits` | 常规路径规则结果缓存查询 |
+| `extract` | 内容提取（docx/pptx 热点） |
+| `cache_put_extract` | 提取内容缓存写入 |
+| `match` | 规则匹配 |
+| `cache_write` | SQLite 批量写入 |
+
+### PerfTimer 输出格式
 
 ```
 [perf] > MainWindow.__init__ begin
@@ -140,9 +163,20 @@ FUSCAN_PERF=1 uv run python -m fuscan.gui
 ```
 
 嵌套层级通过空格缩进表达，输出到 `fuscan.perf` logger（DEBUG 级别），
-可被统一日志配置捕获。iter-65 起 `perf.py` 从 `fuscan.gui.perf` 提升到
-`fuscan.perf`（公共模块），GUI 与扫描器共用；新增 `PerfStats` 聚合统计类
-供扫描器分阶段瓶颈分析。
+可被统一日志配置捕获。
+
+### PerfStats 展示链路（iter-66）
+
+`PerfStats` 始终启用后，扫描结果通过 `ScanStats.perf_summary` 字段携带
+各阶段统计字典，贯通 GUI/CLI 展示：
+
+- **GUI 状态栏**：扫描结束自动显示 `速度 N 文件/s | 热点: read 60% | extract 25% | ...`
+- **GUI 对话框**：扫描菜单 → 性能统计... 弹出 HTML 表格（含"保存为 JSON"按钮）
+- **CLI 摘要**：`-v` 以上自动输出各阶段性能统计表
+- **CLI 持久化**：`--perf-save FILE` 写入 JSON 文件供事后分析
+
+多根路径扫描时，`ScanWorker` 持有 `PerfStats` 实例通过 `merge_dict` 累计
+每次 `scan()` 的统计，最终合并结果填入 `ScanReport`。
 
 ## 后续测量计划
 
@@ -161,7 +195,13 @@ FUSCAN_PERF=1 uv run python -m fuscan.gui
 uv run pytest tests/test_gui_perf.py -v
 uv run pytest tests/test_walker.py::TestListDrives -v
 uv run pytest tests/test_gui.py::TestExportAndMenu -v
+uv run pytest tests/test_gui.py::TestWorkflowStage -v  # iter-66 性能统计 UI 测试
 
-# 实际性能测量（需 GUI 环境）
-$env:FUSCAN_PERF=1; uv run python -m fuscan.gui 2>&1 | findstr "perf"
+# 实际性能测量（PerfStats 始终启用，无需环境变量）
+uv run fuscan scan <path> -v                              # 控制台输出性能统计摘要
+uv run fuscan scan <path> --perf-save perf.json           # 持久化到 JSON
+uv run fuscan scan <path> --perf -vv                      # 启用 PerfTimer 详细日志
+
+# GUI：扫描 → 性能统计... 查看表格 / 保存为 JSON
+# GUI：扫描 → 启用性能日志 切换 PerfTimer 详细日志
 ```

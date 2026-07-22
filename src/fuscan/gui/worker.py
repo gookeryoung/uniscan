@@ -17,6 +17,7 @@ try:
 except ImportError:  # pragma: no cover
     from PySide6.QtCore import QObject, QThread, Signal  # pyrefly: ignore [missing-import]
 
+from fuscan.perf import PerfStats
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
 from fuscan.scanner.result import ProgressInfo, ScanResult, ScanStats
@@ -75,6 +76,8 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._progress_interval: float = progress_interval
         self._scanner: Scanner | None = None
         self._cancel_requested: bool = False
+        # 多根路径累计性能统计（iter-66）：每次 scan() 后合并 perf_summary
+        self._perf: PerfStats = PerfStats()
         # 多根路径累计统计
         self._cum_scanned = 0
         self._cum_total = 0
@@ -161,6 +164,9 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                 total_skipped += report.stats.skipped_files
                 total_errors += report.stats.errors
                 total_matches += report.stats.total_matches
+                # 累计各根路径的性能统计（iter-66）
+                if report.stats.perf_summary:
+                    self._perf.merge_dict(report.stats.perf_summary)
                 # 更新累计值，供下一个根路径的进度回调使用
                 self._cum_scanned = total_scanned
                 self._cum_total = total_files
@@ -182,6 +188,8 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                     errors=total_errors,
                     duration_seconds=elapsed,
                     total_matches=total_matches,
+                    # 多根路径累计的性能统计（iter-66）
+                    perf_summary=self._perf.to_dict(),
                 ),
                 cancelled=was_cancelled,
             )

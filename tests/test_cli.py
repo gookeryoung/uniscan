@@ -298,6 +298,42 @@ class TestScanCommand:
         rc = main(["scan", str(scan_root), "-r", str(bad_rules)])
         assert rc == 2
 
+    def test_scan_perf_save_writes_json(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--perf-save 应将性能统计写入 JSON 文件。"""
+        perf_path = tmp_path / "perf_stats.json"
+        rc = main(["scan", str(scan_root), "-r", str(rules_file), "--perf-save", str(perf_path)])
+        assert rc == 0
+        assert perf_path.exists()
+        data = json.loads(perf_path.read_text(encoding="utf-8"))
+        assert "timestamp" in data
+        assert "stages" in data
+        assert "meta" in data
+        # PerfStats 始终启用，应有阶段数据
+        assert len(data["stages"]) > 0
+
+    def test_scan_perf_flag_enables_detailed_logging(
+        self,
+        scan_root: Path,
+        rules_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--perf 应启用 PerfTimer 详细日志。"""
+        from fuscan import perf as perf_mod
+
+        original = perf_mod._PerfState.enabled
+        try:
+            rc = main(["-vv", "scan", str(scan_root), "-r", str(rules_file), "--perf"])
+            assert rc == 0
+            assert perf_mod._PerfState.enabled is True
+        finally:
+            perf_mod._PerfState.enabled = original
+
 
 class TestBuiltinRules:
     """内置通用规则集成测试。"""

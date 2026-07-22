@@ -46,7 +46,9 @@ try:
         QProgressBar,
         QPushButton,
         QShortcut,
+        QTextEdit,
         QTreeWidgetItem,
+        QVBoxLayout,
         QWidget,
     )
 except ImportError:  # pragma: no cover
@@ -69,7 +71,9 @@ except ImportError:  # pragma: no cover
         QMenu,
         QMessageBox,
         QPushButton,
+        QTextEdit,
         QTreeWidgetItem,
+        QVBoxLayout,
         QWidget,
     )
 
@@ -147,7 +151,7 @@ from fuscan.gui.preview_utils import (
 from fuscan.gui.scan_path_history import ScanPathHistory
 from fuscan.gui.scan_progress_lists import ScanListUpdater
 from fuscan.gui.worker import ScanWorker
-from fuscan.perf import PerfTimer
+from fuscan.perf import PerfTimer, set_perf_enabled
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport, list_drives
@@ -561,6 +565,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.about_action.triggered.connect(self._on_about)
         self.manual_action.triggered.connect(self._on_open_manual)
         self.settings_action.triggered.connect(self._on_settings)
+        self.perf_stats_action.triggered.connect(self._on_show_perf_stats)
+        self.perf_log_action.toggled.connect(self._on_toggle_perf_log)
 
     def _setup_context_menus(self) -> None:
         """为规则文件列表配置右键菜单策略（结果树右键由 ResultTreeView 信号路由）。"""
@@ -1138,7 +1144,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         self._populate_results(report)
 
-        self.stats_label.setText(report.summary())
+        # 状态栏追加吞吐量与性能热点摘要（iter-66）
+        summary = report.summary()
+        speed = report.stats.speed
+        if speed > 0:
+            summary += f" | 速度 {speed:.0f} 文件/s"
+        perf = report.stats.perf_summary
+        if perf:
+            # 构建简要热点文本：取总耗时前 3 阶段计算占比
+            total_ms = sum(s.get("total_ms", 0.0) for s in perf.values()) or 1.0
+            ranked = sorted(perf.items(), key=lambda x: -x[1].get("total_ms", 0.0))[:3]
+            hotspots = " | ".join(f"{name} {info.get('total_ms', 0.0) / total_ms * 100:.0f}%" for name, info in ranked)
+            summary += f" | 热点: {hotspots}"
+        self.stats_label.setText(summary)
         self._switch_stage(WorkflowStage.RESULTS)
 
     @Slot(str)  # pyrefly: ignore [not-callable]
@@ -1267,6 +1285,94 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
                 "打开失败",
                 f"无法打开用户手册 PDF，请检查系统是否安装 PDF 阅读器:\n{_MANUAL_PDF}",
             )
+
+    def _on_show_perf_stats(self) -> None:
+        """展示本次扫描的性能统计详情（iter-66）。
+
+        从最近一次 ScanReport 的 perf_summary 读取各阶段耗时，
+        以表格形式展示在对话框中，支持保存为 JSON 文件。
+        """
+        if self._last_report is None or not self._last_report.stats.perf_summary:
+            QMessageBox.information(self, "性能统计", "暂无性能统计数据，请先完成一次扫描。")
+            return
+
+        perf = self._last_report.stats.perf_summary
+        stats = self._last_report.stats
+        total_ms = sum(s.get("total_ms", 0.0) for s in perf.values()) or 1.0
+
+        # 构建 HTML 表格
+        rows = []
+        for name, info in perf.items():
+            pct = info.get("total_ms", 0.0) / total_ms * 100
+            avg = info.get("total_ms", 0.0) / info.get("count", 1)
+            rows.append(
+                f"<tr>"
+                f"<td>{name}</td>"
+                f"<td style='text-align:right'>{info.get('total_ms', 0.0):.1f}</td>"
+                f"<td style='text-align:right'>{pct:.1f}%</td>"
+                f"<td style='text-align:right'>{info.get('count', 0)}</td>"
+                f"<td style='text-align:right'>{avg:.2f}</td>"
+                f"<td style='text-align:right'>{info.get('max_ms', 0.0):.1f}</td>"
+                f"</tr>"
+            )
+        speed = stats.speed
+        html = (
+            f"<h3>性能统计</h3>"
+            f"<p>扫描文件: {stats.scanned_files} | 耗时: {stats.duration_seconds:.2f}s | "
+            f"速度: {speed:.0f} 文件/s</p>"
+            f"<table border='1' cellspacing='0' cellpadding='4' style='border-collapse:collapse'>"
+            f"<tr><th>阶段</th><th>总计(ms)</th><th>占比</th><th>调用次数</th>"
+            f"<th>平均(ms)</th><th>最大(ms)</th></tr>"
+            f"{''.join(rows)}"
+            f"</table>"
+        )
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("性能统计")
+        dialog.setMinimumSize(560, 400)  # pyrefly: ignore [missing-argument]
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setHtml(html)
+        layout.addWidget(text)  # pyrefly: ignore [missing-argument]
+
+        from fuscan.perf import PerfStats
+
+        save_btn = QPushButton("保存为 JSON...")
+        report = self._last_report
+
+        def _on_save() -> None:
+            path, _ = QFileDialog.getSaveFileName(dialog, "保存性能统计", "fuscan-perf.json", "JSON (*.json)")
+            if not path:
+                return
+            perf_obj = PerfStats()
+            perf_obj.merge_dict(perf)
+            perf_obj.save_to_json(
+                Path(path),
+                meta={
+                    "scanned_files": stats.scanned_files,
+                    "duration_seconds": stats.duration_seconds,
+                    "speed_files_per_sec": round(speed, 1),
+                    "root": str(report.root),
+                },
+            )
+            QMessageBox.information(dialog, "已保存", f"性能统计已保存到:\n{path}")
+
+        save_btn.clicked.connect(_on_save)
+        layout.addWidget(save_btn)  # pyrefly: ignore [missing-argument]
+        dialog.exec_()
+
+    def _on_toggle_perf_log(self, enabled: bool) -> None:
+        """切换 PerfTimer 详细日志开关（iter-66）。
+
+        启用后输出各阶段进入/退出 DEBUG 日志，适合定向卡滞定位。
+        PerfStats 聚合统计始终启用，不受此开关影响。
+        """
+        set_perf_enabled(enabled)
+        if enabled:
+            logger.info("已启用性能详细日志（PerfTimer），扫描日志将包含各阶段耗时")
+        else:
+            logger.info("已关闭性能详细日志")
 
     def _on_settings(self) -> None:
         """打开设置对话框，修改后保存配置并应用。"""

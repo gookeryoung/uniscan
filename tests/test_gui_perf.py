@@ -108,15 +108,19 @@ def test_perf_set_perf_enabled_toggles_state() -> None:
     assert perf_mod._PerfState.enabled is False
 
 
-def test_perf_stats_disabled_zero_overhead(caplog: pytest.LogCaptureFixture) -> None:
-    """未启用时 PerfStats.measure 不应记录任何日志，report 不应输出。"""
+def test_perf_stats_always_records_regardless_of_enabled() -> None:
+    """PerfStats 始终记录（iter-66 起），不受 set_perf_enabled 影响。"""
     perf_mod.set_perf_enabled(False)
     stats = perf_mod.PerfStats()
     with stats.measure("noop"):
         pass
     stats.record("manual", 0.001)
-    stats.report(logging.getLogger(__name__))
-    assert _collect_debug_records(caplog) == []
+    # 即使 enabled=False，PerfStats 仍然记录了数据
+    data = stats.to_dict()
+    assert "noop" in data
+    assert "manual" in data
+    assert data["noop"]["count"] == 1
+    assert data["manual"]["count"] == 1
 
 
 def test_perf_stats_aggregates_multiple_measurements(caplog: pytest.LogCaptureFixture) -> None:
@@ -182,3 +186,71 @@ def test_perf_stats_reset_clears_stages(caplog: pytest.LogCaptureFixture) -> Non
     stats.report(logging.getLogger("fuscan.perf"))
     # reset 后无阶段数据，report 不输出
     assert _collect_debug_records(caplog) == []
+
+
+def test_perf_stats_to_dict_exports_sorted_by_total() -> None:
+    """to_dict 应按总耗时降序导出，含 total_ms/count/max_ms 三字段。"""
+    stats = perf_mod.PerfStats()
+    stats.record("fast", 0.001)
+    stats.record("slow", 0.010)
+    stats.record("fast", 0.002)
+    data = stats.to_dict()
+    # slow 总耗时更高，应排在前面
+    names = list(data.keys())
+    assert names[0] == "slow"
+    assert names[1] == "fast"
+    # fast 调用 2 次
+    assert data["fast"]["count"] == 2
+    assert data["slow"]["count"] == 1
+    # max_ms 应为最大单次耗时
+    assert data["fast"]["max_ms"] >= data["slow"]["max_ms"] or data["fast"]["max_ms"] > 0
+
+
+def test_perf_stats_merge_dict_accumulates() -> None:
+    """merge_dict 应累加 total/count，取 max。"""
+    stats = perf_mod.PerfStats()
+    stats.record("stage", 0.005)
+    # 合并外部数据
+    stats.merge_dict(
+        {
+            "stage": {"total_ms": 10.0, "count": 2, "max_ms": 8.0},
+            "other": {"total_ms": 3.0, "count": 1, "max_ms": 3.0},
+        }
+    )
+    data = stats.to_dict()
+    # stage: 原有 1 次 + 合并 2 次 = 3 次
+    assert data["stage"]["count"] == 3
+    # other 来自合并
+    assert data["other"]["count"] == 1
+
+
+def test_perf_stats_summary_text_returns_top_stages() -> None:
+    """summary_text 应返回前 N 个热点阶段占比文本。"""
+    stats = perf_mod.PerfStats()
+    stats.record("a", 0.010)
+    stats.record("b", 0.005)
+    stats.record("c", 0.003)
+    text = stats.summary_text(top=2)
+    # a 占比最高，b 次之
+    assert "a" in text
+    assert "b" in text
+    assert "c" not in text
+    # 空统计返回空字符串
+    assert perf_mod.PerfStats().summary_text() == ""
+
+
+def test_perf_stats_save_to_json_writes_file(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """save_to_json 应写入含时间戳、元信息与阶段统计的 JSON 文件。"""
+    import json
+
+    stats = perf_mod.PerfStats()
+    stats.record("read", 0.010)
+    stats.record("hash", 0.005)
+    out = tmp_path / "perf.json"
+    stats.save_to_json(out, meta={"files": 100})
+    assert out.exists()
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    assert "timestamp" in payload
+    assert "stages" in payload
+    assert "read" in payload["stages"]
+    assert payload["meta"]["files"] == 100

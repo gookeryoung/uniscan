@@ -363,6 +363,25 @@ class TestScanStats:
         assert stats.summary(cancelled=True).startswith("已取消:")
         assert stats.summary(cancelled=False).startswith("完成:")
 
+    def test_speed_calculates_files_per_second(self) -> None:
+        """speed 属性应返回 scanned_files / duration_seconds。"""
+        stats = ScanStats(scanned_files=100, duration_seconds=2.0)
+        assert stats.speed == 50.0
+        # duration 为 0 时返回 0.0，不抛 ZeroDivisionError
+        assert ScanStats(scanned_files=10, duration_seconds=0.0).speed == 0.0
+
+    def test_perf_summary_default_none(self) -> None:
+        """perf_summary 默认为 None（向后兼容）。"""
+        stats = ScanStats()
+        assert stats.perf_summary is None
+
+    def test_perf_summary_field_holds_dict(self) -> None:
+        """perf_summary 可携带各阶段统计字典。"""
+        perf = {"read_bytes": {"total_ms": 100.0, "count": 50, "max_ms": 10.0}}
+        stats = ScanStats(perf_summary=perf)
+        assert stats.perf_summary is not None
+        assert stats.perf_summary["read_bytes"]["count"] == 50
+
 
 class TestScanReport:
     def test_hits_filters_matched(self, tmp_path: Path) -> None:

@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--cache-path", type=Path, default=None, metavar="DB", help="自定义缓存数据库路径（默认 ~/.fuscan/cache.db）"
     )
+    scan_parser.add_argument(
+        "--perf", action="store_true", help="启用性能详细日志（PerfTimer 各阶段进入/退出耗时，需配合 -vv）"
+    )
+    scan_parser.add_argument(
+        "--perf-save", type=Path, default=None, metavar="FILE", help="将性能统计保存为 JSON 文件供后续分析"
+    )
 
     # rules 子命令
     rules_parser = subparsers.add_parser("rules", help="校验规则文件")
@@ -205,6 +211,12 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if ruleset is None:
         return 1
 
+    # --perf 启用 PerfTimer 详细日志（iter-66）
+    if getattr(args, "perf", False):
+        from fuscan.perf import set_perf_enabled
+
+        set_perf_enabled(True)
+
     config = load_config()
     ignore_dirs = _merge_ignore_dirs(config.ignore_dirs, args.ignore_dir)
 
@@ -245,6 +257,25 @@ def _cmd_scan(args: argparse.Namespace) -> int:
 
     _output_report(report, args.output_format, args.output_file)
     _print_summary(report)
+
+    # --perf-save 持久化性能统计到 JSON（iter-66）
+    perf_save: Path | None = getattr(args, "perf_save", None)
+    if perf_save and report.stats.perf_summary:
+        from fuscan.perf import PerfStats
+
+        perf_obj = PerfStats()
+        perf_obj.merge_dict(report.stats.perf_summary)
+        perf_obj.save_to_json(
+            perf_save,
+            meta={
+                "scanned_files": report.stats.scanned_files,
+                "duration_seconds": report.stats.duration_seconds,
+                "speed_files_per_sec": round(report.stats.speed, 1),
+                "root": str(report.root),
+            },
+        )
+        print(f"性能统计已保存到: {perf_save}", file=sys.stderr)
+
     return 0
 
 
@@ -459,12 +490,31 @@ def _output_report(report: ScanReport, fmt: str, output_file: Path | None) -> No
 
 def _print_summary(report: ScanReport) -> None:
     """输出简要摘要到 stderr（不干扰报告输出）。"""
+    speed = report.stats.speed
     logger.info(
-        "扫描完成: 总计 %d, 命中 %d, 耗时 %.2fs",
+        "扫描完成: 总计 %d, 命中 %d, 耗时 %.2fs, 速度 %.0f 文件/s",
         report.stats.total_files,
         report.stats.matched_files,
         report.stats.duration_seconds,
+        speed,
     )
+    # 性能统计摘要（iter-66，PerfStats 始终启用）
+    perf = report.stats.perf_summary
+    if perf:
+        total_ms = sum(s.get("total_ms", 0.0) for s in perf.values()) or 1.0
+        logger.info("性能统计:")
+        for name, info in perf.items():
+            pct = info.get("total_ms", 0.0) / total_ms * 100
+            avg = info.get("total_ms", 0.0) / info.get("count", 1)
+            logger.info(
+                "  %-24s 总计 %8.1fms (%5.1f%%)  调用 %6d 次  平均 %7.2fms  最大 %8.1fms",
+                name,
+                info.get("total_ms", 0.0),
+                pct,
+                info.get("count", 0),
+                avg,
+                info.get("max_ms", 0.0),
+            )
 
 
 def _configure_logging(verbose: int) -> None:

@@ -1573,6 +1573,68 @@ class TestWorkflowStage:
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
 
+    def test_scan_finished_shows_speed_and_perf_hotspots(self, qapp: QApplication, tmp_path: Path) -> None:
+        """扫描完成后状态栏应显示速度与性能热点摘要。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._scan_state = ScanState.RUNNING
+        window._on_scan_finished(report)
+        stats_text = window.stats_label.text()
+        # 速度应出现在状态栏
+        assert "文件/s" in stats_text
+        # 性能热点应出现（PerfStats 始终启用）
+        assert "热点:" in stats_text or "read" in stats_text or "match" in stats_text
+        window.close()
+
+    def test_show_perf_stats_no_data_shows_message(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无扫描结果时点击性能统计应提示先扫描。"""
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *args, **kwargs: None,
+        )
+        window = MainWindow()
+        window._on_show_perf_stats()
+        window.close()
+
+    def test_show_perf_stats_with_data_shows_dialog(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """有扫描结果时点击性能统计应展示对话框。"""
+        from fuscan.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("password123", encoding="utf-8")
+        rs = _build_ruleset()
+        scanner = Scanner(rs)
+        report = scanner.scan(tmp_path)
+
+        window = MainWindow()
+        window._last_report = report
+        # mock dialog.exec_ 避免阻塞
+        monkeypatch.setattr("fuscan.gui.main_window.QDialog.exec_", lambda self: 0)
+        window._on_show_perf_stats()
+        window.close()
+
+    def test_toggle_perf_log_switches_state(self, qapp: QApplication) -> None:
+        """切换性能日志菜单项应切换 PerfTimer 开关。"""
+        from fuscan import perf as perf_mod
+
+        original = perf_mod._PerfState.enabled
+        window = MainWindow()
+        try:
+            window._on_toggle_perf_log(True)
+            assert perf_mod._PerfState.enabled is True
+            window._on_toggle_perf_log(False)
+            assert perf_mod._PerfState.enabled is False
+        finally:
+            perf_mod._PerfState.enabled = original
+            window.close()
+
 
 class TestSetupActionBar:
     """配置页操作条（setup_action_bar）结构与样式测试。"""

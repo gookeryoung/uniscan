@@ -214,6 +214,15 @@ class ScanStats:
     duration_seconds: float = 0.0
     # 所有命中规则的匹配文本条数总和（区别于 matched_files 的命中文件数）
     total_matches: int = 0
+    # 各阶段性能统计（iter-66 起 PerfStats 始终启用）：
+    # {stage_name: {"total_ms": float, "count": int, "max_ms": float}}
+    # None 表示未采集（如测试构造的 ScanStats）；空 dict 表示扫描无数据
+    perf_summary: dict[str, dict[str, float]] | None = None
+
+    @property
+    def speed(self) -> float:
+        """扫描吞吐量（文件/秒），duration为0时返回0.0。"""
+        return self.scanned_files / self.duration_seconds if self.duration_seconds > 0 else 0.0
 
     def summary(self, *, cancelled: bool = False) -> str:
         """返回状态栏摘要文本。
