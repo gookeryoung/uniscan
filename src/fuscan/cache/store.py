@@ -7,7 +7,8 @@
 
 设计要点：
 
-- 单连接 + ``threading.RLock``：所有读写经锁序列化，``check_same_thread=False`` 允许跨线程使用
+- **读写连接分离**（iter-68）：写操作经主连接 + ``RLock`` 串行化；
+  读操作使用线程本地只读连接，WAL 模式下完全并行，消除锁竞争
 - WAL 模式：读不阻塞写，提升并发扫描吞吐
 - 缓存键为 ``(file_hash, rule_hash)``：路径无关，规则变更感知
 - ``scanned_files`` 表以内容哈希为主键，``file_paths`` 表登记多个路径引用
@@ -104,7 +105,8 @@ class CacheStore:
     4. 可选 ``prune_orphan_rules()`` / ``prune_stale_files()`` 清理
     5. ``close()`` 释放连接
 
-    所有公共方法线程安全（``RLock`` 串行化）。
+    所有公共方法线程安全。写操作经 ``RLock`` 串行化，读操作使用线程本地
+    只读连接并行执行（iter-68 起读写分离）。
     """
 
     def __init__(self, db_path: Path) -> None:
@@ -114,10 +116,17 @@ class CacheStore:
         """
         self._db_path: Path = db_path
         self._lock: threading.RLock = threading.RLock()
+        # LRU 细粒度锁：读操作的 LRU 访问不阻塞 DB 读，也不被写操作的 _lock 阻塞
+        # 锁顺序约定：_lock → _lru_lock（写操作先持 _lock 再持 _lru_lock），避免死锁
+        self._lru_lock: threading.Lock = threading.Lock()
         self._closed: bool = False
         # 进程内 LRU 命中缓存：file_hash -> (rule_hashes_tuple, result_dict)
         # 用 OrderedDict 实现 LRU 语义：访问时 move_to_end，超容量时 popitem(last=False)
         self._hit_cache: OrderedDict[str, tuple[tuple[str, ...], dict[str, RuleHit | None]]] = OrderedDict()
+        # 线程本地只读连接：每线程一个，WAL 模式下读完全并行
+        self._read_local: threading.local = threading.local()
+        # 已创建的读连接列表（close 时统一关闭，用 _lru_lock 保护追加）
+        self._read_conns: list[sqlite3.Connection] = []
         db_path.parent.mkdir(parents=True, exist_ok=True)
         # check_same_thread=False 允许跨线程使用连接，所有访问经 RLock 序列化
         self._conn: sqlite3.Connection = sqlite3.connect(
@@ -132,6 +141,33 @@ class CacheStore:
             # _init_db 失败（如磁盘满、schema 损坏）时关闭连接，避免泄漏
             self._conn.close()
             raise
+
+    def _get_read_conn(self) -> sqlite3.Connection:
+        """返回当前线程的只读连接（惰性创建）。
+
+        每个线程首次调用时创建独立连接，配置 WAL + ``query_only = ON``
+        防止误写。WAL 模式下读不阻塞写，读连接可完全并行执行查询。
+
+        连接创建后登记到 ``_read_conns`` 列表，``close`` 时统一关闭。
+        """
+        conn = getattr(self._read_local, "conn", None)
+        if conn is not None:
+            return conn
+        conn = sqlite3.connect(
+            str(self._db_path),
+            check_same_thread=False,
+            isolation_level=None,  # 自动提交，WAL 下每次查询读最新快照
+        )
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        # 只读保护：防止读连接误写，违反 query_only 会抛 sqlite3.OperationalError
+        conn.execute("PRAGMA query_only = ON")
+        self._read_local.conn = conn
+        with self._lru_lock:
+            self._read_conns.append(conn)
+        return conn
 
     def _init_db(self) -> None:
         """初始化数据库：启用 WAL、外键，迁移 schema。"""
@@ -150,9 +186,8 @@ class CacheStore:
     @property
     def schema_version(self) -> int:
         """当前 schema 版本号。"""
-        with self._lock:
-            row = self._conn.execute("PRAGMA user_version").fetchone()
-            return int(row[0]) if row else 0
+        row = self._get_read_conn().execute("PRAGMA user_version").fetchone()
+        return int(row[0]) if row else 0
 
     # ------------------------------------------------------------------ 内存 LRU
 
@@ -203,7 +238,7 @@ class CacheStore:
 
     def hit_cache_size(self) -> int:
         """返回进程内 LRU 命中缓存当前条目数（诊断用）。"""
-        with self._lock:
+        with self._lru_lock:
             return len(self._hit_cache)
 
     # ------------------------------------------------------------------ 规则登记
@@ -284,9 +319,8 @@ class CacheStore:
 
         重名规则以最后登记的为准（与 ``register_ruleset`` 行为一致）。
         """
-        with self._lock:
-            rows = self._conn.execute("SELECT rule_name, rule_hash FROM rules").fetchall()
-            return {row["rule_name"]: row["rule_hash"] for row in rows}
+        rows = self._get_read_conn().execute("SELECT rule_name, rule_hash FROM rules").fetchall()
+        return {row["rule_name"]: row["rule_hash"] for row in rows}
 
     # ------------------------------------------------------------------ 结果缓存
 
@@ -299,6 +333,9 @@ class CacheStore:
 
         优先命中进程内 LRU 缓存；未命中走 SQLite 查询，结果写回 LRU。
 
+        线程安全：LRU 访问经 ``_lru_lock`` 保护，SQLite 查询使用线程本地
+        只读连接并行执行（iter-68）。
+
         :param file_hash: 被扫描文件内容哈希
         :param rule_hashes: 待查询的规则哈希集合
         :return: ``rule_hash -> RuleHit | None`` 映射；
@@ -308,53 +345,58 @@ class CacheStore:
         """
         if not rule_hashes:
             return {}
-        with self._lock:
-            # 先查进程内 LRU
+        # 先查进程内 LRU（细粒度锁，不阻塞 DB 读）
+        with self._lru_lock:
             cached = self._hit_cache_get(file_hash, rule_hashes)
-            if cached is not None:
-                return cached
+        if cached is not None:
+            return cached
 
-            placeholders = ",".join("?" for _ in rule_hashes)
-            params: tuple[Any, ...] = (file_hash, *rule_hashes)
-            rows = self._conn.execute(
+        placeholders = ",".join("?" for _ in rule_hashes)
+        params: tuple[Any, ...] = (file_hash, *rule_hashes)
+        rows = (
+            self._get_read_conn()
+            .execute(
                 f"SELECT rule_hash, matched, severity, detail, match_text, "
                 f"       match_texts, match_description, match_count, target "
                 f"FROM scan_results WHERE file_hash = ? AND rule_hash IN ({placeholders})",
                 params,
-            ).fetchall()
-            # 延迟导入打破循环：cache.store → scanner.result → scanner.__init__ → scanner.scanner → cache.store
-            from fuscan.scanner.result import RuleHit
+            )
+            .fetchall()
+        )
+        # 延迟导入打破循环：cache.store → scanner.result → scanner.__init__ → scanner.scanner → cache.store
+        from fuscan.scanner.result import RuleHit
 
-            result: dict[str, RuleHit | None] = {}
-            for row in rows:
-                if row["matched"]:
-                    severity = Severity(row["severity"]) if row["severity"] else Severity.INFO
-                    # match_texts 以 JSON 数组形式存储；NULL 或空数组视为空元组
-                    raw_texts = row["match_texts"]
-                    if raw_texts:
-                        try:
-                            texts_list = json.loads(raw_texts)
-                            match_texts = tuple(str(t) for t in texts_list) if isinstance(texts_list, list) else ()
-                        except (TypeError, ValueError):
-                            logger.warning("match_texts 反序列化失败，回退到空元组: %r", raw_texts)
-                            match_texts = ()
-                    else:
+        result: dict[str, RuleHit | None] = {}
+        for row in rows:
+            if row["matched"]:
+                severity = Severity(row["severity"]) if row["severity"] else Severity.INFO
+                # match_texts 以 JSON 数组形式存储；NULL 或空数组视为空元组
+                raw_texts = row["match_texts"]
+                if raw_texts:
+                    try:
+                        texts_list = json.loads(raw_texts)
+                        match_texts = tuple(str(t) for t in texts_list) if isinstance(texts_list, list) else ()
+                    except (TypeError, ValueError):
+                        logger.warning("match_texts 反序列化失败，回退到空元组: %r", raw_texts)
                         match_texts = ()
-                    result[row["rule_hash"]] = RuleHit(
-                        rule_name="",  # 调用方按 rule_hash 反查 name，避免冗余存储
-                        severity=severity,
-                        detail=row["detail"] or "",
-                        match_text=row["match_text"] or "",
-                        match_count=row["match_count"],
-                        target=row["target"] or "",
-                        match_texts=match_texts,
-                        match_description=row["match_description"] or "",
-                    )
                 else:
-                    result[row["rule_hash"]] = None
-            # 写回 LRU
+                    match_texts = ()
+                result[row["rule_hash"]] = RuleHit(
+                    rule_name="",  # 调用方按 rule_hash 反查 name，避免冗余存储
+                    severity=severity,
+                    detail=row["detail"] or "",
+                    match_text=row["match_text"] or "",
+                    match_count=row["match_count"],
+                    target=row["target"] or "",
+                    match_texts=match_texts,
+                    match_description=row["match_description"] or "",
+                )
+            else:
+                result[row["rule_hash"]] = None
+        # 写回 LRU（细粒度锁）
+        with self._lru_lock:
             self._hit_cache_put(file_hash, rule_hashes, result)
-            return result
+        return result
 
     def put_result(
         self,
@@ -422,7 +464,8 @@ class CacheStore:
                     ),
                 )
             # 失效 LRU 条目：调用方下次查询时会从 SQLite 取最新数据并回填 LRU
-            self._hit_cache_invalidate(file_hash)
+            with self._lru_lock:
+                self._hit_cache_invalidate(file_hash)
 
     def _register_file_locked(self, file_hash: str, size: int, now: str) -> None:
         """登记文件哈希到 ``scanned_files``（已持锁）。
@@ -457,7 +500,8 @@ class CacheStore:
         with self._lock:
             now = _now_iso()
             self._register_file_locked(file_hash, size, now)
-            self._hit_cache_invalidate(file_hash)
+            with self._lru_lock:
+                self._hit_cache_invalidate(file_hash)
 
     def register_path(self, file_hash: str, path: Path, mtime: float) -> None:
         """登记/更新 ``file_paths``。
@@ -467,7 +511,8 @@ class CacheStore:
         with self._lock:
             now = _now_iso()
             self._register_path_locked(file_hash, path, mtime, now)
-            self._hit_cache_invalidate(file_hash)
+            with self._lru_lock:
+                self._hit_cache_invalidate(file_hash)
 
     def batch_put_results(self, items: list[BatchWriteItem]) -> None:
         """批量写入扫描结果与文件元数据，单次事务提交。
@@ -560,8 +605,9 @@ class CacheStore:
                     logger.warning("ROLLBACK 失败", exc_info=True)
                 raise
             # 仅 COMMIT 成功后失效 LRU
-            for item in items:
-                self._hit_cache_invalidate(item.file_hash)
+            with self._lru_lock:
+                for item in items:
+                    self._hit_cache_invalidate(item.file_hash)
 
     def lookup_file_hash(
         self,
@@ -574,6 +620,8 @@ class CacheStore:
         用于缓存模式预筛：文件 mtime 与 size 未变时，
         可直接复用已登记的 ``file_hash``，跳过 ``read_bytes`` 与哈希计算。
 
+        线程安全：使用线程本地只读连接，无锁并行（iter-68）。
+
         安全性说明：mtime 可被人为修改，本方法仅作为性能优化；
         对安全性敏感场景，调用方可关闭此预筛（始终走哈希校验）。
 
@@ -582,15 +630,18 @@ class CacheStore:
         :param size: 当前文件大小（字节）
         :return: 命中时返回 ``file_hash``（64 字符 hex）；未命中返回 None
         """
-        with self._lock:
-            row = self._conn.execute(
+        row = (
+            self._get_read_conn()
+            .execute(
                 "SELECT file_hash FROM file_paths "
                 "WHERE path = ? AND mtime = ? AND file_hash IN ("
                 "  SELECT file_hash FROM scanned_files WHERE size = ?"
                 ")",
                 (str(path), mtime, size),
-            ).fetchone()
-            return row["file_hash"] if row else None
+            )
+            .fetchone()
+        )
+        return row["file_hash"] if row else None
 
     # ------------------------------------------------------------------ 提取内容缓存
 
@@ -600,15 +651,20 @@ class CacheStore:
         用于缓存模式：同内容不同路径（如 node_modules 重复依赖）的文件，
         通过 ``file_hash`` 复用提取结果，跳过 ``extract_content_from_bytes``。
 
+        线程安全：使用线程本地只读连接，无锁并行（iter-68）。
+
         :param file_hash: 文件内容哈希
         :return: 命中时返回提取后的纯文本；未命中返回 None
         """
-        with self._lock:
-            row = self._conn.execute(
+        row = (
+            self._get_read_conn()
+            .execute(
                 "SELECT content FROM extracted_contents WHERE file_hash = ?",
                 (file_hash,),
-            ).fetchone()
-            return row["content"] if row else None
+            )
+            .fetchone()
+        )
+        return row["content"] if row else None
 
     def put_extracted_content(self, file_hash: str, content: str, extension: str) -> None:
         """写入提取器结果缓存。
@@ -667,7 +723,8 @@ class CacheStore:
             if deleted > 0:
                 logger.info("清理孤立规则: %d 条", deleted)
                 # 规则集合变化：全部 LRU 条目可能引用了已删除规则，整体失效
-                self._hit_cache.clear()
+                with self._lru_lock:
+                    self._hit_cache.clear()
             return deleted
 
     def prune_stale_files(self, max_age_days: int = 30) -> int:
@@ -692,11 +749,15 @@ class CacheStore:
             deleted = before - after
             if deleted > 0:
                 logger.info("清理过期文件缓存: %d 条（>=%d 天）", deleted, max_age_days)
-                self._hit_cache.clear()
+                with self._lru_lock:
+                    self._hit_cache.clear()
             return deleted
 
     def stats(self) -> CacheStats:
-        """返回缓存统计快照。"""
+        """返回缓存统计快照。
+
+        诊断方法，不在扫描热路径上，使用主连接持锁以保证与写入的一致性。
+        """
         with self._lock:
             rule_files = self._count("rule_files")
             rules = self._count("rules")
@@ -717,7 +778,7 @@ class CacheStore:
             )
 
     def _count(self, table: str) -> int:
-        """统计表行数（已持锁）。"""
+        """统计表行数（已持 ``_lock``）。"""
         # table 名来自代码常量，非用户输入，无 SQL 注入风险
         cur = self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
         return cur[0] if cur else 0
@@ -725,12 +786,24 @@ class CacheStore:
     # ------------------------------------------------------------------ 资源管理
 
     def close(self) -> None:
-        """关闭数据库连接。重复调用安全（幂等）。"""
+        """关闭数据库连接。重复调用安全（幂等）。
+
+        关闭主写连接与所有线程本地读连接。
+        """
         with self._lock:
             if self._closed:
                 return
             self._closed = True
-            self._hit_cache.clear()
+            with self._lru_lock:
+                self._hit_cache.clear()
+                read_conns = list(self._read_conns)
+                self._read_conns.clear()
+            # 关闭所有读连接
+            for conn in read_conns:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    logger.warning("关闭读连接失败", exc_info=True)
             self._conn.close()
 
     def __enter__(self) -> CacheStore:

@@ -1067,6 +1067,73 @@ class TestCacheStoreConcurrency:
         assert cached[rule_hash] is not None
         store.close()
 
+    def test_read_connections_are_thread_local_and_query_only(self, tmp_path: Path) -> None:
+        """读连接为线程本地且 query_only，与主写连接分离（iter-68 读写分离）。"""
+        store = CacheStore(tmp_path / "cache.db")
+        rs = RuleSet(version="1.0", rules=(_filename_rule(),))
+        store.register_ruleset(rs)
+        # 主线程读连接
+        main_conn = store._get_read_conn()
+        assert main_conn is not store._conn  # 与主写连接不同
+        # query_only 验证：写入应抛 OperationalError
+        with pytest.raises(sqlite3.OperationalError):
+            main_conn.execute("INSERT INTO rules (rule_hash) VALUES ('x')")
+        # 不同线程返回不同连接
+        other_conn_holder: list[sqlite3.Connection] = []
+
+        def get_conn() -> None:
+            other_conn_holder.append(store._get_read_conn())
+
+        t = threading.Thread(target=get_conn)
+        t.start()
+        t.join()
+        assert other_conn_holder[0] is not main_conn  # 线程本地
+        store.close()
+
+    def test_concurrent_reads_do_not_block_writes(self, tmp_path: Path) -> None:
+        """多线程并发读不阻塞写：写操作耗时不应因并发读显著增加（iter-68）。"""
+        import time
+
+        store = CacheStore(tmp_path / "cache.db")
+        rs = RuleSet(version="1.0", rules=(_filename_rule(),))
+        hashes = store.register_ruleset(rs)
+        rule_hash = hashes["r1"]
+        # 预写入一些数据供读取
+        for i in range(20):
+            fh = hash_bytes(f"init-{i}".encode())
+            store.register_file(fh, i)
+            store.put_result(fh, rule_hash, RuleHit(rule_name="r1", severity=Severity.INFO, detail=f"d-{i}"))
+
+        stop = threading.Event()
+        read_errors: list[Exception] = []
+
+        def reader() -> None:
+            try:
+                while not stop.is_set():
+                    store.get_rule_hashes()
+                    store.get_extracted_content(hash_bytes(b"init-0"))
+            except Exception as exc:
+                read_errors.append(exc)
+
+        # 启动 4 个读线程
+        readers = [threading.Thread(target=reader) for _ in range(4)]
+        for t in readers:
+            t.start()
+        # 并发读的同时执行写，测量写耗时
+        write_start = time.perf_counter()
+        for i in range(50):
+            fh = hash_bytes(f"concurrent-{i}".encode())
+            store.register_file(fh, i)
+            store.put_result(fh, rule_hash, RuleHit(rule_name="r1", severity=Severity.INFO, detail=f"c-{i}"))
+        write_elapsed = time.perf_counter() - write_start
+        stop.set()
+        for t in readers:
+            t.join(timeout=2)
+        assert not read_errors
+        # 50 次写入在并发读下应在合理时间内完成（宽松上限 10 秒，避免 CI 不稳定）
+        assert write_elapsed < 10.0, f"写操作耗时 {write_elapsed:.2f}s，可能被并发读阻塞"
+        store.close()
+
 
 # ---------------------------------------------------------------- migrate
 
