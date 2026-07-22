@@ -571,8 +571,8 @@ QTreeWidget#result_tree::item {
 }
 
 QTreeWidget#result_tree::item:selected {
-    background: ${COLOR_BG_SELECTED};
-    color: ${COLOR_PRIMARY};
+    background: ${COLOR_PRIMARY_DARK};
+    color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QTreeWidget#result_tree::item:hover {
@@ -592,8 +592,8 @@ QTreeWidget {
 }
 
 QTreeWidget::item:selected {
-    background: ${COLOR_BG_SELECTED};
-    color: ${COLOR_PRIMARY};
+    background: ${COLOR_PRIMARY_DARK};
+    color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QTreeWidget::item:hover {
@@ -622,8 +622,8 @@ QListWidget::item {
 }
 
 QListWidget::item:selected {
-    background: ${COLOR_BG_SELECTED};
-    color: ${COLOR_PRIMARY};
+    background: ${COLOR_PRIMARY_DARK};
+    color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QListWidget::item:hover {
@@ -639,8 +639,8 @@ QTableWidget {
 }
 
 QTableWidget::item:selected {
-    background: ${COLOR_BG_SELECTED};
-    color: ${COLOR_PRIMARY};
+    background: ${COLOR_PRIMARY_DARK};
+    color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
 QHeaderView::section {

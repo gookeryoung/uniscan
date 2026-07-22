@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover
     from PySide6.QtGui import QStandardItem, QStandardItemModel  # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QTreeView  # pyrefly: ignore [missing-import]
 
-from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS, SEVERITY_COLORS, SEVERITY_LABELS
+from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS, SEVERITY_LABELS
 from fuscan.rules.model import Severity
 from fuscan.scanner import ScanReport
 
@@ -43,13 +43,17 @@ _HEADERS: list[str] = ["路径", "规则", "严重等级", "命中数", "条数"
 
 
 def _apply_severity_to_standard_item(item: QStandardItem, severity: Severity) -> None:
-    """为 QStandardItem 设置中文严重等级标签、前景色和背景色。
+    """为 QStandardItem 设置中文严重等级标签与背景色。
+
+    仅设置背景色（浅红/浅橙/浅蓝），不设置前景色——避免 ``setForeground``
+    覆盖 QSS ``::item:selected`` 的选中态白字（需求1：选中项字体统一白色）。
+    未选中态字色由 ``QTreeWidget`` 的 ``color`` 令牌（COLOR_TEXT_PRIMARY）提供，
+    浅底深字对比度高于原"浅底+红/橙/蓝字"配色。
 
     :param item: 结果树中代表"严重等级"列的 QStandardItem
     :param severity: 严重等级枚举值
     """
     item.setText(SEVERITY_LABELS.get(severity, severity.value))
-    item.setForeground(SEVERITY_COLORS[severity])
     item.setBackground(SEVERITY_BACKGROUNDS[severity])
 
 

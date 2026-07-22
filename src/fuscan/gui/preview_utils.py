@@ -18,7 +18,6 @@ try:
 except ImportError:  # pragma: no cover
     from PySide6.QtGui import QColor  # pyrefly: ignore [missing-import]
 
-from fuscan import theme
 from fuscan.rules.model import Severity
 from fuscan.scanner.result import RuleHit, format_size
 
@@ -28,7 +27,6 @@ __all__ = [
     "PREVIEW_MAX_CHARS",
     "PREVIEW_STYLE",
     "SEVERITY_BACKGROUNDS",
-    "SEVERITY_COLORS",
     "SEVERITY_LABELS",
     "build_keyword_to_rule_map",
     "build_preview_html",
@@ -60,14 +58,8 @@ SEVERITY_LABELS: dict[Severity, str] = {
     Severity.INFO: "一般",
 }
 
-# 严重等级 → 前景色（QColor，色值集中定义在 fuscan.theme）
-SEVERITY_COLORS: dict[Severity, QColor] = {
-    Severity.CRITICAL: QColor(theme.COLOR_DANGER),
-    Severity.WARNING: QColor(theme.COLOR_WARNING),
-    Severity.INFO: QColor(theme.COLOR_INFO),
-}
-
-# 严重等级 → 浅色背景（整行高亮，与 SEVERITY_COLORS 前景配对）
+# 严重等级 → 浅色背景（用于 severity 列与 critical 整行高亮）
+# 注：不提供前景色，避免 setForeground 覆盖 QSS ::item:selected 选中态白字
 SEVERITY_BACKGROUNDS: dict[Severity, QColor] = {
     Severity.CRITICAL: QColor(255, 235, 235),  # 浅红
     Severity.WARNING: QColor(255, 243, 224),  # 浅橙

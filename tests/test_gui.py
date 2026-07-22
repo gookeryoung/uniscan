@@ -1769,7 +1769,12 @@ class TestSeverityDisplay:
         assert _severity_text(Severity.INFO) == "一般"
 
     def test_result_tree_flat_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
-        """result_tree 不分组模式下严重等级列应显示中文标签和颜色。"""
+        """result_tree 不分组模式下严重等级列应显示中文标签与背景色。
+
+        注：前景色由 QSS ``::item:selected`` 选中态接管（统一白字），
+        故仅验证背景色编码（需求1：选中项字体统一白色）。
+        """
+        from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
@@ -1781,22 +1786,28 @@ class TestSeverityDisplay:
         window._switch_stage(WorkflowStage.RESULTS)
         window._refresh_result_tree()
 
+        expected_bg = SEVERITY_BACKGROUNDS[Severity.WARNING]
         top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
         sev_cell = window.result_tree.model().item(0, 2)
         assert sev_cell is not None
         assert sev_cell.text() == "警告"
-        assert sev_cell.foreground().color().name() == "#f0883e"
+        assert sev_cell.background().color().rgb() == expected_bg.rgb()
 
         assert top_item.rowCount() > 0
         child_sev_cell = top_item.child(0, 2)
         assert child_sev_cell is not None
         assert child_sev_cell.text() == "警告"
-        assert child_sev_cell.foreground().color().name() == "#f0883e"
+        assert child_sev_cell.background().color().rgb() == expected_bg.rgb()
         window.close()
 
     def test_detail_hits_table_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
-        """detail_hits_table 严重等级列应显示中文标签和颜色。"""
+        """detail_hits_table 严重等级列应显示中文标签与背景色。
+
+        注：前景色由 QSS ``::item:selected`` 选中态接管（统一白字），
+        故仅验证背景色编码（需求1：选中项字体统一白色）。
+        """
+        from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
@@ -1813,14 +1824,21 @@ class TestSeverityDisplay:
         window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
         qapp.processEvents()
 
+        expected_bg = SEVERITY_BACKGROUNDS[Severity.WARNING]
         item = window.detail_hits_table.item(0, 1)
         assert item is not None
         assert item.text() == "警告"
-        assert item.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
+        assert item.background().color().rgb() == expected_bg.rgb()  # pyrefly: ignore [missing-argument]
         window.close()
 
     def test_rules_tree_shows_severity_colors(self, qapp: QApplication) -> None:
-        """rules_tree 严重等级列应显示中文标签和颜色。"""
+        """rules_tree 严重等级列应显示中文标签与背景色。
+
+        注：前景色由 QSS ``::item:selected`` 选中态接管（统一白字），
+        故仅验证背景色编码（需求1：选中项字体统一白色）。
+        """
+        from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS
+
         window = MainWindow()
         window._ruleset = _build_ruleset()
         window._refresh_rules_tree()
@@ -1829,8 +1847,12 @@ class TestSeverityDisplay:
         assert item is not None
         sev_text = item.text(1)
         assert sev_text in ("严重", "警告", "一般")
-        color_name = item.foreground(1).color().name()  # pyrefly: ignore [missing-argument]
-        assert color_name in ("#d73a49", "#f0883e", "#0366d6")
+        expected_bgs = {
+            sev: SEVERITY_BACKGROUNDS[sev].rgb()
+            for sev in (Severity.CRITICAL, Severity.WARNING, Severity.INFO)
+        }
+        bg_rgb = item.background(1).color().rgb()  # pyrefly: ignore [missing-argument]
+        assert bg_rgb in expected_bgs.values()
         window.close()
 
 

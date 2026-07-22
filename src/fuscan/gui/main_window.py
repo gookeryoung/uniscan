@@ -143,7 +143,6 @@ from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.perf import PerfTimer
 from fuscan.gui.preview_utils import (
     SEVERITY_BACKGROUNDS,
-    SEVERITY_COLORS,
     SEVERITY_LABELS,
 )
 from fuscan.gui.scan_path_history import ScanPathHistory
@@ -170,9 +169,12 @@ def _severity_text(severity: Severity) -> str:
 
 
 def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: Severity) -> None:
-    """为 QTreeWidgetItem 的指定列设置中文标签、前景色和背景色。"""
+    """为 QTreeWidgetItem 的指定列设置中文标签与背景色。
+
+    仅设置背景色（浅红/浅橙/浅蓝），不设置前景色——避免 ``setForeground``
+    覆盖 QSS ``::item:selected`` 的选中态白字（需求1：选中项字体统一白色）。
+    """
     item.setText(column, _severity_text(severity))
-    item.setForeground(column, SEVERITY_COLORS[severity])
     item.setBackground(column, SEVERITY_BACKGROUNDS[severity])
 
 
