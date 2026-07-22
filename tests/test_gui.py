@@ -33,7 +33,6 @@ try:
             QMessageBox,
         )
 
-    from fuscan.gui.detail_dialog import HitDetailDialog
     from fuscan.gui.main_window import MainWindow, ScanState, WorkflowStage, _severity_text
     from fuscan.gui.preview_utils import build_preview_html, extract_keywords, format_size
     from fuscan.gui.worker import ScanWorker
@@ -1742,22 +1741,6 @@ class TestSeverityDisplay:
         assert color_name in ("#d73a49", "#f0883e", "#0366d6")
         window.close()
 
-    def test_detail_dialog_shows_severity_colors(self, qapp: QApplication, tmp_path: Path) -> None:
-        """HitDetailDialog 的 hits_table 严重等级列应显示中文标签和颜色。"""
-        from fuscan.scanner import Scanner
-
-        (tmp_path / "secret.txt").write_text("password = 123", encoding="utf-8")
-        rs = _build_ruleset()
-        report = Scanner(rs).scan(tmp_path)
-        result = report.results[0]
-
-        dialog = HitDetailDialog(result, None)
-        item = dialog.hits_table.item(0, 1)
-        assert item is not None
-        assert item.text() == "警告"
-        assert item.foreground().color().name() == "#f0883e"  # pyrefly: ignore [missing-argument]
-        dialog.close()
-
 
 class TestScanWorkerControl:
     """ScanWorker 暂停/取消控制信号测试。"""
@@ -1999,7 +1982,7 @@ class TestLaunchApp:
             _ = fuscan.gui.__getattr__("nonexistent_attr")
 
 
-class TestHitDetailDialogHelpers:
+class TestPreviewHelpers:
     """详情对话框辅助函数测试。"""
 
     def test_format_size_bytes(self) -> None:
@@ -2708,430 +2691,6 @@ class TestScanModePersistence:
         window.close()
 
 
-class TestHitDetailDialog:
-    """详情对话框测试。"""
-
-    def test_dialog_shows_file_info(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框应展示文件路径、大小等信息。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        path = tmp_path / "secret.txt"
-        path.write_text("my password here", encoding="utf-8")
-
-        result = ScanResult(
-            path=path,
-            size=path.stat().st_size,
-            hits=(RuleHit("r1", Severity.WARNING, "包含 'password'"),),
-        )
-        dialog = HitDetailDialog(result)
-        info_text = dialog.hit_info_label.text()
-        assert "secret.txt" in info_text
-        assert "命中规则数" in info_text
-        dialog.close()
-
-    def test_dialog_delete_on_close_and_icon(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框应设置 WA_DeleteOnClose 避免反复打开累积卡死，并使用 target.svg 图标。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        path = tmp_path / "secret.txt"
-        path.write_text("my password here", encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=path.stat().st_size,
-            hits=(RuleHit("r1", Severity.WARNING, "包含 'password'"),),
-        )
-        dialog = HitDetailDialog(result)
-        # WA_DeleteOnClose 确保关闭时 Qt 自动 delete，避免被父窗口持有导致累积卡死
-        assert dialog.testAttribute(Qt.WA_DeleteOnClose)
-        # 窗口图标应已加载 target.svg，非空
-        assert not dialog.windowIcon().isNull()
-        dialog.close()
-
-    def test_dialog_hits_table(self, qapp: QApplication, tmp_path: Path) -> None:
-        """命中规则表应正确显示。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        path = tmp_path / "test.txt"
-        path.write_text("content", encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=7,
-            hits=(
-                RuleHit("rule-a", Severity.WARNING, "包含 'a'"),
-                RuleHit("rule-b", Severity.CRITICAL, "包含 'b'"),
-            ),
-        )
-        dialog = HitDetailDialog(result)
-        assert dialog.hits_table.rowCount() == 2
-        assert dialog.hits_table.item(0, 0).text() == "rule-a"
-        assert dialog.hits_table.item(1, 0).text() == "rule-b"
-        dialog.close()
-
-    def test_dialog_preview_highlights_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
-        """内容预览应高亮关键词。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        path = tmp_path / "data.txt"
-        path.write_text("the password is secret123", encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=len("the password is secret123"),
-            hits=(
-                RuleHit("r1", Severity.WARNING, "包含 'password'"),
-                RuleHit("r2", Severity.CRITICAL, "正则命中: 'secret123'"),
-            ),
-        )
-        dialog = HitDetailDialog(result)
-        html = dialog.preview.toHtml()
-        assert "password" in html
-        assert "span" in html  # 有高亮标签
-        dialog.close()
-
-    def test_dialog_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
-        """空文件预览应显示提示。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        path = tmp_path / "empty.txt"
-        path.write_text("", encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=0,
-            hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
-        )
-        dialog = HitDetailDialog(result)
-        text = dialog.preview.toPlainText()
-        assert "为空" in text or "二进制" in text
-        dialog.close()
-
-    def test_dialog_preview_nonexistent_file(self, qapp: QApplication, tmp_path: Path) -> None:
-        """文件不存在时预览应显示错误提示。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner import RuleHit, ScanResult
-
-        result = ScanResult(
-            path=tmp_path / "nonexistent.txt",
-            size=0,
-            hits=(RuleHit("r", Severity.WARNING, "包含 'x'"),),
-        )
-        dialog = HitDetailDialog(result)
-        assert "无法读取" in dialog.preview.toPlainText()
-        dialog.close()
-
-    def test_double_click_opens_dialog(
-        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """双击结果项应弹出详情对话框。"""
-        from fuscan.gui import main_window as mw_module
-        from fuscan.scanner import Scanner
-
-        (tmp_path / "secret.txt").write_text("password", encoding="utf-8")
-        rs = _build_ruleset()
-        scanner = Scanner(rs)
-        report = scanner.scan(tmp_path)
-
-        window = MainWindow()
-        window._populate_results(report)
-
-        # 模拟 exec_ 避免模态阻塞
-        called = {"count": 0}
-
-        def fake_exec(self) -> int:  # type: ignore[no-untyped-def]
-            called["count"] += 1
-            return 1
-
-        monkeypatch.setattr(mw_module.HitDetailDialog, "exec_", fake_exec)
-
-        # 双击顶层项
-        top_item = window.result_tree.model().item(0, 0)
-        assert top_item is not None
-        window.result_tree._handle_double_clicked(top_item.index())
-        assert called["count"] == 1
-
-        # 双击子项也应触发
-        if top_item.rowCount() > 0:
-            child_item = top_item.child(0, 0)
-            assert child_item is not None
-            window.result_tree._handle_double_clicked(child_item.index())
-            assert called["count"] == 2
-
-        window.close()
-
-    def test_double_click_no_data_does_nothing(self, qapp: QApplication) -> None:
-        """无双击数据时不弹对话框。"""
-        try:
-            from PySide2.QtGui import QStandardItem
-        except ImportError:  # pragma: no cover
-            from PySide6.QtGui import QStandardItem  # pyrefly: ignore [missing-import]
-
-        window = MainWindow()
-        # 创建一个没有 UserRole 数据的项
-        item = QStandardItem("test")
-        window.result_tree.model().appendRow([item])
-        # 不应抛异常
-        window.result_tree._handle_double_clicked(item.index())
-        window.close()
-
-
-class TestHitDetailDialogNavigation:
-    """详情对话框命中位置导航测试。"""
-
-    def _make_dialog_with_content(
-        self, qapp: QApplication, tmp_path: Path, content: str, keyword: str
-    ) -> HitDetailDialog:
-        """构造带内容的详情对话框。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        path = tmp_path / "test.txt"
-        path.write_text(content, encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=len(content),
-            hits=(RuleHit("r1", Severity.WARNING, f"包含 '{keyword}'"),),
-        )
-        return HitDetailDialog(result)
-
-    def test_nav_buttons_exist(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框应包含导航按钮和标签。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "hello", "hello")
-        assert dialog.prev_btn is not None
-        assert dialog.next_btn is not None
-        assert dialog.nav_label is not None
-        dialog.close()
-
-    def test_hit_positions_found(self, qapp: QApplication, tmp_path: Path) -> None:
-        """应在内容中找到关键词位置。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
-        assert len(dialog._hit_positions) == 2
-        dialog.close()
-
-    def test_first_hit_selected_on_open(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框打开时应定位到首个命中。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "first password and second password", "password")
-        assert dialog._current_hit_index == 0
-        assert "1 / 2" in dialog.nav_label.text()
-        dialog.close()
-
-    def test_next_hit_advances(self, qapp: QApplication, tmp_path: Path) -> None:
-        """下一个按钮应前进到下一个命中。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
-        assert dialog._current_hit_index == 0
-        dialog._on_next_hit()
-        assert dialog._current_hit_index == 1
-        assert "2 / 2" in dialog.nav_label.text()
-        dialog.close()
-
-    def test_next_wraps_around(self, qapp: QApplication, tmp_path: Path) -> None:
-        """到达最后一个命中后再下一个应回到首个。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
-        dialog._on_next_hit()
-        assert dialog._current_hit_index == 1
-        dialog._on_next_hit()
-        assert dialog._current_hit_index == 0
-        dialog.close()
-
-    def test_prev_wraps_around(self, qapp: QApplication, tmp_path: Path) -> None:
-        """在首个命中时上一个应跳转到最后一个。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "password and password again", "password")
-        assert dialog._current_hit_index == 0
-        dialog._on_prev_hit()
-        assert dialog._current_hit_index == 1
-        dialog.close()
-
-    def test_no_hits_disables_buttons(self, qapp: QApplication, tmp_path: Path) -> None:
-        """无关键词命中时按钮应禁用。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "nothing here", "missing")
-        assert len(dialog._hit_positions) == 0
-        assert not dialog.prev_btn.isEnabled()
-        assert not dialog.next_btn.isEnabled()
-        assert "无命中" in dialog.nav_label.text()
-        dialog.close()
-
-    def test_empty_file_no_crash(self, qapp: QApplication, tmp_path: Path) -> None:
-        """空文件不应导致导航异常。"""
-        dialog = self._make_dialog_with_content(qapp, tmp_path, "", "keyword")
-        assert len(dialog._hit_positions) == 0
-        dialog.close()
-
-    def test_nonexistent_file_no_crash(self, qapp: QApplication, tmp_path: Path) -> None:
-        """文件不存在时不应导致导航异常。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        result = ScanResult(
-            path=tmp_path / "nonexistent.txt",
-            size=0,
-            hits=(RuleHit("r", Severity.WARNING, "包含 'keyword'"),),
-        )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) == 0
-        dialog.close()
-
-    def test_multiple_keywords(self, qapp: QApplication, tmp_path: Path) -> None:
-        """多个不同关键词的命中都应被找到。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        content = "password here and api_key there"
-        path = tmp_path / "multi.txt"
-        path.write_text(content, encoding="utf-8")
-        result = ScanResult(
-            path=path,
-            size=len(content),
-            hits=(
-                RuleHit("r1", Severity.WARNING, "包含 'password'"),
-                RuleHit("r2", Severity.CRITICAL, "包含 'api_key'"),
-            ),
-        )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) == 2
-        assert "1 / 2" in dialog.nav_label.text()
-        dialog.close()
-
-    def _make_dialog_multi_rule(self, qapp: QApplication, tmp_path: Path) -> HitDetailDialog:
-        """构造多规则多位置命中对话框，用于测试点击跳转与位置数列。
-
-        复用 ``_build_multi_rule_report`` 的扫描产物：
-        - 规则"密码"匹配 password（2 处）
-        - 规则"令牌"匹配 token（1 处）
-        """
-        report = _build_multi_rule_report(tmp_path)
-        return HitDetailDialog(report.hits[0])
-
-    def test_dialog_hits_table_has_position_count_column(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框命中规则表应包含6列，第4列为'位置数'，第6列为'描述'。"""
-        dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        assert dialog.hits_table.columnCount() == 6
-        assert dialog.hits_table.horizontalHeaderItem(3).text() == "位置数"
-        assert dialog.hits_table.horizontalHeaderItem(5).text() == "描述"
-        dialog.close()
-
-    def test_dialog_hits_table_position_count_values(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框位置数列应显示每条规则在预览中的高亮位置数。"""
-        dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        # 规则0(密码): 2处password, 规则1(令牌): 1处token
-        assert dialog.hits_table.item(0, 3).text() == "2"
-        assert dialog.hits_table.item(1, 3).text() == "1"
-        dialog.close()
-
-    def test_dialog_hits_table_description_column_filled(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框第6列(描述)应填充 match_description，未设置时为空字符串（需求4）。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.rules.model import Severity
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        result = ScanResult(
-            path=tmp_path / "a.txt",
-            size=10,
-            hits=(
-                RuleHit(
-                    "规则A",
-                    Severity.WARNING,
-                    "d1",
-                    match_count=1,
-                    match_description="敏感凭证关键词",
-                ),
-                RuleHit("规则B", Severity.CRITICAL, "d2", match_count=1),
-            ),
-        )
-        dialog = HitDetailDialog(result)
-        # 第0行描述列应填充 match_description
-        assert dialog.hits_table.item(0, 5).text() == "敏感凭证关键词"
-        # 第1行描述列未设置时应为空字符串
-        assert dialog.hits_table.item(1, 5).text() == ""
-        dialog.close()
-
-    def test_dialog_click_hits_row_jumps_to_rule_highlight(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框中点击规则表行应跳转到该规则对应的高亮位置。"""
-        dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        # 位置排序: [(0,8,0), (13,18,1), (23,31,0)]
-        # 初始定位到位置0(规则0的首个password)
-        assert dialog._current_hit_index == 0
-        # 点击规则1(令牌) → 跳到位置1(token)
-        dialog._on_hits_row_clicked(1, 0)
-        assert dialog._current_hit_index == 1
-        dialog.close()
-
-    def test_dialog_click_hits_row_cycles_within_rule(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框中重复点击同一规则行应在该规则的位置间循环。"""
-        dialog = self._make_dialog_multi_rule(qapp, tmp_path)
-        # 初始在位置0(规则0)
-        assert dialog._current_hit_index == 0
-        # 再次点击规则0 → 跳到位置2(规则0的第二个password)
-        dialog._on_hits_row_clicked(0, 0)
-        assert dialog._current_hit_index == 2
-        # 再次点击规则0 → 回到位置0(循环)
-        dialog._on_hits_row_clicked(0, 0)
-        assert dialog._current_hit_index == 0
-        dialog.close()
-
-    def test_dialog_click_hits_row_no_positions_no_crash(self, qapp: QApplication) -> None:
-        """对话框无高亮位置时点击规则表行不应崩溃。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        result = ScanResult(
-            path=Path("/nonexistent.txt"),
-            size=0,
-            hits=(RuleHit("r", Severity.WARNING, "包含 'keyword'"),),
-        )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) == 0
-        dialog._on_hits_row_clicked(0, 0)
-        assert dialog._current_hit_index == -1
-        dialog.close()
-
-    def test_dialog_filename_match_shows_dash(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框中文件名匹配规则的位置数列应显示'-'。"""
-        report = _build_filename_match_report(tmp_path)
-        dialog = HitDetailDialog(report.hits[0])
-        assert dialog.hits_table.item(0, 3).text() == "-"
-        assert dialog.hits_table.item(1, 3).text() == "1"
-        dialog.close()
-
-    def test_dialog_filename_match_detail_label(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框中文件名匹配规则的详情应追加'（仅文件名）'。"""
-        report = _build_filename_match_report(tmp_path)
-        dialog = HitDetailDialog(report.hits[0])
-        assert "（仅文件名）" in dialog.hits_table.item(0, 4).text()
-        assert "（仅文件名）" not in dialog.hits_table.item(1, 4).text()
-        dialog.close()
-
-    def test_dialog_info_label_shows_switchable_count(self, qapp: QApplication, tmp_path: Path) -> None:
-        """对话框信息标签应显示'可切换位置'字段。"""
-        report = _build_multi_rule_report(tmp_path)
-        dialog = HitDetailDialog(report.hits[0])
-        info_text = dialog.hit_info_label.text()
-        assert "可切换位置" in info_text
-        dialog.close()
-
-    def test_dialog_highlight_skips_out_of_range(self, qapp: QApplication) -> None:
-        """对话框高亮位置超出文档长度时应跳过高亮，不调用 setPosition 越界。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
-        from fuscan.scanner.result import RuleHit, ScanResult
-
-        path = Path("/nonexistent.txt")
-        result = ScanResult(
-            path=path,
-            size=0,
-            hits=(RuleHit("r", Severity.WARNING, "包含 'keyword'"),),
-        )
-        dialog = HitDetailDialog(result)
-        dialog.preview.setPlainText("short")
-        # 同步 plain_text 缓存（_highlight/_scroll 复用缓存而非 toPlainText）
-        dialog._plain_text = "short"
-        dialog._hit_positions = [(0, 3, 0), (100, 200, 0)]
-        dialog._current_hit_index = 1
-        dialog._highlight_current_hit()
-        dialog._scroll_to_current_hit()
-        dialog.close()
-
-
 class TestMatchTextHighlighting:
     """``match_text`` 字段驱动的关键词提取与跨行定位测试。
 
@@ -3268,9 +2827,9 @@ class TestMatchTextHighlighting:
         mapping = build_keyword_to_rule_map(hits)
         assert mapping == {"secret": 1}
 
-    def test_dialog_positions_db_connection_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
-        """详情对话框应能定位含反斜杠的数据库连接串密码。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
+    def test_panel_positions_db_connection_with_backslash(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情面板应能定位含反斜杠的数据库连接串密码。"""
+        from fuscan.gui.main_window import MainWindow
         from fuscan.scanner.result import RuleHit, ScanResult
 
         content = r"url=mongodb://user:pass\123@host"
@@ -3281,14 +2840,15 @@ class TestMatchTextHighlighting:
             size=len(content),
             hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text=r"mongodb://user:pass\123@"),),
         )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog.nav_label.text()
-        dialog.close()
+        window = MainWindow()
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
+        assert "1 /" in window._detail_panel._c.nav_label.text()
+        window.close()
 
-    def test_dialog_positions_db_connection_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
-        """详情对话框应能定位含单引号的数据库连接串密码。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
+    def test_panel_positions_db_connection_with_single_quote(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情面板应能定位含单引号的数据库连接串密码。"""
+        from fuscan.gui.main_window import MainWindow
         from fuscan.scanner.result import RuleHit, ScanResult
 
         content = "url=mongodb://user:pa'ss@host"
@@ -3299,14 +2859,15 @@ class TestMatchTextHighlighting:
             size=len(content),
             hits=(RuleHit("数据库连接串", Severity.WARNING, "正则命中", match_text="mongodb://user:pa'ss@"),),
         )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog.nav_label.text()
-        dialog.close()
+        window = MainWindow()
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
+        assert "1 /" in window._detail_panel._c.nav_label.text()
+        window.close()
 
-    def test_dialog_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
-        """详情对话框应能定位跨行 Bearer 令牌（换行规范化为 \\s+）。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
+    def test_panel_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情面板应能定位跨行 Bearer 令牌（换行规范化为 \\s+）。"""
+        from fuscan.gui.main_window import MainWindow
         from fuscan.scanner.result import RuleHit, ScanResult
 
         content = "Authorization: Bearer\n  eyJhbGci.token"
@@ -3317,14 +2878,15 @@ class TestMatchTextHighlighting:
             size=len(content),
             hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer\n  eyJhbGci"),),
         )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog.nav_label.text()
-        dialog.close()
+        window = MainWindow()
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
+        assert "1 /" in window._detail_panel._c.nav_label.text()
+        window.close()
 
-    def test_dialog_positions_single_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
-        """详情对话框应能定位单行 Bearer 令牌。"""
-        from fuscan.gui.detail_dialog import HitDetailDialog
+    def test_panel_positions_single_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情面板应能定位单行 Bearer 令牌。"""
+        from fuscan.gui.main_window import MainWindow
         from fuscan.scanner.result import RuleHit, ScanResult
 
         content = "Authorization: Bearer eyJhbGci.token"
@@ -3335,10 +2897,11 @@ class TestMatchTextHighlighting:
             size=len(content),
             hits=(RuleHit("Bearer令牌", Severity.INFO, "正则命中", match_text="Bearer eyJhbGci.token"),),
         )
-        dialog = HitDetailDialog(result)
-        assert len(dialog._hit_positions) >= 1
-        assert "1 /" in dialog.nav_label.text()
-        dialog.close()
+        window = MainWindow()
+        window._detail_panel.show_result(result)
+        assert len(window._detail_panel._hit_positions) >= 1
+        assert "1 /" in window._detail_panel._c.nav_label.text()
+        window.close()
 
     def test_main_window_positions_cross_line_bearer(self, qapp: QApplication, tmp_path: Path) -> None:
         """主窗口详情区应能定位跨行 Bearer 令牌。"""
@@ -3627,34 +3190,6 @@ class TestResultFilterAndGroup:
         assert child is not None
         # QStandardItem 单列，data 直接取 UserRole（无 column 参数）
         assert child.data(Qt.UserRole) is not None
-        window.close()
-
-    def test_double_click_grouped_child_opens_dialog(self, qapp: QApplication, tmp_path: Path) -> None:
-        """分组模式下双击子项应打开详情对话框。"""
-        from fuscan.gui import detail_dialog as dd_module
-
-        window = MainWindow()
-        report = _build_multi_hit_report(tmp_path)
-        window._populate_results(report)
-
-        idx = window.group_mode_combo.findData("rule")
-        window.group_mode_combo.setCurrentIndex(idx)
-
-        called = {"count": 0}
-
-        def fake_exec(self) -> int:  # type: ignore[no-untyped-def]
-            called["count"] += 1
-            return 1
-
-        monkeypatch_obj = pytest.MonkeyPatch()
-        monkeypatch_obj.setattr(dd_module.HitDetailDialog, "exec_", fake_exec)
-        top = window.result_tree.model().item(0, 0)
-        assert top is not None
-        child = top.child(0, 0)
-        assert child is not None
-        window.result_tree._handle_double_clicked(child.index())
-        assert called["count"] == 1
-        monkeypatch_obj.undo()
         window.close()
 
     def test_refresh_with_no_report(self, qapp: QApplication) -> None:
@@ -4427,37 +3962,6 @@ class TestDetailArea:
         window._detail_panel.copy_path()
         window.close()
 
-    def test_detail_open_in_window_no_result(self, qapp: QApplication) -> None:
-        """无选中结果时打开窗口不应崩溃。"""
-        window = MainWindow()
-        window._detail_panel.open_in_window()
-        window.close()
-
-    def test_detail_open_in_window_with_result(
-        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """有选中结果时打开窗口应创建 HitDetailDialog 并调用 exec_。"""
-        from fuscan.scanner import Scanner
-
-        (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
-        rs = _build_ruleset()
-        scanner = Scanner(rs)
-        report = scanner.scan(tmp_path)
-
-        window = MainWindow()
-        window._populate_results(report)
-        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
-        assert window._detail_panel._current_result is not None
-
-        exec_calls: list[Any] = []
-        monkeypatch.setattr(
-            "fuscan.gui.main_window.HitDetailDialog",
-            lambda result, parent: exec_calls.append(result) or type("FakeDialog", (), {"exec_": lambda self: None})(),
-        )
-        window._detail_panel.open_in_window()
-        assert len(exec_calls) == 1
-        window.close()
-
     def test_detail_preview_empty_file(self, qapp: QApplication, tmp_path: Path) -> None:
         """空文件预览应显示提示文本。"""
         from fuscan.scanner import Scanner
@@ -4476,7 +3980,7 @@ class TestDetailArea:
         window.close()
 
     def test_result_tree_context_menu_actions(self, qapp: QApplication, tmp_path: Path) -> None:
-        """结果树右键菜单应包含复制路径/新窗口打开/打开文件位置三个动作。"""
+        """结果树右键菜单应包含复制路径/打开文件位置两个动作。"""
         from fuscan.scanner import Scanner
 
         (tmp_path / "secret.txt").write_text("password=123", encoding="utf-8")
@@ -4508,10 +4012,9 @@ class TestDetailArea:
 
         assert len(captured) == 1
         actions = captured[0].actions()
-        assert len(actions) == 3
+        assert len(actions) == 2
         texts = [a.text() for a in actions]
         assert "复制路径" in texts
-        assert "在新窗口打开" in texts
         assert "打开文件位置" in texts
         window.close()
 

@@ -9,10 +9,9 @@
 - :class:`DetailControls`：详情区 UI 控件引用集合（frozen dataclass），由主窗口
   ``setupUi`` 后构造并传入 :class:`DetailPanel`
 - :class:`DetailPanel`：详情面板控制器（:class:`QObject` 子类），封装所有详情区
-  状态与方法，通过三个信号向外通信：
+  状态与方法，通过两个信号向外通信：
   - ``path_copy_requested(str)``：复制路径后通知主窗口更新状态栏
   - ``open_location_requested(object)``：请求主窗口定位文件（携带 ``Path``）
-  - ``open_in_window_requested(object)``：请求主窗口打开独立详情对话框（携带 ``ScanResult``）
 """
 
 from __future__ import annotations
@@ -107,18 +106,16 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
 
     封装详情区的状态管理（当前结果、命中位置列表、当前命中索引）、内容填充
     （文件信息、命中表、内容预览）、命中导航（上一条/下一条/行点击跳转）与
-    文件操作（复制路径、打开位置、在新窗口打开）。
+    文件操作（复制路径、打开位置）。
 
     主窗口通过 :meth:`show_result` / :meth:`clear` 驱动详情区，通过 :attr:`current_result`
-    读取当前选中结果，通过三个信号响应用户操作（复制路径/打开位置/新窗口打开）。
+    读取当前选中结果，通过两个信号响应用户操作（复制路径/打开位置）。
     """
 
     # 复制路径后通知主窗口更新状态栏（携带路径字符串）
     path_copy_requested = Signal(str)
     # 请求主窗口在文件管理器中定位文件（携带 Path）
     open_location_requested = Signal(object)
-    # 请求主窗口打开独立详情对话框（携带 ScanResult）
-    open_in_window_requested = Signal(object)
 
     def __init__(self, controls: DetailControls, parent: QObject | None = None) -> None:
         """初始化详情面板：存储控件引用、初始化状态、配置命中表与信号连接。
@@ -202,15 +199,6 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         if clipboard is not None:
             clipboard.setText(path_str)
         self.path_copy_requested.emit(path_str)  # pyrefly: ignore [missing-attribute]
-
-    def open_in_window(self) -> None:
-        """请求主窗口在独立对话框中打开当前结果详情。
-
-        无当前结果时直接返回，不发信号。
-        """
-        if self._current_result is None:
-            return
-        self.open_in_window_requested.emit(self._current_result)  # pyrefly: ignore [missing-attribute]
 
     def open_location(self) -> None:
         """请求主窗口在文件管理器中定位当前结果文件。

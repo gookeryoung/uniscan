@@ -777,31 +777,6 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: transparent;
 }
 
-/* ========== HitDetailDialog 样式 ========== */
-
-QLabel#hit_info_label {
-    padding: 10px 12px;
-    background: ${COLOR_BG_APP};
-    border: 1px solid ${COLOR_BORDER};
-    border-radius: ${RADIUS_MD};
-    font-size: ${FONT_SIZE_BODY};
-}
-
-QTextEdit#hit_preview {
-    background: ${COLOR_BG_CARD};
-    border: 1px solid ${COLOR_BORDER};
-    border-radius: ${RADIUS_MD};
-    font-size: ${FONT_SIZE_BODY};
-    padding: 4px;
-}
-
-QTableWidget#hit_hits_table {
-    background: ${COLOR_BG_CARD};
-    border: 1px solid ${COLOR_BORDER};
-    border-radius: ${RADIUS_MD};
-    font-size: ${FONT_SIZE_BODY};
-}
-
 /* ========== RuleEditorDialog 样式 ========== */
 
 QTextEdit#rule_editor {

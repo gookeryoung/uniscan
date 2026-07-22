@@ -77,7 +77,6 @@ from fuscan import __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import Config, load_config, save_config
 from fuscan.gui import resources_rc  # noqa: F401 注册 .qrc 资源（:/ 前缀图标）
-from fuscan.gui.detail_dialog import HitDetailDialog
 from fuscan.gui.detail_panel import DetailControls, DetailPanel
 from fuscan.gui.explorer import open_path_in_explorer
 from fuscan.gui.icons import (
@@ -308,8 +307,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         详情区 UI 控件由 ``setupUi`` 创建，本方法构造 :class:`DetailControls` 引用集合
         并传入 :class:`DetailPanel`，后续主窗口通过 ``self._detail_panel`` 公共 API 驱动详情区。
-        信号路由：``path_copy_requested`` / ``open_location_requested`` /
-        ``open_in_window_requested`` 连接到主窗口槽，由主窗口更新状态栏或创建对话框。
+        信号路由：``path_copy_requested`` / ``open_location_requested`` 连接到主窗口槽，
+        由主窗口更新状态栏或在文件管理器中定位文件。
         """
         controls = DetailControls(
             action_stack=self.detail_action_stack,
@@ -530,7 +529,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.edit_rule_btn.clicked.connect(self._on_edit_rules)
         # 结果树（ResultTreeView 信号路由：选中/双击/右键均通过自定义信号转发）
         self.result_tree.result_selected.connect(self._on_result_selected)  # pyrefly: ignore [missing-attribute]
-        self.result_tree.result_activated.connect(self._on_result_activated)  # pyrefly: ignore [missing-attribute]
         self.result_tree.context_menu_requested.connect(self._on_result_tree_context_menu)  # pyrefly: ignore [missing-attribute]
         # 筛选（需求9：路径输入节流 300ms，避免连续按键触发全量重建；combo 切换立即响应）
         self.path_filter_input.textChanged.connect(self._schedule_result_refresh)
@@ -540,10 +538,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
         # 详情区
         self.export_btn.clicked.connect(self._on_export_menu)
-        # 详情面板信号路由：复制路径/打开位置/新窗口打开由 DetailPanel 发信号，主窗口响应
+        # 详情面板信号路由：复制路径/打开位置由 DetailPanel 发信号，主窗口响应
         self._detail_panel.path_copy_requested.connect(self._on_path_copy_requested)  # pyrefly: ignore [missing-attribute]
         self._detail_panel.open_location_requested.connect(self._on_open_location_requested)  # pyrefly: ignore [missing-attribute]
-        self._detail_panel.open_in_window_requested.connect(self._on_open_in_window_requested)  # pyrefly: ignore [missing-attribute]
         # 扫描中页命中文件列表双击：弹出简化详情与定位按钮（需求5）
         self.matched_files_list.itemDoubleClicked.connect(self._on_matched_file_double_clicked)
         # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
@@ -571,18 +568,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.rules_file_list.itemChanged.connect(self._on_rules_file_item_changed)
 
     def _on_result_tree_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
-        """结果树右键菜单：复制路径 / 在新窗口打开 / 打开文件位置。"""
+        """结果树右键菜单：复制路径 / 打开文件位置。"""
         if self._detail_panel.current_result is None:
             return
         menu = QMenu(self.result_tree)
         action_copy = QAction("复制路径", menu)
-        action_open_window = QAction("在新窗口打开", menu)
         action_open_location = QAction("打开文件位置", menu)
         action_copy.triggered.connect(self._detail_panel.copy_path)
-        action_open_window.triggered.connect(self._detail_panel.open_in_window)
         action_open_location.triggered.connect(self._detail_panel.open_location)
         menu.addAction(action_copy)  # pyrefly: ignore [missing-argument]
-        menu.addAction(action_open_window)  # pyrefly: ignore [missing-argument]
         menu.addAction(action_open_location)  # pyrefly: ignore [missing-argument]
         menu.exec_(self.result_tree.viewport().mapToGlobal(pos))  # pyrefly: ignore [missing-argument]
 
@@ -1298,15 +1292,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         assert isinstance(path, Path)
         self._open_path_in_explorer(path)
 
-    def _on_open_in_window_requested(self, result: object) -> None:
-        """响应 DetailPanel 新窗口打开信号：创建独立详情对话框。
-
-        :param result: 待展示的扫描结果（:class:`ScanResult`）
-        """
-        assert isinstance(result, ScanResult)
-        dialog = HitDetailDialog(result, self)
-        dialog.exec_()
-
     def _open_path_in_explorer(self, path: Path) -> None:
         """在文件管理器中打开指定文件所在目录并选中该文件。
 
@@ -1527,16 +1512,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             rule_name=rule_filter,
             group_mode=group_mode,
         )
-
-    def _on_result_activated(self, result: object) -> None:
-        """双击结果项：在新窗口打开详情对话框。
-
-        由 :attr:`ResultTreeView.result_activated` 信号触发，``result`` 为
-        :class:`ScanResult`（仅文件级项会触发，分组顶层/规则子行已在视图层过滤）。
-        """
-        assert isinstance(result, ScanResult)
-        dialog = HitDetailDialog(result, self)
-        dialog.exec_()
 
     def _update_scan_button(self) -> None:
         """更新扫描按钮状态（委托给 _update_stage_actions 统一管理）。"""

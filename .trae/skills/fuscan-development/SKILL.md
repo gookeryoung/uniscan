@@ -36,7 +36,7 @@ src/fuscan/
 ├── gui/            # PySide2 GUI
 │   ├── main_window.py  # MainWindow（杀毒软件风格 UI）
 │   ├── worker.py       # ScanWorker(QThread，多根路径)
-│   ├── detail_dialog.py # HitDetailDialog（详情对话框）
+│   ├── detail_panel.py # DetailPanel（右侧详情面板）
 │   └── app.py          # launch() 入口
 ├── watcher/        # 托盘驻守与文件监控
 │   ├── monitor.py      # FileMonitor（watchdog）

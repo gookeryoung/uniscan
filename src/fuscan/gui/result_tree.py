@@ -8,8 +8,8 @@
 
 - :class:`ResultTreeView`：QTreeView 子类，封装 ``QStandardItemModel`` 与三种
   分组模式（flat/by-rule/by-severity）的填充逻辑
-- 信号 ``result_selected``/``result_activated``/``context_menu_requested``：
-  解耦视图与主窗口，主窗口通过信号接收选中/双击/右键事件
+- 信号 ``result_selected``/``context_menu_requested``：
+  解耦视图与主窗口，主窗口通过信号接收选中/右键事件
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ from __future__ import annotations
 from typing import Sequence
 
 try:
-    from PySide2.QtCore import QModelIndex, QPoint, Qt, Signal
+    from PySide2.QtCore import QPoint, Qt, Signal
     from PySide2.QtGui import QStandardItem, QStandardItemModel
     from PySide2.QtWidgets import QTreeView
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QModelIndex, QPoint, Qt, Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtCore import QPoint, Qt, Signal  # pyrefly: ignore [missing-import]
     from PySide6.QtGui import QStandardItem, QStandardItemModel  # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QTreeView  # pyrefly: ignore [missing-import]
 
@@ -80,14 +80,12 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
     """扫描结果树视图，封装模型与三种分组模式的填充逻辑。
 
     主窗口通过 :meth:`populate` 传入报告，通过 :meth:`refresh` 触发按当前
-    筛选条件与分组模式重建模型。选中/双击/右键事件通过信号抛出，由主窗口
+    筛选条件与分组模式重建模型。选中/右键事件通过信号抛出，由主窗口
     路由到详情区或上下文菜单。
     """
 
     # 选中项变化：携带 ScanResult 或 None（空选/分组顶层项）
     result_selected = Signal(object)
-    # 双击项：携带 ScanResult（用于弹出独立详情对话框）
-    result_activated = Signal(object)
     # 右键菜单：携带右键位置的 viewport 坐标
     context_menu_requested = Signal(QPoint)
 
@@ -106,7 +104,6 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
         self.setColumnWidth(3, 60)
         self.setColumnWidth(4, 60)
         # 连接内部信号到本类的信号转发槽
-        self.doubleClicked.connect(self._handle_double_clicked)
         selection_model = self.selectionModel()
         if selection_model is not None:
             selection_model.selectionChanged.connect(self._handle_selection_changed)
@@ -246,19 +243,6 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
             if parent is not None:
                 result = parent.data(Qt.UserRole)
         self.result_selected.emit(result)  # pyrefly: ignore [missing-attribute]
-
-    def _handle_double_clicked(self, index: QModelIndex) -> None:
-        """双击：取该行 ScanResult，发出 result_activated 信号。"""
-        # itemFromIndex 对有效 index 必返回 QStandardItem（model 中所有 cell 均由 _make_result_row 创建）
-        first_col = self._result_model.itemFromIndex(index.sibling(index.row(), 0))
-        result = first_col.data(Qt.UserRole)
-        if result is None:
-            # _populate_flat 中命中规则子行未存 data，向上取父行（文件项）第 0 列
-            parent = first_col.parent()
-            if parent is not None:
-                result = parent.data(Qt.UserRole)
-        if result is not None:
-            self.result_activated.emit(result)  # pyrefly: ignore [missing-attribute]
 
     def contextMenuEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         """右键菜单：发出 context_menu_requested 信号，携带 viewport 坐标。"""
