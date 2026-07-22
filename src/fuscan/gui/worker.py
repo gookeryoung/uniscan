@@ -53,6 +53,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         max_depth: int | None = None,
         scan_archives: bool = False,
         max_workers: int | None = None,
+        max_file_size: int | None = None,
         ignore_dirs: tuple[str, ...] = (),
         ignore_extensions: tuple[str, ...] = (),
         cache: CacheStore | None = None,
@@ -66,6 +67,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._max_depth = max_depth
         self._scan_archives = scan_archives
         self._max_workers = max_workers
+        self._max_file_size = max_file_size
         self._ignore_dirs = ignore_dirs
         self._ignore_extensions = ignore_extensions
         self._cache: CacheStore | None = cache
@@ -126,6 +128,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                 max_depth=self._max_depth,
                 scan_archives=self._scan_archives,
                 max_workers=self._max_workers,
+                max_file_size=self._max_file_size,
                 on_progress=self._on_progress,
                 ignore_dirs=self._ignore_dirs,
                 ignore_extensions=self._ignore_extensions,

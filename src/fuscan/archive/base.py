@@ -85,6 +85,11 @@ class ArchiveReaderFactory:
         """按扩展名查询已注册的读取器类，未注册返回 None。"""
         return self._factories.get(extension.lower().lstrip("."))
 
+    @property
+    def registered_extensions(self) -> frozenset[str]:
+        """已注册的全部扩展名（小写，不含点）。"""
+        return frozenset(self._factories.keys())
+
     def create(self, path: Path, password: str | None = None) -> ArchiveReader | None:
         """按扩展名创建读取器实例。"""
         ext = path.suffix.lower().lstrip(".")

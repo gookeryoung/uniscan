@@ -60,6 +60,8 @@ class Config:
     max_workers: int = 8
     # 最大扫描深度（None 表示无限制）
     max_depth: int | None = None
+    # 跳过大于此大小的文件（字节），避免大文件读取导致卡死；0 表示不限制
+    max_file_size: int = 100 * 1024 * 1024
     # 是否启用扫描结果缓存（基于内容哈希跳过未变化文件，提升二次扫描速度）
     cache_enabled: bool = True
     # 缓存数据库路径（None 表示默认 ~/.fuscan/cache.db）

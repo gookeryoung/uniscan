@@ -42,6 +42,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         """加载当前配置到控件。"""
         self.max_workers_spin.setValue(self.config.max_workers)
         self.max_depth_spin.setValue(self.config.max_depth or 0)
+        # 字节转 MB（0 表示不限制，SpinBox 最小值 0 + specialValueText "不限制"）
+        self.max_file_size_spin.setValue(self.config.max_file_size // (1024 * 1024))
         self.scan_archives_check.setChecked(self.config.scan_archives)
         self.include_network_check.setChecked(self.config.include_network_drives)
         self.use_builtin_check.setChecked(self.config.use_builtin)
@@ -56,6 +58,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
 
         depth = self.max_depth_spin.value()
         self.config.max_depth = depth if depth > 0 else None
+        # MB 转 bytes（0 表示不限制，与 Scanner._normalize_max_file_size 语义一致）
+        self.config.max_file_size = self.max_file_size_spin.value() * 1024 * 1024
         self.config.scan_archives = self.scan_archives_check.isChecked()
         self.config.include_network_drives = self.include_network_check.isChecked()
         self.config.use_builtin = self.use_builtin_check.isChecked()

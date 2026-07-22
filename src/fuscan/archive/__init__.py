@@ -1,6 +1,6 @@
 """压缩文件扫描模块。
 
-提供 ZIP/RAR 压缩包条目列举与内容读取能力，供 ArchiveScanner 调用。
+提供 ZIP/RAR/7Z 压缩包条目列举与内容读取能力，供 ArchiveScanner 调用。
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from fuscan.archive.base import (
     is_archive,
 )
 from fuscan.archive.rar_reader import RarReader
+from fuscan.archive.sevenz_reader import SevenZReader
 from fuscan.archive.zip_reader import ZipReader
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "ArchiveReaderFactory",
     "ArchiveScanner",
     "RarReader",
+    "SevenZReader",
     "ZipReader",
     "default_factory",
     "get_reader",
@@ -38,6 +40,8 @@ def register_all(factory: ArchiveReaderFactory = default_factory) -> None:
         factory.register("zip", ZipReader)
     if factory.get("rar") is None:
         factory.register("rar", RarReader)
+    if factory.get("7z") is None:
+        factory.register("7z", SevenZReader)
 
 
 # 模块导入即注册

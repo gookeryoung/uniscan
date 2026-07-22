@@ -72,6 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument("-f", "--output-file", type=Path, default=None, help="输出到文件（默认 stdout）")
     scan_parser.add_argument("--max-depth", type=int, default=None, help="最大递归深度")
     scan_parser.add_argument(
+        "--max-file-size",
+        type=int,
+        default=None,
+        metavar="MB",
+        help="跳过大于此大小（MB）的文件，避免大文件卡死；0 表示不限制（默认走配置或 100MB）",
+    )
+    scan_parser.add_argument(
         "--ignore-dir", action="append", default=[], metavar="DIR", help="额外忽略目录名（可重复）"
     )
     scan_parser.add_argument("--no-builtin", action="store_true", help="禁用内置通用规则（需配合 -r 使用）")
@@ -204,6 +211,9 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     use_cache = config.cache_enabled and not args.no_cache
     cache_path = _resolve_cache_path(args.cache_path, config.cache_path)
 
+    # 大文件跳过阈值：CLI 参数优先（MB 转 byte），其次走配置，None 让 Scanner 用默认值
+    max_file_size = _resolve_max_file_size(args.max_file_size, config.max_file_size)
+
     if use_cache and cache_path is not None:
         # 仅在启用缓存时加载 SQLite 依赖
         from fuscan.cache import CacheStore, compute_source_files
@@ -214,6 +224,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             scanner = Scanner(
                 ruleset,
                 max_depth=args.max_depth,
+                max_file_size=max_file_size,
                 ignore_dirs=ignore_dirs,
                 ignore_extensions=tuple(config.ignore_extensions),
                 cache=cache,
@@ -226,6 +237,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         scanner = Scanner(
             ruleset,
             max_depth=args.max_depth,
+            max_file_size=max_file_size,
             ignore_dirs=ignore_dirs,
             ignore_extensions=tuple(config.ignore_extensions),
         )
@@ -335,6 +347,23 @@ def _resolve_cache_path(arg_path: Path | None, config_path: str | None) -> Path 
     from fuscan.cache import default_cache_path
 
     return default_cache_path()
+
+
+def _resolve_max_file_size(arg_mb: int | None, config_bytes: int) -> int | None:
+    """解析大文件跳过阈值：CLI 参数（MB）优先 > 配置（字节）> None（走 Scanner 默认）。
+
+    :param arg_mb: ``--max-file-size`` 参数值（MB 单位），None 表示未指定
+    :param config_bytes: ``Config.max_file_size`` 字节值
+    :return: 字节值；None 表示让 Scanner 走 ``_DEFAULT_MAX_FILE_SIZE``
+    """
+    if arg_mb is not None:
+        return arg_mb * 1024 * 1024
+    if config_bytes > 0:
+        return config_bytes
+    # config 显式设为 0 表示不限制，传给 Scanner 让其判断 0 不限制
+    if config_bytes == 0:
+        return 0
+    return None
 
 
 def _cmd_cache(args: argparse.Namespace) -> int:

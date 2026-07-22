@@ -1923,3 +1923,300 @@ class TestScannerBatchFlush:
             assert cache.stats().scanned_files >= 1
         finally:
             cache.close()
+
+
+class TestScannerCancelSpeedup:
+    """扫描取消加速测试（需求 req-13 R1）。
+
+    覆盖 ``_cancel_all_futures`` 辅助函数与流水线取消路径：
+    - 取消时对未启动 future 调 ``cancel()``，跳过 ``as_completed`` 阻塞等待
+    - 已运行 future 由 ``ThreadPoolExecutor`` 上下文退出时等待完成
+    - 单线程与多线程 archive 阶段取消路径
+    """
+
+    def test_cancel_all_futures_marks_cancelled(self) -> None:
+        """``_cancel_all_futures`` 对每个 future 调 ``cancel()``，未启动的会被标记为已取消。"""
+        from concurrent.futures import Future, ThreadPoolExecutor
+
+        from fuscan.scanner.scanner import _cancel_all_futures
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            # 提交一个慢任务占用 worker，确保后续 future 排队未启动
+            blocker = threading.Event()
+
+            def slow_task() -> str:
+                blocker.wait(timeout=2)
+                return "done"
+
+            running_future = pool.submit(slow_task)
+            # 排队的 future（worker 被占用，不会立即启动）
+            pending_futures: list[Future[str]] = [pool.submit(lambda: "x") for _ in range(3)]
+
+            # 对全部 future 调 _cancel_all_futures
+            _cancel_all_futures(pending_futures)
+
+            # 排队的 future 应全部被成功取消（cancel() 返回 True）
+            cancelled_count = sum(1 for f in pending_futures if f.cancelled())
+            assert cancelled_count == 3
+
+            # 释放阻塞任务，让 pool 正常退出
+            blocker.set()
+            assert running_future.result(timeout=2) == "done"
+
+    def test_cancel_all_futures_empty_iterable(self) -> None:
+        """``_cancel_all_futures`` 对空输入应安全返回。"""
+        from fuscan.scanner.scanner import _cancel_all_futures
+
+        # 空列表不应抛异常
+        _cancel_all_futures([])
+
+    def test_pipelined_cancel_skips_as_completed(self, tmp_path: Path) -> None:
+        """流水线 walk 阶段取消时跳过 ``as_completed`` 阻塞，快速返回。
+
+        构造 100 个文件 + 慢速内容提供器，确保 worker 线程被占用；
+        在首个进度回调时取消，验证 ``scan()`` 在合理时间内返回
+        （不阻塞等待所有 100 个 future）。
+        """
+        for i in range(100):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(
+            _build_ruleset(_filename_rule("r", "f")),
+            max_workers=2,
+            progress_interval=0.0,
+        )
+
+        cancelled_in_callback = threading.Event()
+
+        def cancel_on_first_progress(_info: ProgressInfo) -> None:
+            if not cancelled_in_callback.is_set():
+                cancelled_in_callback.set()
+                scanner.cancel()
+
+        scanner._on_progress = cancel_on_first_progress
+
+        start = time.perf_counter()
+        report = scanner.scan(tmp_path)
+        elapsed = time.perf_counter() - start
+
+        assert report.cancelled
+        # 取消应快速返回（不等待全部 100 个 future 完成）
+        # 2s 上限足够 worker 完成最多 2 个在途任务
+        assert elapsed < 2.0, f"取消耗时 {elapsed:.2f}s，可能未跳过 as_completed 阻塞"
+
+    def test_archive_phase_cancel_skips_as_completed(self, tmp_path: Path) -> None:
+        """archive 阶段取消时跳过 ``as_completed`` 阻塞，快速返回。"""
+        import zipfile
+
+        # 构造多个 zip，使 archive 阶段有多个 future 排队
+        for i in range(10):
+            with zipfile.ZipFile(str(tmp_path / f"a{i}.zip"), "w") as zf:
+                zf.writestr("secret.txt", "x")
+
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        scanner = Scanner(
+            rs,
+            scan_archives=True,
+            max_workers=2,
+            progress_interval=0.0,
+        )
+
+        # 在首个进度回调时取消（archive 阶段会触发进度回调）
+        cancelled_in_callback = threading.Event()
+
+        def cancel_on_first_progress(_info: ProgressInfo) -> None:
+            if not cancelled_in_callback.is_set():
+                cancelled_in_callback.set()
+                scanner.cancel()
+
+        scanner._on_progress = cancel_on_first_progress
+
+        start = time.perf_counter()
+        report = scanner.scan(tmp_path)
+        elapsed = time.perf_counter() - start
+
+        assert report.cancelled
+        # 取消应快速返回
+        assert elapsed < 3.0, f"archive 取消耗时 {elapsed:.2f}s"
+
+    def test_cancel_during_drain_does_not_block(self, tmp_path: Path) -> None:
+        """walk 阶段非阻塞 drain 后取消应快速退出。
+
+        构造 600+ 文件触发多次 drain（每 500 个 future drain 一次），
+        在 drain 后取消，验证不阻塞等待全部 future。
+        """
+        for i in range(600):
+            (tmp_path / f"f{i}.txt").write_text("x", encoding="utf-8")
+        scanner = Scanner(
+            _build_ruleset(_filename_rule("r", "f")),
+            max_workers=2,
+            progress_interval=0.0,
+        )
+
+        cancelled_after_drain = threading.Event()
+
+        def cancel_on_progress(_info: ProgressInfo) -> None:
+            if not cancelled_after_drain.is_set() and _info.scanned >= 100:
+                cancelled_after_drain.set()
+                scanner.cancel()
+
+        scanner._on_progress = cancel_on_progress
+
+        start = time.perf_counter()
+        report = scanner.scan(tmp_path)
+        elapsed = time.perf_counter() - start
+
+        assert report.cancelled
+        assert elapsed < 3.0, f"drain 后取消耗时 {elapsed:.2f}s"
+
+
+class TestScannerMaxFileSize:
+    """大文件跳过阈值测试（需求 req-13 R2）。
+
+    覆盖 ``_normalize_max_file_size`` 规范化逻辑与缓存/非缓存模式下
+    超大文件跳过内容提取的行为。
+    """
+
+    def test_normalize_max_file_size_none_returns_default(self) -> None:
+        """``None`` 退化为默认值 100MB。"""
+        from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
+
+        assert Scanner._normalize_max_file_size(None) == _DEFAULT_MAX_FILE_SIZE
+        assert Scanner._normalize_max_file_size(None) == 100 * 1024 * 1024
+
+    def test_normalize_max_file_size_negative_returns_default(self) -> None:
+        """负数退化为默认值。"""
+        from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
+
+        assert Scanner._normalize_max_file_size(-1) == _DEFAULT_MAX_FILE_SIZE
+        assert Scanner._normalize_max_file_size(-100) == _DEFAULT_MAX_FILE_SIZE
+
+    def test_normalize_max_file_size_zero_means_unlimited(self) -> None:
+        """0 表示不限制。"""
+        assert Scanner._normalize_max_file_size(0) == 0
+
+    def test_normalize_max_file_size_positive_value(self) -> None:
+        """正数原样返回。"""
+        assert Scanner._normalize_max_file_size(1024) == 1024
+        assert Scanner._normalize_max_file_size(50 * 1024 * 1024) == 50 * 1024 * 1024
+
+    def test_scanner_default_max_file_size(self) -> None:
+        """未传入 ``max_file_size`` 时使用默认值 100MB。"""
+        from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
+
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
+        assert scanner._max_file_size == _DEFAULT_MAX_FILE_SIZE
+
+    def test_scanner_explicit_max_file_size(self) -> None:
+        """显式传入 ``max_file_size`` 时使用传入值。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")), max_file_size=1024)
+        assert scanner._max_file_size == 1024
+
+    def test_scanner_max_file_size_zero_unlimited(self) -> None:
+        """``max_file_size=0`` 表示不限制。"""
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")), max_file_size=0)
+        assert scanner._max_file_size == 0
+
+    def test_scanner_max_file_size_negative_falls_back_to_default(self) -> None:
+        """``max_file_size`` 为负数时退化为默认值。"""
+        from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
+
+        scanner = Scanner(_build_ruleset(_filename_rule("r", "x")), max_file_size=-1)
+        assert scanner._max_file_size == _DEFAULT_MAX_FILE_SIZE
+
+    def test_scan_skips_oversize_file_content(self, tmp_path: Path) -> None:
+        """非缓存模式下超过 ``max_file_size`` 的文件不读取内容（内容规则不命中）。"""
+        # 写入超过 10 字节的大文件
+        big_content = "x" * 100 + "password"
+        (tmp_path / "big.txt").write_text(big_content, encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        # 设置阈值为 10 字节，big.txt 超过阈值
+        scanner = Scanner(rs, max_file_size=10)
+        report = scanner.scan(tmp_path)
+        # 大文件内容被跳过，content 规则不命中
+        assert report.stats.matched_files == 0
+
+    def test_scan_keeps_filename_rule_on_oversize_file(self, tmp_path: Path) -> None:
+        """大文件跳过内容提取，但 filename 规则仍应命中。"""
+        (tmp_path / "secret.txt").write_text("x" * 100, encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("敏感名", "secret"))
+        # 阈值远小于文件大小
+        scanner = Scanner(rs, max_file_size=10)
+        report = scanner.scan(tmp_path)
+        # filename 规则不依赖内容，应命中
+        assert report.stats.matched_files == 1
+
+    def test_scan_max_file_size_zero_scans_all_content(self, tmp_path: Path) -> None:
+        """``max_file_size=0`` 不限制，大文件内容仍被扫描。"""
+        big_content = "x" * 100 + "password"
+        (tmp_path / "big.txt").write_text(big_content, encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs, max_file_size=0)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 1
+
+    def test_scan_cached_skips_oversize_file_content(self, tmp_path: Path) -> None:
+        """缓存模式下超过 ``max_file_size`` 的文件不读取内容。"""
+        from fuscan.cache import CacheStore
+
+        big_content = "x" * 100 + "password"
+        (tmp_path / "big.txt").write_text(big_content, encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache = CacheStore(tmp_path / "cache.db")
+        try:
+            # 阈值远小于文件大小
+            scanner = Scanner(rs, cache=cache, max_file_size=10)
+            report = scanner.scan(tmp_path)
+            # 大文件内容被跳过，content 规则不命中
+            assert report.stats.matched_files == 0
+        finally:
+            cache.close()
+
+    def test_scan_cached_zero_scans_all_content(self, tmp_path: Path) -> None:
+        """缓存模式下 ``max_file_size=0`` 不限制，大文件内容仍被扫描。"""
+        from fuscan.cache import CacheStore
+
+        big_content = "x" * 100 + "password"
+        (tmp_path / "big.txt").write_text(big_content, encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        cache = CacheStore(tmp_path / "cache.db")
+        try:
+            scanner = Scanner(rs, cache=cache, max_file_size=0)
+            report = scanner.scan(tmp_path)
+            assert report.stats.matched_files == 1
+        finally:
+            cache.close()
+
+    def test_archive_scanner_inherits_max_file_size(self, tmp_path: Path) -> None:
+        """``Scanner`` 应将 ``max_file_size`` 传递给 ``ArchiveScanner.max_entry_size``。"""
+        import zipfile
+
+        zip_path = tmp_path / "a.zip"
+        with zipfile.ZipFile(str(zip_path), "w") as zf:
+            zf.writestr("big.txt", "x" * 100 + "password")
+            zf.writestr("small.txt", "password")
+
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        # 阈值为 10 字节：big.txt 超过，small.txt 未超过
+        scanner = Scanner(rs, scan_archives=True, max_file_size=10)
+        report = scanner.scan(tmp_path)
+        # 只有 small.txt 命中（big.txt 被跳过）
+        hit_paths = [str(r.path) for r in report.hits]
+        assert any("small.txt" in p for p in hit_paths)
+        assert not any("big.txt" in p for p in hit_paths)
+
+    def test_archive_scanner_zero_scans_all_entries(self, tmp_path: Path) -> None:
+        """``max_file_size=0`` 时 archive 内所有条目都被扫描。"""
+        import zipfile
+
+        zip_path = tmp_path / "a.zip"
+        with zipfile.ZipFile(str(zip_path), "w") as zf:
+            zf.writestr("big.txt", "x" * 100 + "password")
+            zf.writestr("small.txt", "password")
+
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs, scan_archives=True, max_file_size=0)
+        report = scanner.scan(tmp_path)
+        # 两个条目都应命中
+        assert report.stats.matched_files >= 2

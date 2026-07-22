@@ -1018,6 +1018,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             scan_archives=self._config.scan_archives,
             max_workers=self._config.max_workers,
             max_depth=self._config.max_depth,
+            max_file_size=self._config.max_file_size,
             ignore_dirs=tuple(self._config.ignore_dirs),
             ignore_extensions=tuple(self._config.ignore_extensions),
             cache=cache,

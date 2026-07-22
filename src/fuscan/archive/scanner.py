@@ -1,6 +1,6 @@
 """压缩文件扫描器：对压缩包内条目应用规则集。
 
-读取压缩包（ZIP/RAR）内文件，为每个条目构造合成 FileEntry，
+读取压缩包（ZIP/RAR/7Z）内文件，为每个条目构造合成 FileEntry，
 通过内存字节直接复用已有提取器链，避免临时文件磁盘 I/O，最终输出 ScanResult 列表。
 """
 
@@ -44,7 +44,7 @@ class ArchiveScanner:
         self,
         ruleset: RuleSet,
         password: str | None = None,
-        max_entry_size: int = 50 * 1024 * 1024,
+        max_entry_size: int = 100 * 1024 * 1024,
         cache: CacheStore | None = None,
     ) -> None:
         self._ruleset = ruleset
@@ -286,8 +286,11 @@ class ArchiveScanner:
         entry: ArchiveEntry,
         reader: ArchiveReader,
     ) -> bytes:
-        """读取压缩包条目字节，超大或读取失败时返回空字节。"""
-        if entry.size > self._max_entry_size:
+        """读取压缩包条目字节，超大或读取失败时返回空字节。
+
+        ``max_entry_size=0`` 表示不限制（与 ``Scanner.max_file_size=0`` 语义一致）。
+        """
+        if self._max_entry_size > 0 and entry.size > self._max_entry_size:
             logger.debug("条目过大，跳过内容提取: %s", entry.display_path)
             return b""
         try:
