@@ -621,6 +621,7 @@ class CacheStore:
         可直接复用已登记的 ``file_hash``，跳过 ``read_bytes`` 与哈希计算。
 
         线程安全：使用线程本地只读连接，无锁并行（iter-68）。
+        查询优化：JOIN 替代 IN 子查询 + 复合索引（iter-70），消除全表扫描。
 
         安全性说明：mtime 可被人为修改，本方法仅作为性能优化；
         对安全性敏感场景，调用方可关闭此预筛（始终走哈希校验）。
@@ -630,13 +631,14 @@ class CacheStore:
         :param size: 当前文件大小（字节）
         :return: 命中时返回 ``file_hash``（64 字符 hex）；未命中返回 None
         """
+        # JOIN 形式：先用 idx_paths_path_mtime 按 (path, mtime) 定位，
+        # 再用 scanned_files 主键 (file_hash) JOIN 验证 size，全程索引扫描
         row = (
             self._get_read_conn()
             .execute(
-                "SELECT file_hash FROM file_paths "
-                "WHERE path = ? AND mtime = ? AND file_hash IN ("
-                "  SELECT file_hash FROM scanned_files WHERE size = ?"
-                ")",
+                "SELECT fp.file_hash FROM file_paths fp "
+                "JOIN scanned_files sf ON fp.file_hash = sf.file_hash "
+                "WHERE fp.path = ? AND fp.mtime = ? AND sf.size = ?",
                 (str(path), mtime, size),
             )
             .fetchone()

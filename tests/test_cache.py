@@ -1157,6 +1157,21 @@ class TestMigrate:
         assert version == CURRENT_VERSION
         conn.close()
 
+    def test_migrate_v5_creates_indexes(self, tmp_path: Path) -> None:
+        """iter-70：schema v5 应创建 idx_scanned_size 和 idx_paths_path_mtime 索引。"""
+        conn = sqlite3.connect(str(tmp_path / "idx.db"))
+        conn.row_factory = sqlite3.Row
+        migrate(conn)
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'"
+            ).fetchall()
+        }
+        assert "idx_scanned_size" in indexes
+        assert "idx_paths_path_mtime" in indexes
+        conn.close()
+
 
 class TestCacheCompatVersion:
     """缓存数据兼容版本号管理（iter-38）。"""

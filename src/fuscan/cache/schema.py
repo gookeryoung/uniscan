@@ -40,7 +40,7 @@ __all__ = ["CACHE_COMPAT_VERSION", "CURRENT_VERSION", "SCHEMA_SQL", "migrate"]
 logger = logging.getLogger(__name__)
 
 # schema DDL 版本号：每次 DDL 变更递增，对应一次 migrate 步骤
-CURRENT_VERSION: int = 4
+CURRENT_VERSION: int = 5
 
 # 缓存数据兼容版本号：仅在哈希算法/序列化格式等数据语义变更时递增。
 # v1：SHA-256 哈希
@@ -105,7 +105,13 @@ CREATE TABLE IF NOT EXISTS file_paths (
     FOREIGN KEY (file_hash) REFERENCES scanned_files(file_hash) ON DELETE CASCADE
 );
 
+-- iter-70：path 单列索引保留向后兼容；新增 (path, mtime) 复合索引
+-- 让 lookup_file_hash 的 WHERE path=? AND mtime=? 只用索引即可完成过滤
 CREATE INDEX IF NOT EXISTS idx_paths_path ON file_paths(path);
+CREATE INDEX IF NOT EXISTS idx_paths_path_mtime ON file_paths(path, mtime);
+
+-- iter-70：scanned_files 按 size 过滤的索引，消除 lookup_file_hash 子查询全表扫描
+CREATE INDEX IF NOT EXISTS idx_scanned_size ON scanned_files(size);
 
 CREATE TABLE IF NOT EXISTS scan_results (
     file_hash        TEXT NOT NULL,
@@ -246,6 +252,8 @@ def migrate(conn: sqlite3.Connection) -> int:
         # v2 → v3：兼容版本号升级触发 purge 后走此路径重建（iter-39）
         # v3 → v4：新增 extracted_contents 表（iter-39），IF NOT EXISTS 安全升级
         # v4 → v5：兼容版本号升级（iter-41，match_texts/match_description）触发 purge 后重建
+        # v5 → v6：新增 idx_scanned_size + idx_paths_path_mtime 索引（iter-70），
+        #          IF NOT EXISTS 安全升级，不触发 purge
         conn.executescript(SCHEMA_SQL)
         current = CURRENT_VERSION
         conn.execute(f"PRAGMA user_version = {current}")
