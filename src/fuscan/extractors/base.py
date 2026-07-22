@@ -46,6 +46,11 @@ class Extractor(ABC):
     def supported_extensions(self) -> tuple[str, ...]:
         """该提取器支持的文件扩展名列表（不含点，小写）。"""
 
+    @property
+    def display_name(self) -> str:
+        """提取器的中文显示名称，供 GUI 勾选区展示。默认返回类名，子类可覆盖。"""
+        return type(self).__name__
+
     @abstractmethod
     def extract(self, path: Path) -> str:
         """提取文件文本内容。
@@ -93,6 +98,24 @@ class ExtractorRegistry:
     def registered_extensions(self) -> tuple[str, ...]:
         """已注册的所有扩展名。"""
         return tuple(sorted(self._extractors.keys()))
+
+    def list_extractors(self) -> list[tuple[str, str, tuple[str, ...]]]:
+        """列出所有已注册的提取器信息，供 GUI 勾选区展示。
+
+        :return: ``[(class_name, display_name, supported_extensions), ...]`` 列表，
+                 按 display_name 排序。同一提取器实例支持多个扩展名时合并为一项。
+        """
+        seen: dict[int, tuple[str, str, tuple[str, ...]]] = {}
+        for _ext, extractor in self._extractors.items():
+            obj_id = id(extractor)
+            if obj_id not in seen:
+                exts = extractor.supported_extensions
+                seen[obj_id] = (
+                    type(extractor).__name__,
+                    extractor.display_name,
+                    tuple(sorted(e.lower().lstrip(".") for e in exts)),
+                )
+        return sorted(seen.values(), key=lambda x: x[1])
 
     def extract(self, path: Path, extension: str | None = None) -> str:
         """按扩展名提取文件内容。

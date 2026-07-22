@@ -39,6 +39,12 @@ class WpsExtractor(Extractor):
         return ("wps", "et", "dps")
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "WPS 文档"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 WPS 文档文本，按 OOXML 子类型分发到对应提取逻辑。"""
         try:

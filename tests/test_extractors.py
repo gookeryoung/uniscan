@@ -931,6 +931,48 @@ class TestExtractorRegistry:
         for expected in ("txt", "pdf", "docx", "pptx", "xlsx", "odt", "ods", "wps"):
             assert expected in exts, f"默认注册表缺少 {expected}"
 
+    def test_list_extractors_returns_unique_entries(self) -> None:
+        """list_extractors 返回去重后的提取器列表（同一实例多扩展名合并为一项）。"""
+        extractors = default_registry.list_extractors()
+        # 14 个提取器类，每个对应一项
+        class_names = [entry[0] for entry in extractors]
+        assert len(class_names) == len(set(class_names)), "提取器列表有重复"
+        # 按 display_name 排序
+        display_names = [entry[1] for entry in extractors]
+        assert display_names == sorted(display_names)
+
+    def test_list_extractors_entry_format(self) -> None:
+        """list_extractors 返回元组格式为 (class_name, display_name, extensions)。"""
+        extractors = default_registry.list_extractors()
+        for class_name, display_name, exts in extractors:
+            assert isinstance(class_name, str) and class_name
+            assert isinstance(display_name, str) and display_name
+            assert isinstance(exts, tuple) and exts
+            # 扩展名均为小写无点
+            for e in exts:
+                assert e == e.lower().lstrip(".")
+
+    def test_display_name_returns_chinese(self) -> None:
+        """各提取器 display_name 返回非空中文名称。"""
+        names = {
+            TextExtractor: "纯文本",
+            PdfExtractor: "PDF",
+            DocxExtractor: "Word（DOCX）",
+            PptxExtractor: "PowerPoint（PPTX）",
+            XlsxExtractor: "Excel（XLSX）",
+            OdsExtractor: "ODS 表格",
+            OdtExtractor: "ODT 文档",
+            WpsExtractor: "WPS 文档",
+            RtfExtractor: "RTF",
+            EmlExtractor: "邮件（EML）",
+            MsgExtractor: "Outlook 邮件（MSG）",
+            XlsExtractor: "Excel（XLS）",
+            DocExtractor: "Word（DOC）",
+            PptExtractor: "PowerPoint（PPT）",
+        }
+        for cls, expected in names.items():
+            assert cls().display_name == expected, f"{cls.__name__}.display_name 应为 {expected}"
+
 
 # ---------------------------------------------------------------------------
 # 集成函数

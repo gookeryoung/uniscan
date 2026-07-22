@@ -28,6 +28,12 @@ class OdtExtractor(Extractor):
         return ("odt",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "ODT 文档"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 ODT 文档的段落与标题文本。"""
         try:

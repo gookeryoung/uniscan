@@ -31,6 +31,12 @@ class PdfExtractor(Extractor):
         return ("pdf",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "PDF"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 PDF 文本内容，加密文档返回空字符串。"""
         try:

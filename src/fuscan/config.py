@@ -66,9 +66,10 @@ class Config:
     cache_enabled: bool = True
     # 是否启用性能详细日志（PerfTimer，iter-69 起持久化）
     perf_log_enabled: bool = False
-    # 全局扫描后缀过滤（iter-71）：None 或空列表表示扫描所有文件，
-    # 非空列表表示只扫描指定后缀的文件。替代原规则级 file_extensions。
-    scan_extensions: list[str] | None = None
+    # 已禁用的提取器类名列表（iter-72）：默认空列表表示全部启用，
+    # 用户在主界面勾选区取消的提取器类名追加到此列表，对应文件类型不扫描。
+    # 替代 iter-71 的 scan_extensions 方案，改为按解析器粒度勾选。
+    disabled_extractors: list[str] = field(default_factory=list)
     # 缓存数据库路径（None 表示默认 ~/.fuscan/cache.db）
     cache_path: str | None = None
     # 忽略目录名（按目录名匹配任意层级，大小写不敏感）

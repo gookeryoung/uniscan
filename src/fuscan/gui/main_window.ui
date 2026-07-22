@@ -357,6 +357,64 @@
               </widget>
              </item>
              <item>
+              <widget class="QGroupBox" name="file_types_group">
+               <property name="title">
+                <string>文件类型</string>
+               </property>
+               <property name="toolTip">
+                <string>勾选要扫描的文件类型，取消可提高扫描速度</string>
+               </property>
+               <layout class="QVBoxLayout" name="file_types_layout">
+                <property name="spacing">
+                 <number>4</number>
+                </property>
+                <property name="leftMargin">
+                 <number>0</number>
+                </property>
+                <property name="topMargin">
+                 <number>4</number>
+                </property>
+                <property name="rightMargin">
+                 <number>0</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>4</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="file_types_hint_label">
+                  <property name="text">
+                   <string>勾选要扫描的文件类型，取消可提高扫描速度</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QFrame" name="file_types_container">
+                  <property name="frameShape">
+                   <enum>QFrame::NoFrame</enum>
+                  </property>
+                  <layout class="QGridLayout" name="file_types_grid">
+                   <property name="leftMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>0</number>
+                   </property>
+                   <property name="spacing">
+                    <number>8</number>
+                   </property>
+                  </layout>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
               <widget class="QFrame" name="setup_action_bar">
                <property name="frameShape">
                 <enum>QFrame::NoFrame</enum>

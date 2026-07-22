@@ -198,6 +198,30 @@ class Ui_MainWindow(object):
 
         self.setup_layout.addWidget(self.target_group)
 
+        self.file_types_group = QGroupBox(self.setup_page)
+        self.file_types_group.setObjectName(u"file_types_group")
+        self.file_types_layout = QVBoxLayout(self.file_types_group)
+        self.file_types_layout.setSpacing(4)
+        self.file_types_layout.setObjectName(u"file_types_layout")
+        self.file_types_layout.setContentsMargins(0, 4, 0, 4)
+        self.file_types_hint_label = QLabel(self.file_types_group)
+        self.file_types_hint_label.setObjectName(u"file_types_hint_label")
+
+        self.file_types_layout.addWidget(self.file_types_hint_label)
+
+        self.file_types_container = QFrame(self.file_types_group)
+        self.file_types_container.setObjectName(u"file_types_container")
+        self.file_types_container.setFrameShape(QFrame.NoFrame)
+        self.file_types_grid = QGridLayout(self.file_types_container)
+        self.file_types_grid.setSpacing(8)
+        self.file_types_grid.setObjectName(u"file_types_grid")
+        self.file_types_grid.setContentsMargins(0, 0, 0, 0)
+
+        self.file_types_layout.addWidget(self.file_types_container)
+
+
+        self.setup_layout.addWidget(self.file_types_group)
+
         self.setup_action_bar = QFrame(self.setup_page)
         self.setup_action_bar.setObjectName(u"setup_action_bar")
         self.setup_action_bar.setFrameShape(QFrame.NoFrame)
@@ -732,6 +756,11 @@ class Ui_MainWindow(object):
         self.path_combo.setToolTip(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u8def\u5f84\uff08\u53ef\u4ece\u5386\u53f2\u8bb0\u5f55\u4e2d\u9009\u62e9\uff09", None))
 #endif // QT_CONFIG(tooltip)
         self.select_path_btn.setText(QCoreApplication.translate("MainWindow", u"\u9009\u62e9...", None))
+        self.file_types_group.setTitle(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6\u7c7b\u578b", None))
+#if QT_CONFIG(tooltip)
+        self.file_types_group.setToolTip(QCoreApplication.translate("MainWindow", u"\u52fe\u9009\u8981\u626b\u63cf\u7684\u6587\u4ef6\u7c7b\u578b\uff0c\u53d6\u6d88\u53ef\u63d0\u9ad8\u626b\u63cf\u901f\u5ea6", None))
+#endif // QT_CONFIG(tooltip)
+        self.file_types_hint_label.setText(QCoreApplication.translate("MainWindow", u"\u52fe\u9009\u8981\u626b\u63cf\u7684\u6587\u4ef6\u7c7b\u578b\uff0c\u53d6\u6d88\u53ef\u63d0\u9ad8\u626b\u63cf\u901f\u5ea6", None))
 #if QT_CONFIG(tooltip)
         self.view_results_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u67e5\u770b\u4e0a\u6b21\u626b\u63cf\u7ed3\u679c", None))
 #endif // QT_CONFIG(tooltip)

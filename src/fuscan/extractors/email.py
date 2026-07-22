@@ -44,6 +44,12 @@ class EmlExtractor(Extractor):
         return ("eml",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "邮件（EML）"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 EML 邮件主题、发件人与正文。"""
         try:
@@ -121,6 +127,12 @@ class MsgExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 MSG 提取器支持的扩展名。"""
         return ("msg",)
+
+    @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "Outlook 邮件（MSG）"
 
     @override
     def extract(self, path: Path) -> str:

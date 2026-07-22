@@ -27,6 +27,12 @@ class RtfExtractor(Extractor):
         return ("rtf",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "RTF"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 RTF 文件纯文本内容。"""
         try:

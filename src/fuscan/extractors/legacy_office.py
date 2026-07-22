@@ -75,6 +75,12 @@ class XlsExtractor(Extractor):
         return ("xls",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "Excel（XLS）"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 XLS 工作表单元格文本。"""
         try:
@@ -123,6 +129,12 @@ class DocExtractor(Extractor):
         return ("doc",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "Word（DOC）"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 DOC 文档文本。"""
         try:
@@ -166,6 +178,12 @@ class PptExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 PPT 提取器支持的扩展名。"""
         return ("ppt",)
+
+    @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "PowerPoint（PPT）"
 
     @override
     def extract(self, path: Path) -> str:

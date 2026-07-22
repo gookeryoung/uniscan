@@ -36,6 +36,12 @@ class XlsxExtractor(Extractor):
         return ("xlsx", "xlsm")
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "Excel（XLSX）"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 XLSX 工作簿所有工作表的单元格文本。"""
         try:
@@ -97,6 +103,12 @@ class OdsExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 ODS 提取器支持的扩展名。"""
         return ("ods",)
+
+    @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "ODS 表格"
 
     @override
     def extract(self, path: Path) -> str:

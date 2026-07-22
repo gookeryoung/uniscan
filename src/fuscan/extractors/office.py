@@ -29,6 +29,12 @@ class DocxExtractor(Extractor):
         return ("docx",)
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "Word（DOCX）"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取 DOCX 段落、表格与页眉页脚文本。"""
         try:
@@ -81,6 +87,12 @@ class PptxExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 PPTX 提取器支持的扩展名。"""
         return ("pptx",)
+
+    @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "PowerPoint（PPTX）"
 
     @override
     def extract(self, path: Path) -> str:

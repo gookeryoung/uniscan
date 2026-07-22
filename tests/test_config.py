@@ -49,6 +49,11 @@ class TestConfig:
         config = Config()
         assert config.perf_log_enabled is False
 
+    def test_default_disabled_extractors(self) -> None:
+        """默认不禁用任何提取器（iter-72）。"""
+        config = Config()
+        assert config.disabled_extractors == []
+
 
 class TestLoadConfig:
     def test_load_nonexistent_returns_default(self, tmp_path: Path) -> None:
@@ -208,6 +213,14 @@ class TestSaveConfig:
         save_config(original, config_file)
         loaded = load_config(config_file)
         assert loaded.perf_log_enabled is True
+
+    def test_save_and_load_disabled_extractors(self, tmp_path: Path) -> None:
+        """已禁用提取器列表持久化（iter-72）。"""
+        config_file = tmp_path / "config.yaml"
+        original = Config(disabled_extractors=["PdfExtractor", "DocxExtractor"])
+        save_config(original, config_file)
+        loaded = load_config(config_file)
+        assert loaded.disabled_extractors == ["PdfExtractor", "DocxExtractor"]
 
     def test_load_config_os_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """文件打开失败时返回默认配置。"""

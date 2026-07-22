@@ -105,6 +105,12 @@ class TextExtractor(Extractor):
         return TEXT_EXTENSIONS
 
     @override
+    @property
+    def display_name(self) -> str:
+        """返回提取器的中文显示名称。"""
+        return "纯文本"
+
+    @override
     def extract(self, path: Path) -> str:
         """提取纯文本内容，自动检测编码并应用大小限制。"""
         try:
