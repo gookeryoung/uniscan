@@ -11,7 +11,7 @@ import sys
 try:
     import PySide2  # noqa: F401
 except ImportError:  # pragma: no cover
-    import PySide6  # noqa: F401
+    import PySide6  # noqa: F401  # pyrefly: ignore [missing-import]
 
 from fuscan.gui.app import launch
 
