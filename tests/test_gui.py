@@ -6400,7 +6400,7 @@ class TestMainWindowIgnore:
         """_save_ignore_to_config 应将编辑器文本按行写入 config.ignore_dirs，过滤空行。"""
         window = MainWindow()
         window.ignore_dirs_edit.setPlainText("new_dir\n.git\n\n  \n")
-        window._save_ignore_to_config()
+        window._content_panel._save_ignore_to_config()
         assert window._config.ignore_dirs == ["new_dir", ".git"]
         window.close()
 
@@ -6408,7 +6408,7 @@ class TestMainWindowIgnore:
         """_save_ignore_to_config 应将扩展名编辑器文本按行写入 config.ignore_extensions。"""
         window = MainWindow()
         window.ignore_extensions_edit.setPlainText("pyc\nexe\n\n")
-        window._save_ignore_to_config()
+        window._content_panel._save_ignore_to_config()
         assert window._config.ignore_extensions == ["pyc", "exe"]
         window.close()
 
@@ -6416,7 +6416,7 @@ class TestMainWindowIgnore:
         """保存时应 strip 每行首尾空白。"""
         window = MainWindow()
         window.ignore_dirs_edit.setPlainText("  .git  \n  node_modules  \n")
-        window._save_ignore_to_config()
+        window._content_panel._save_ignore_to_config()
         assert window._config.ignore_dirs == [".git", "node_modules"]
         window.close()
 
@@ -6424,18 +6424,92 @@ class TestMainWindowIgnore:
         """编辑器 textChanged 应启动节流 timer，500ms 后保存。"""
         window = MainWindow()
         # 确保初始未运行
-        assert not window._ignore_save_timer.isActive()
+        assert not window._content_panel._ignore_save_timer.isActive()
         window.ignore_dirs_edit.setPlainText("new_dir\n.git")
         # textChanged 触发 _on_ignore_changed 启动 timer
-        assert window._ignore_save_timer.isActive()
-        window._ignore_save_timer.stop()
+        assert window._content_panel._ignore_save_timer.isActive()
+        window._content_panel._ignore_save_timer.stop()
         window.close()
 
     def test_apply_config_does_not_trigger_save_on_load(self, qapp: QApplication) -> None:
         """_apply_config 加载忽略项时 blockSignals 避免触发节流保存循环。"""
         window = MainWindow()
         # 加载后 timer 不应被触发
-        assert not window._ignore_save_timer.isActive()
+        assert not window._content_panel._ignore_save_timer.isActive()
+        window.close()
+
+
+class TestContentTabPanel:
+    """ContentTabPanel 控制器测试（iter-79：MVC 内聚重构）。"""
+
+    def test_initial_state_all_enabled(self, qapp: QApplication) -> None:
+        """构造后所有提取器勾选，disabled_extractors 为空，enabled_extensions 为 None。"""
+        window = MainWindow()
+        panel = window._content_panel
+        assert panel.disabled_extractors() == []
+        assert panel.enabled_extensions() is None
+        assert panel.archives_enabled() is True
+        window.close()
+
+    def test_apply_config_restores_disabled_extractors(self, qapp: QApplication) -> None:
+        """apply_config 从配置恢复勾选状态，向后兼容旧 scan_archives=False。"""
+        window = MainWindow()
+        config = window._config
+        config.disabled_extractors = ["PdfExtractor"]
+        config.scan_archives = False
+        window._content_panel.apply_config(config)
+        # disabled_extractors 应含 PdfExtractor，向后兼容补充 ArchiveFiles
+        assert "PdfExtractor" in window._content_panel.disabled_extractors()
+        assert "ArchiveFiles" in window._content_panel.disabled_extractors()
+        assert window._content_panel.archives_enabled() is False
+        window.close()
+
+    def test_extractor_toggle_saves_config_and_updates_count(self, qapp: QApplication) -> None:
+        """通过模型 setData 切换勾选触发 _on_extractor_toggled：保存配置且更新计数标签。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 取消勾选第一个提取器（PdfExtractor）
+        panel._extractor_model.set_disabled_extractors(["PdfExtractor"])
+        # _on_extractor_toggled 应已被 extractors_changed 信号触发
+        assert "PdfExtractor" in window._config.disabled_extractors
+        # 计数标签应反映 1 个被取消
+        assert "已勾选" in panel._count_label.text()
+        window.close()
+
+    def test_flush_pending_save_writes_when_timer_active(self, qapp: QApplication) -> None:
+        """flush_pending_save 在 timer 活跃时立即写入配置。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 编辑忽略项触发节流 timer
+        window.ignore_dirs_edit.setPlainText("flush_dir\n.git")
+        assert panel._ignore_save_timer.isActive()
+        # flush 立即保存
+        panel.flush_pending_save()
+        assert not panel._ignore_save_timer.isActive()
+        assert window._config.ignore_dirs == ["flush_dir", ".git"]
+        window.close()
+
+    def test_flush_pending_save_noop_when_timer_inactive(self, qapp: QApplication) -> None:
+        """flush_pending_save 在 timer 未活跃时无副作用。"""
+        window = MainWindow()
+        panel = window._content_panel
+        assert not panel._ignore_save_timer.isActive()
+        # 记录当前 ignore_dirs，flush 后应保持不变
+        before = list(window._config.ignore_dirs)
+        panel.flush_pending_save()
+        assert window._config.ignore_dirs == before
+        window.close()
+
+    def test_archives_enabled_disabled_via_model(self, qapp: QApplication) -> None:
+        """通过模型切换压缩包分类勾选，archives_enabled 反映状态。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 默认勾选压缩包
+        assert panel.archives_enabled() is True
+        # 取消勾选压缩包
+        panel._extractor_model.set_disabled_extractors(["ArchiveFiles"])
+        assert panel.archives_enabled() is False
+        assert window._config.scan_archives is False
         window.close()
 
 

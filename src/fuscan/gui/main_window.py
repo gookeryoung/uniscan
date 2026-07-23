@@ -80,11 +80,10 @@ except ImportError:  # pragma: no cover
 from fuscan import __author__, __description__, __license__, __version__, theme
 from fuscan.builtin import load_with_builtin
 from fuscan.config import Config, detect_default_staging_dir, load_config, save_config
-from fuscan.extractors.base import default_registry
 from fuscan.gui import resources_rc  # noqa: F401 注册 .qrc 资源（:/ 前缀图标）
+from fuscan.gui.content_panel import ContentTabPanel
 from fuscan.gui.detail_panel import DetailControls, DetailPanel
 from fuscan.gui.explorer import open_path_in_explorer
-from fuscan.gui.extractor_model import ExtractorTreeModel
 from fuscan.gui.icons import (
     ICON_ABOUT as _ICON_ABOUT,
 )
@@ -309,12 +308,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._result_filter_timer.setSingleShot(True)
             self._result_filter_timer.setInterval(300)
             self._result_filter_timer.timeout.connect(self._refresh_result_tree)
-            # 忽略项节流保存 timer（iter-79）：忽略目录/扩展名编辑器 textChanged
-            # 后节流 500ms 保存到 Config，避免每次按键触发文件 I/O
-            self._ignore_save_timer: QTimer = QTimer(self)
-            self._ignore_save_timer.setSingleShot(True)
-            self._ignore_save_timer.setInterval(500)
-            self._ignore_save_timer.timeout.connect(self._save_ignore_to_config)
 
             with PerfTimer("MainWindow._configure_ui"):
                 self._configure_ui()
@@ -542,82 +535,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.sidebar.blockSignals(False)
 
     def _setup_file_types(self) -> None:
-        """构造文件类型勾选区树形模型与视图（Model/View 架构）。
+        """构造内容 TAB 面板控制器（文件类型树 + 忽略目录 + 忽略扩展名）。
 
-        从 :func:`default_registry.list_extractors` 加载提取器元数据到
-        :class:`ExtractorTreeModel`，按父类别（文档/表格/演示/邮件）分组，
-        绑定到 ``file_types_view`` QTreeView。子项显示格式为
-        ``{类别}（{扩展名列表}）``（如 ``Word（doc, docx）``），父类别
-        支持批量勾选/全选/全取消，父子勾选状态自动联动（部分勾选时父节点
-        显示 PartiallyChecked）。
-
-        模型勾选状态变化通过 ``extractors_changed`` 信号路由到
-        :meth:`_on_extractor_toggled`，由主窗口持久化到配置文件；
-        :meth:`_update_file_types_count` 同步顶部计数标签
-        （``已勾选 N/M 项``）。
+        委托 :class:`ContentTabPanel` 封装 ``ExtractorTreeModel`` 勾选管理、
+        忽略项编辑器节流保存、计数标签同步等逻辑（iter-79 内聚重构）。
+        主窗口通过公共 API（``enabled_extensions`` / ``archives_enabled`` /
+        ``apply_config`` / ``flush_pending_save``）驱动，不直接操作底层控件。
         """
-        self._extractor_model = ExtractorTreeModel(default_registry, parent=self)
-        self.file_types_view.setModel(self._extractor_model)
-        # 展开所有父类别节点，让子项直接可见（headerHidden 与
-        # expandsOnDoubleClick 已在 .ui 中静态配置）
-        self.file_types_view.expandAll()
-        self._extractor_model.extractors_changed.connect(self._on_extractor_toggled)  # pyrefly: ignore [missing-attribute]
-        self._update_file_types_count()
-        # 忽略项编辑器 textChanged 节流保存（iter-79）：从设置对话框迁移到配置页后，
-        # 在此连接信号，避免每次按键触发文件 I/O
-        self.ignore_dirs_edit.textChanged.connect(self._on_ignore_changed)
-        self.ignore_extensions_edit.textChanged.connect(self._on_ignore_changed)
-
-    def _on_ignore_changed(self) -> None:
-        """忽略目录/扩展名编辑器文本变化：启动节流 timer，500ms 后保存到 Config。
-
-        避免每次按键触发文件 I/O；用户停止输入 500ms 后才真正写入配置文件。
-        """
-        self._ignore_save_timer.start()  # pyrefly: ignore [missing-argument]
-
-    def _save_ignore_to_config(self) -> None:
-        """从忽略项编辑器读取文本并保存到 Config（节流 timer 触发）。
-
-        按行解析，strip 首尾空白，过滤空行。保存后立即写入配置文件，
-        确保用户编辑不丢失（即使不立即扫描）。
-        """
-        self._config.ignore_dirs = [
-            line.strip() for line in self.ignore_dirs_edit.toPlainText().splitlines() if line.strip()
-        ]
-        self._config.ignore_extensions = [
-            line.strip() for line in self.ignore_extensions_edit.toPlainText().splitlines() if line.strip()
-        ]
-        save_config(self._config)
-
-    @Slot()  # pyrefly: ignore [not-callable]
-    def _on_extractor_toggled(self) -> None:
-        """提取器勾选状态变化：从模型读取 disabled_extractors 并即时保存配置。
-
-        压缩包分类的勾选状态同步到 ``Config.scan_archives``（iter-79），
-        取代独立的 ``scan_archives`` 配置项——压缩包是否扫描由文件类型树统一管理。
-        """
-        self._config.disabled_extractors = self._extractor_model.disabled_extractors()
-        self._config.scan_archives = self._extractor_model.archives_enabled()
-        save_config(self._config)
-        self._update_file_types_count()
-
-    def _update_file_types_count(self) -> None:
-        """同步文件类型勾选计数标签（``已勾选 N/M 项``）。
-
-        N 为当前勾选的提取器数量，M 为提取器总数。批量勾选父类别时 N 即时
-        反映子项勾选总数，让用户直观感知批量操作的覆盖范围。
-        """
-        checked = self._extractor_model.checked_count()
-        total = self._extractor_model.total_count()
-        self.file_types_count_label.setText(f"已勾选 {checked}/{total} 项")
-
-    def _compute_scan_extensions(self) -> tuple[str, ...] | None:
-        """根据模型勾选状态计算启用的文件扩展名列表。
-
-        全部勾选时模型返回 None（表示扫描所有文件，Scanner 走原快速路径）；
-        部分取消时返回启用扩展名的并集，传给 Scanner 做全局后缀过滤。
-        """
-        return self._extractor_model.enabled_extensions()
+        self._content_panel = ContentTabPanel(
+            view=self.file_types_view,
+            count_label=self.file_types_count_label,
+            dirs_edit=self.ignore_dirs_edit,
+            exts_edit=self.ignore_extensions_edit,
+            config=self._config,
+            parent=self,
+        )
 
     def _connect_signals(self) -> None:
         """连接所有信号槽（按钮、actions、worker、头部栏与侧边栏）。"""
@@ -915,26 +847,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.perf_log_action.blockSignals(False)
         set_perf_enabled(self._config.perf_log_enabled)
 
-        # 恢复文件类型勾选状态（blockSignals 避免 extractors_changed 触发 _save_config 循环）
-        # 向后兼容（iter-79）：旧配置 scan_archives=False 但 disabled_extractors 中
-        # 无 "ArchiveFiles" 时，补充禁用压缩包分类
-        disabled = list(self._config.disabled_extractors)
-        if not self._config.scan_archives and "ArchiveFiles" not in disabled:
-            disabled.append("ArchiveFiles")
-        self._extractor_model.blockSignals(True)
-        self._extractor_model.set_disabled_extractors(disabled)
-        self._extractor_model.blockSignals(False)
-        # 恢复后同步计数标签（blockSignals 期间 _on_extractor_toggled 不会触发）
-        self._update_file_types_count()
-
-        # 恢复忽略项编辑器内容（iter-79：从设置对话框迁移到配置页）
-        # blockSignals 避免 textChanged 触发 _on_ignore_changed 节流保存循环
-        self.ignore_dirs_edit.blockSignals(True)
-        self.ignore_extensions_edit.blockSignals(True)
-        self.ignore_dirs_edit.setPlainText("\n".join(self._config.ignore_dirs))
-        self.ignore_extensions_edit.setPlainText("\n".join(self._config.ignore_extensions))
-        self.ignore_dirs_edit.blockSignals(False)
-        self.ignore_extensions_edit.blockSignals(False)
+        # 恢复文件类型勾选状态与忽略项内容（委托 ContentTabPanel，内部 blockSignals
+        # 避免触发保存循环；含向后兼容逻辑：旧配置 scan_archives=False 补充禁用）
+        self._content_panel.apply_config(self._config)
 
     def _restore_window_geometry(self) -> None:
         """从配置恢复窗口几何（含屏幕边界夹紧算法）。
@@ -1166,11 +1081,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
             return
 
-        # flush 忽略项节流 timer（iter-79）：用户编辑后可能未满 500ms 就点扫描，
+        # flush 忽略项节流保存（iter-79）：用户编辑后可能未满 500ms 就点扫描，
         # 此处立即保存确保扫描使用最新忽略配置
-        if self._ignore_save_timer.isActive():
-            self._ignore_save_timer.stop()
-            self._save_ignore_to_config()
+        self._content_panel.flush_pending_save()
 
         self.result_tree.clear_results()
         self._detail_panel.clear()
@@ -1196,7 +1109,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             ignore_extensions=tuple(self._config.ignore_extensions),
             cache=cache,
             source_files=source_files,
-            scan_extensions=self._compute_scan_extensions(),
+            scan_extensions=self._content_panel.enabled_extensions(),
             skip_paths=self._skip_store.paths(),
         )
         self._worker.progress_info.connect(self._on_scan_progress)  # pyrefly: ignore [missing-attribute]
