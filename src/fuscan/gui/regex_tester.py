@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 
@@ -19,6 +20,7 @@ except ImportError:  # pragma: no cover
     from PySide6.QtCore import Slot  # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QDialog, QWidget  # pyrefly: ignore [missing-import]
 
+from fuscan import theme
 from fuscan.gui.regex_tester_ui import Ui_RegexTesterDialog
 
 __all__ = ["RegexTesterDialog"]
@@ -30,54 +32,116 @@ _MAX_TEXT_LEN = 100_000
 # 命中展示条数上限：超出仅展示前 N 处并提示总数，避免命中爆炸拖垮结果视图
 _MAX_DISPLAY_MATCHES = 1000
 
-# 正则速查手册内容（Python re 模块常用语法）
-_REGEX_CHEATSHEET = """\
-== 字符类 ==
-.          任意字符（不含换行，flags=re.S 可让其匹配换行）
-\\d  \\D     数字 / 非数字
-\\w  \\W     单词字符 [A-Za-z0-9_] / 非单词字符
-\\s  \\S     空白 / 非空白
-[abc]      任一字符
-[a-z]      范围
-[^abc]     排除指定字符
+# 速查手册数据：(节标题, [(语法, 说明), ...])
+_CHEATSHEET_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
+    (
+        "字符类",
+        [
+            (".", "任意字符（不含换行，flags=re.S 可让其匹配换行）"),
+            (r"\d  \D", "数字 / 非数字"),
+            (r"\w  \W", "单词字符 [A-Za-z0-9_] / 非单词字符"),
+            (r"\s  \S", "空白 / 非空白"),
+            ("[abc]", "任一字符"),
+            ("[a-z]", "范围"),
+            ("[^abc]", "排除指定字符"),
+        ],
+    ),
+    (
+        "量词",
+        [
+            ("*", "0 或多次（贪婪）"),
+            ("+", "1 或多次（贪婪）"),
+            ("?", "0 或 1 次"),
+            ("{n}", "恰好 n 次"),
+            ("{n,}", "至少 n 次"),
+            ("{n,m}", "n 到 m 次"),
+            ("*?  +?  ??", "非贪婪（最小匹配）"),
+        ],
+    ),
+    (
+        "锚点",
+        [
+            ("^", "行首"),
+            ("$", "行尾"),
+            (r"\b  \B", "单词边界 / 非单词边界"),
+        ],
+    ),
+    (
+        "分组与捕获",
+        [
+            ("(...)", "捕获组（可用 \\1 反向引用）"),
+            ("(?:...)", "非捕获组"),
+            ("(?P<name>...)", "命名捕获组"),
+            ("(?P=name)", "引用命名组"),
+        ],
+    ),
+    (
+        "零宽断言",
+        [
+            ("(?=...)", "正向先行断言"),
+            ("(?!...)", "负向先行断言"),
+            ("(?<=...)", "正向后行断言"),
+            ("(?<!...)", "负向后行断言"),
+        ],
+    ),
+    (
+        "内联修饰符",
+        [
+            ("(?i)", "忽略大小写"),
+            ("(?m)", "多行模式（^/$ 匹配每行）"),
+            ("(?s)", ". 匹配换行"),
+        ],
+    ),
+    (
+        "常用示例",
+        [
+            (r"\d{4}-\d{2}-\d{2}", "日期 YYYY-MM-DD"),
+            (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "邮箱"),
+            (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "IPv4 地址"),
+            (r"1[3-9]\d{9}", "中国手机号"),
+        ],
+    ),
+]
 
-== 量词 ==
-*          0 或多次（贪婪）
-+          1 或多次（贪婪）
-?          0 或 1 次
-{n}        恰好 n 次
-{n,}       至少 n 次
-{n,m}      n 到 m 次
-*? +? ??   非贪婪（最小匹配）
 
-== 锚点 ==
-^          行首
-$          行尾
-\\b  \\B     单词边界 / 非单词边界
+def _build_cheatsheet_html() -> str:
+    """构建速查手册 HTML，使用主题令牌着色。
 
-== 分组与捕获 ==
-(...)              捕获组（可用 \\1 反向引用）
-(?:...)            非捕获组
-(?P<name>...)      命名捕获组
-(?P=name)          引用命名组
+    返回适用于 ``QTextEdit.setHtml`` 的 HTML 字符串：节标题用主色背景条，
+    语法用等宽字体着色，说明用次级文字色。
 
-== 零宽断言 ==
-(?=...)    正向先行断言
-(?!...)    负向先行断言
-(?<=...)   正向后行断言
-(?<!...)   负向后行断言
-
-== 内联修饰符 ==
-(?i)       忽略大小写
-(?m)       多行模式（^/$ 匹配每行）
-(?s)       . 匹配换行
-
-== 常用示例 ==
-\\d{4}-\\d{2}-\\d{2}                                    日期 YYYY-MM-DD
-\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b   邮箱
-\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b                        IPv4 地址
-1[3-9]\\d{9}                                          中国手机号
-""".strip()
+    Qt 富文本引擎对 CSS 支持有限：``<span style>`` 混用 ``font-family`` 与
+    ``color`` 时会丢弃样式，故用 ``<font color face>`` + ``<b>`` 替代；
+    背景色用 ``<table bgcolor>`` 属性。
+    """
+    sections: list[str] = []
+    for i, (title, entries) in enumerate(_CHEATSHEET_SECTIONS):
+        if i > 0:
+            sections.append("<br>")
+        # 节标题：主色背景条（bgcolor 是 Qt 富文本支持的属性）
+        sections.append(
+            f'<table width="100%" bgcolor="{theme.COLOR_PRIMARY}" cellspacing="0" cellpadding="4">'
+            "<tr><td><b>"
+            f'<font color="{theme.COLOR_TEXT_ON_PRIMARY}">{html.escape(title)}</font>'
+            "</b></td></tr></table>"
+        )
+        # 条目表：<font color face> 是 Qt 富文本最可靠的着色方式
+        rows: list[str] = []
+        for syntax, desc in entries:
+            rows.append(
+                "<tr>"
+                f'<td style="padding: 2px 10px 2px 8px;">'
+                f'<b><font color="{theme.COLOR_INFO}" face="Consolas">{html.escape(syntax)}</font></b>'
+                "</td>"
+                f'<td style="padding: 2px 4px;">'
+                f'<font color="{theme.COLOR_TEXT_SECONDARY}">{html.escape(desc)}</font>'
+                "</td>"
+                "</tr>"
+            )
+        sections.append(f'<table cellspacing="0" cellpadding="0">{"".join(rows)}</table>')
+    return (
+        f'<div style="font-family: {theme.FONT_FAMILY}; font-size: {theme.FONT_SIZE_BODY};">{"".join(sections)}</div>'
+    )
 
 
 class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [invalid-inheritance]
@@ -97,11 +161,12 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
     def __init__(self, parent: QWidget | None = None, initial_pattern: str = "") -> None:
         super().__init__(parent)
         self.setupUi(self)
-        self.regex_cheatsheet_view.setPlainText(_REGEX_CHEATSHEET)
-        # 三个输入信号统一触发同步重测：正则测试典型耗时 <10ms，无需防抖
+        self.regex_cheatsheet_view.setHtml(_build_cheatsheet_html())
+
         self.regex_pattern_edit.textChanged.connect(self._on_test_regex)
         self.regex_test_text_edit.textChanged.connect(self._on_test_regex)
         self.regex_case_sensitive_check.stateChanged.connect(self._on_test_regex)
+
         if initial_pattern:
             self.regex_pattern_edit.setText(initial_pattern)
 

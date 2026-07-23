@@ -4155,6 +4155,24 @@ class TestRegexTesterDialog:
         assert "中国手机号" in cheatsheet
         dialog.close()
 
+    def test_regex_cheatsheet_rendered_as_html(self, qapp: QApplication) -> None:
+        """速查手册应以 HTML 渲染，包含主题色与表格结构。"""
+        from fuscan import theme
+        from fuscan.gui.regex_tester import RegexTesterDialog
+
+        dialog = RegexTesterDialog()
+        html_content = dialog.regex_cheatsheet_view.toHtml()
+        # HTML 结构：含表格（Qt 将 div 转为 p，但 table 保留）
+        assert "<table" in html_content
+        # 主题令牌着色：主色背景 + 信息色语法
+        assert theme.COLOR_PRIMARY in html_content
+        assert theme.COLOR_INFO in html_content
+        # 等宽字体用于语法列
+        assert "Consolas" in html_content or "Cascadia" in html_content
+        # HTML 转义生效：(?P<name>...) 的尖角括号应被转义
+        assert "&lt;" in html_content or "&gt;" in html_content
+        dialog.close()
+
     def test_initial_pattern_prefilled(self, qapp: QApplication) -> None:
         """通过 initial_pattern 应预填待测正则表达式。"""
         from fuscan.gui.regex_tester import RegexTesterDialog
