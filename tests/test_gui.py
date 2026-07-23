@@ -2008,7 +2008,7 @@ class TestSeverityDisplay:
         window = MainWindow()
         window._last_report = report
         window._switch_stage(WorkflowStage.RESULTS)
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
 
         expected_bg = SEVERITY_BACKGROUNDS[Severity.WARNING]
         top_item = window.result_tree.model().item(0, 0)
@@ -2041,7 +2041,7 @@ class TestSeverityDisplay:
         window = MainWindow()
         window._last_report = report
         window._switch_stage(WorkflowStage.RESULTS)
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
 
         top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
@@ -3492,7 +3492,7 @@ class TestResultFilterAndGroup:
 
         window.path_filter_input.setText("secret")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 1
         assert "secret.txt" in window.result_tree.model().item(0, 0).text()
         window.close()
@@ -3504,7 +3504,7 @@ class TestResultFilterAndGroup:
         window._populate_results(report)
         window.path_filter_input.setText("SECRET")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 1
         window.close()
 
@@ -3530,7 +3530,7 @@ class TestResultFilterAndGroup:
 
         window.path_filter_input.setText("key.txt")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         idx = window.rule_filter_combo.findData("密钥内容")
         window.rule_filter_combo.setCurrentIndex(idx)
         assert window.result_tree.model().rowCount() == 1
@@ -3544,7 +3544,7 @@ class TestResultFilterAndGroup:
         window._populate_results(report)
         window.path_filter_input.setText("nonexistent_path")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 0
         window.close()
 
@@ -3555,10 +3555,10 @@ class TestResultFilterAndGroup:
         window._populate_results(report)
         window.path_filter_input.setText("secret")
         # 需求9：textChanged 已改为节流触发，测试中同步刷新模拟 timer 到期
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 1
         window.path_filter_input.setText("")
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 2
         window.close()
 
@@ -3570,18 +3570,18 @@ class TestResultFilterAndGroup:
         assert window.result_tree.model().rowCount() == 2
 
         # 验证 timer 配置：singleShot、300ms
-        assert window._result_filter_timer.isSingleShot()
-        assert window._result_filter_timer.interval() == 300
+        assert window._result_filter_panel._filter_timer.isSingleShot()
+        assert window._result_filter_panel._filter_timer.interval() == 300
 
-        # textChanged 触发 _schedule_result_refresh，仅启动 timer 不立即刷新
+        # textChanged 触发节流，仅启动 timer 不立即刷新
         window.path_filter_input.setText("secret")
-        assert window._result_filter_timer.isActive()
+        assert window._result_filter_panel._filter_timer.isActive()
         # timer 未到期前结果树保持原样
         assert window.result_tree.model().rowCount() == 2
 
         # 模拟 timer 到期：直接调用槽函数（timeout 信号连接的目标）
-        window._result_filter_timer.stop()
-        window._refresh_result_tree()
+        window._result_filter_panel._filter_timer.stop()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 1
         window.close()
 
@@ -3591,12 +3591,12 @@ class TestResultFilterAndGroup:
         report = _build_multi_hit_report(tmp_path)
         window._populate_results(report)
         # 启动节流 timer 模拟用户正在输入
-        window._result_filter_timer.start()  # pyrefly: ignore [missing-argument]
-        assert window._result_filter_timer.isActive()
+        window._result_filter_panel._filter_timer.start()  # pyrefly: ignore [missing-argument]
+        assert window._result_filter_panel._filter_timer.isActive()
 
         # 新扫描完成调用 _populate_results，应停止挂起的 timer
         window._populate_results(report)
-        assert not window._result_filter_timer.isActive()
+        assert not window._result_filter_panel._filter_timer.isActive()
         window.close()
 
     def test_group_by_rule(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3650,7 +3650,7 @@ class TestResultFilterAndGroup:
         """无报告时刷新结果树不应异常。"""
         window = MainWindow()
         window._last_report = None
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
         assert window.result_tree.model().rowCount() == 0
         window.close()
 
@@ -6561,7 +6561,7 @@ class TestSeverityBackground:
         window = MainWindow()
         window._last_report = report
         window._switch_stage(WorkflowStage.RESULTS)
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
 
         top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None
@@ -6586,7 +6586,7 @@ class TestSeverityBackground:
         window._switch_stage(WorkflowStage.RESULTS)
         idx = window.group_mode_combo.findData("severity")
         window.group_mode_combo.setCurrentIndex(idx)
-        window._refresh_result_tree()
+        window._result_filter_panel.refresh()
 
         top_item = window.result_tree.model().item(0, 0)
         assert top_item is not None

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
-    from PySide2.QtCore import QPoint, Qt, QTimer, QUrl, Slot
+    from PySide2.QtCore import QPoint, Qt, QUrl, Slot
     from PySide2.QtGui import (
         QDesktopServices,
         QKeySequence,
@@ -144,6 +144,7 @@ from fuscan.gui.icons import (
 )
 from fuscan.gui.main_window_ui import Ui_MainWindow
 from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS, severity_text
+from fuscan.gui.result_filter_panel import ResultFilterPanel
 from fuscan.gui.scan_mode_panel import ScanModePanel
 from fuscan.gui.scan_path_history import ScanPathHistory
 from fuscan.gui.scan_progress_lists import ScanListUpdater
@@ -292,11 +293,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             # 扫描中列表增量更新器：封装跳过目录与命中文件列表的 0.5 秒节流 + 增量
             # append 算法，避免每次进度回调全量 clear+重添导致主线程阻塞（点击设置卡滞根因）
             self._list_updater: ScanListUpdater = ScanListUpdater(self.skipped_dirs_list, self.matched_files_list)
-            # 结果树筛选节流 timer（需求9）：避免每次按键触发全量重建导致 UI 卡滞
-            self._result_filter_timer: QTimer = QTimer(self)
-            self._result_filter_timer.setSingleShot(True)
-            self._result_filter_timer.setInterval(300)
-            self._result_filter_timer.timeout.connect(self._refresh_result_tree)
 
             with PerfTimer("MainWindow._configure_ui"):
                 self._configure_ui()
@@ -334,7 +330,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _configure_ui(self) -> None:
         """配置 .ui 无法静态表达的动态属性、layout stretch 与信号槽连接。"""
         self._setup_status_bar()
-        self._setup_comboboxes()
+        self._setup_result_filter_panel()
         self._setup_splitters()
         self._setup_layouts()
         self._setup_scan_stats_panel()
@@ -369,12 +365,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
 
-    def _setup_comboboxes(self) -> None:
-        """填充 QComboBox 初始项（带 userData，.ui 不便表达）。"""
-        self.rule_filter_combo.addItem("全部规则", "")
-        self.group_mode_combo.addItem("不分组", "flat")
-        self.group_mode_combo.addItem("按规则", "rule")
-        self.group_mode_combo.addItem("按严重等级", "severity")
+    def _setup_result_filter_panel(self) -> None:
+        """构造结果树筛选面板控制器（路径输入 + 规则筛选 + 分组模式 + 结果树）。
+
+        委托 :class:`ResultFilterPanel` 封装 ``path_filter_input`` /
+        ``rule_filter_combo`` / ``group_mode_combo`` 三个筛选控件的初始化、
+        节流 timer 与结果树刷新逻辑（iter-79 续内聚重构）。主窗口通过公共
+        API（``populate`` / ``refresh`` / ``clear``）驱动，不直接操作底层控件。
+        ``result_tree`` 的 ``result_selected`` / ``context_menu_requested``
+        信号仍由主窗口连接（响应逻辑在主窗口）。
+        """
+        self._result_filter_panel = ResultFilterPanel(
+            path_filter_input=self.path_filter_input,
+            rule_filter_combo=self.rule_filter_combo,
+            group_mode_combo=self.group_mode_combo,
+            result_tree=self.result_tree,
+            report_getter=lambda: self._last_report,
+            parent=self,
+        )
 
     def _setup_splitters(self) -> None:
         """设置 QSplitter 伸缩比例与初始尺寸（.ui 不支持 setStretchFactor）。"""
@@ -572,10 +580,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 结果树（ResultTreeView 信号路由：选中/双击/右键均通过自定义信号转发）
         self.result_tree.result_selected.connect(self._on_result_selected)  # pyrefly: ignore [missing-attribute]
         self.result_tree.context_menu_requested.connect(self._on_result_tree_context_menu)  # pyrefly: ignore [missing-attribute]
-        # 筛选（需求9：路径输入节流 300ms，避免连续按键触发全量重建；combo 切换立即响应）
-        self.path_filter_input.textChanged.connect(self._schedule_result_refresh)
-        self.rule_filter_combo.currentIndexChanged.connect(self._refresh_result_tree)
-        self.group_mode_combo.currentIndexChanged.connect(self._refresh_result_tree)
+        # 筛选信号（path_filter_input / rule_filter_combo / group_mode_combo）
+        # 已由 ResultFilterPanel 内部连接（节流 timer + 立即刷新）
         # 历史
         self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
         # 详情区
@@ -1025,7 +1031,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 此处立即保存确保扫描使用最新忽略配置
         self._content_panel.flush_pending_save()
 
-        self.result_tree.clear_results()
+        self._result_filter_panel.clear()
         self._detail_panel.clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
@@ -1553,7 +1559,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             stats=self._last_report.stats,
             cancelled=self._last_report.cancelled,
         )
-        self._refresh_result_tree()
+        # 刷新结果树（panel 通过 report_getter 回调读取最新 _last_report）
+        self._result_filter_panel.refresh()
         # 移除后详情区清空（已无对应文件可展示）
         self._detail_panel.clear()
 
@@ -1727,57 +1734,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "规则错误", f"重新加载规则失败:\n{exc}")
 
     def _populate_results(self, report: ScanReport) -> None:
-        """填充结果树：存储报告、更新规则筛选下拉、刷新结果树。"""
-        # 取消挂起的节流刷新，避免与下方立即刷新重复触发（需求9）
-        self._result_filter_timer.stop()
+        """填充结果树：存储报告、更新规则筛选下拉、刷新结果树。
+
+        委托 :class:`ResultFilterPanel` 一站式完成（停止节流 + populate +
+        更新规则下拉 + 刷新），主窗口仅保留报告引用与导出按钮状态同步。
+        """
         self._last_report = report
-        self.result_tree.populate(report)
-        self._update_rule_filter_options(report)
-        self._refresh_result_tree()
+        self._result_filter_panel.populate(report)
         # 有结果时启用导出按钮
         self.export_btn.setEnabled(len(report.hits) > 0)
-
-    def _update_rule_filter_options(self, report: ScanReport) -> None:
-        """根据扫描结果更新规则筛选下拉项。"""
-        current_rule = self.rule_filter_combo.currentData()
-        self.rule_filter_combo.blockSignals(True)
-        self.rule_filter_combo.clear()
-        self.rule_filter_combo.addItem("全部规则", "")
-        for name in sorted(report.rule_names):
-            self.rule_filter_combo.addItem(name, name)
-        # 恢复之前选中的规则
-        if current_rule:
-            idx = self.rule_filter_combo.findData(current_rule)
-            if idx >= 0:
-                self.rule_filter_combo.setCurrentIndex(idx)
-        self.rule_filter_combo.blockSignals(False)
-
-    def _schedule_result_refresh(self) -> None:
-        """节流触发结果树刷新（需求9）。
-
-        ``path_filter_input.textChanged`` 每次按键仅重置 timer，避免连续输入
-        时全量重建结果树导致 UI 卡滞。``rule_filter_combo`` /
-        ``group_mode_combo`` 的 ``currentIndexChanged`` 仍直接调用
-        :meth:`_refresh_result_tree`，因为这些是用户主动切换选择，需立即反馈。
-        """
-        self._result_filter_timer.start()  # pyrefly: ignore [missing-argument]
-
-    def _refresh_result_tree(self) -> None:
-        """根据当前筛选条件与分组模式刷新结果树。"""
-        if self._last_report is None:
-            self.result_tree.clear_results()
-            return
-
-        path_filter = self.path_filter_input.text().strip()
-        rule_filter = self.rule_filter_combo.currentData() or ""
-        group_mode = self.group_mode_combo.currentData() or "flat"
-
-        self.result_tree.refresh(
-            self._last_report,
-            path_query=path_filter,
-            rule_name=rule_filter,
-            group_mode=group_mode,
-        )
 
     def _update_scan_button(self) -> None:
         """更新扫描按钮状态（委托给 _update_stage_actions 统一管理）。"""
