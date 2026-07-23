@@ -48,8 +48,13 @@ _EXTRACTOR_CATEGORIES: dict[str, str] = {
     "MsgExtractor": "邮件",
 }
 
-# 父类别显示顺序
-_CATEGORY_ORDER: tuple[str, ...] = ("文档", "表格", "演示", "邮件")
+# 父类别显示顺序（iter-79：新增"压缩包"分类，独立于提取器体系）
+_CATEGORY_ORDER: tuple[str, ...] = ("文档", "表格", "演示", "邮件", "压缩包")
+
+# 压缩包分类常量：虚拟项 class_name，用于在 disabled_extractors 中标识
+_ARCHIVE_CLASS_NAME = "ArchiveFiles"
+_ARCHIVE_CATEGORY = "压缩包"
+_ARCHIVE_DISPLAY_NAME = "压缩文件"
 
 # 去掉 display_name 中的全角括号后缀（如 "Word（DOCX）" → "Word"）
 _PAREN_RE = re.compile(r"（[^）]*）")
@@ -118,6 +123,12 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
     def __init__(self, registry: ExtractorRegistry, parent=None) -> None:  # type: ignore[no-untyped-def]
         """初始化模型：从 registry.list_extractors() 加载提取器并按类别分组。
 
+        压缩包分类（iter-79）独立于提取器体系：从 ``archive.default_factory``
+        加载已注册的压缩文件扩展名（zip/rar/7z），创建虚拟
+        :class:`ExtractorItem`（class_name=``"ArchiveFiles"``），归入"压缩包"
+        分类。勾选状态通过 :meth:`archives_enabled` 读取，由主窗口同步到
+        ``Config.scan_archives``。
+
         :param registry: 提取器注册表
         :param parent: 父 QObject
         """
@@ -139,6 +150,21 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
             for _i, (cname, items, flags) in enumerate(self._categories):
                 if cname == cat:
                     items.append(item)
+                    flags.append(True)
+                    break
+        # 压缩包分类：从 archive.default_factory 加载已注册扩展名（iter-79）
+        from fuscan.archive import default_factory as _archive_factory
+
+        archive_exts = tuple(sorted(_archive_factory.registered_extensions))
+        if archive_exts:
+            archive_item = ExtractorItem(
+                class_name=_ARCHIVE_CLASS_NAME,
+                display_name=_ARCHIVE_DISPLAY_NAME,
+                extensions=archive_exts,
+            )
+            for cname, items, flags in self._categories:
+                if cname == _ARCHIVE_CATEGORY:
+                    items.append(archive_item)
                     flags.append(True)
                     break
 
@@ -337,19 +363,43 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
         self.extractors_changed.emit()  # pyrefly: ignore [missing-attribute]
 
     def enabled_extensions(self) -> tuple[str, ...] | None:
-        """根据勾选状态计算启用的扩展名集合。
+        """根据勾选状态计算启用的扩展名集合（不含压缩包扩展名）。
 
-        :returns: 全部启用时返回 ``None``（Scanner 走快速路径）；
-                  部分取消时返回启用扩展名并集（小写、去重、排序后元组）
+        压缩包分类的扩展名（zip/rar/7z）不参与 ``scan_extensions`` 过滤，
+        而是由 ``Config.scan_archives`` 单独控制。因此本方法仅考虑非压缩包
+        分类：非压缩包分类全部勾选时返回 ``None``（Scanner 走快速路径），
+        部分取消时返回启用扩展名并集。
+
+        :returns: 全部（非压缩包）启用时返回 ``None``；部分取消时返回
+                  启用扩展名并集（小写、去重、排序后元组）
         """
-        if all(all(flags) for _cat_name, _items, flags in self._categories):
+        # 仅检查非压缩包分类是否全部勾选
+        non_archive_all_checked = all(
+            all(flags) for cat_name, _items, flags in self._categories if cat_name != _ARCHIVE_CATEGORY
+        )
+        if non_archive_all_checked:
             return None
         enabled: set[str] = set()
-        for _cat_name, items, flags in self._categories:
+        for cat_name, items, flags in self._categories:
+            if cat_name == _ARCHIVE_CATEGORY:
+                continue
             for item, enabled_flag in zip(items, flags):
                 if enabled_flag:
                     enabled.update(item.extensions)
         return tuple(sorted(enabled))
+
+    def archives_enabled(self) -> bool:
+        """返回压缩包分类是否勾选（用于同步 ``Config.scan_archives``）。
+
+        压缩包分类只有一个虚拟项 ``ArchiveFiles``，其勾选状态即为整个
+        分类的启用状态。取消勾选后 walk 阶段不计入待解析数量，scan
+        阶段不扫描压缩包内条目。
+        """
+        for cat_name, items, flags in self._categories:
+            if cat_name == _ARCHIVE_CATEGORY:
+                for _item, enabled in zip(items, flags):
+                    return enabled
+        return True
 
     def checked_count(self) -> int:
         """返回已勾选的子项数（用于 UI 显示「已勾选 N 项」）。"""

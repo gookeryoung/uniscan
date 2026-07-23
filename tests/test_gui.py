@@ -6293,109 +6293,95 @@ class TestSettingsDialog:
         dialog.close()
 
 
-class TestSettingsDialogIgnore:
-    """设置对话框忽略项控件测试。"""
+class TestMainWindowIgnore:
+    """主窗口配置页忽略项控件测试（iter-79：从设置对话框迁移到配置页）。"""
 
     def test_ignore_widgets_exist_with_placeholders(self, qapp: QApplication) -> None:
-        """对话框应包含忽略目录与忽略扩展名编辑控件，并设置占位提示。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
+        """主窗口应包含忽略目录与忽略扩展名编辑控件，并设置占位提示。"""
+        window = MainWindow()
+        assert window.ignore_dirs_edit is not None
+        assert window.ignore_extensions_edit is not None
+        assert "目录名" in window.ignore_dirs_edit.placeholderText()
+        assert "扩展名" in window.ignore_extensions_edit.placeholderText()
+        window.close()
 
-        dialog = SettingsDialog(Config())
-        assert dialog.ignore_dirs_edit is not None
-        assert dialog.ignore_extensions_edit is not None
-        assert "目录名" in dialog.ignore_dirs_edit.placeholderText()
-        assert "扩展名" in dialog.ignore_extensions_edit.placeholderText()
-        dialog.close()
-
-    def test_ignore_page_tab_with_large_editors(self, qapp: QApplication) -> None:
-        """iter-76：忽略项应独立为第三个 Tab，编辑器有足够最小高度避免内容被压缩。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
-
-        dialog = SettingsDialog(Config())
-        # ignore_page 存在且为 TabWidget 中的一个 Tab
-        assert dialog.ignore_page is not None
-        tab_index = dialog.settings_tab_widget.indexOf(dialog.ignore_page)
-        assert tab_index >= 0
-        assert dialog.settings_tab_widget.tabText(tab_index) == "忽略项"
-        # 两个编辑器均有最小高度，避免内容显示太少被压缩
-        assert dialog.ignore_dirs_edit.minimumHeight() >= 300
-        assert dialog.ignore_extensions_edit.minimumHeight() >= 300
-        # ignore_page_layout 按宽度 2:1 分配（目录栏列表更长，更宽）
-        assert dialog.ignore_page_layout.stretch(0) == 2
-        assert dialog.ignore_page_layout.stretch(1) == 1
-        dialog.close()
+    def test_ignore_tab_widget_has_two_tabs(self, qapp: QApplication) -> None:
+        """iter-79：忽略项通过 QTabWidget 切换忽略目录/忽略扩展名两个 Tab。"""
+        window = MainWindow()
+        assert window.ignore_tab_widget is not None
+        assert window.ignore_tab_widget.count() == 2
+        assert window.ignore_tab_widget.tabText(0) == "忽略目录"
+        assert window.ignore_tab_widget.tabText(1) == "忽略扩展名"
+        window.close()
 
     def test_default_ignore_dirs_loaded(self, qapp: QApplication) -> None:
         """默认 Config 的 ignore_dirs 应加载到编辑器。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
-
-        dialog = SettingsDialog(Config())
-        lines = dialog.ignore_dirs_edit.toPlainText().splitlines()
+        window = MainWindow()
+        lines = window.ignore_dirs_edit.toPlainText().splitlines()
         assert ".git" in lines
         assert "node_modules" in lines
         assert "__pycache__" in lines
-        dialog.close()
+        window.close()
 
     def test_default_ignore_extensions_loaded(self, qapp: QApplication) -> None:
         """默认 Config 的 ignore_extensions 应加载到编辑器。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
-
-        dialog = SettingsDialog(Config())
-        lines = dialog.ignore_extensions_edit.toPlainText().splitlines()
+        window = MainWindow()
+        lines = window.ignore_extensions_edit.toPlainText().splitlines()
         assert "pyc" in lines
         assert "exe" in lines
         assert "zip" in lines
-        dialog.close()
+        window.close()
 
     def test_custom_ignore_dirs_loaded(self, qapp: QApplication) -> None:
-        """自定义 ignore_dirs 应按行加载到编辑器。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
+        """自定义 ignore_dirs 应通过 _apply_config 加载到编辑器。"""
+        window = MainWindow()
+        # 直接修改 config 并调用 _apply_config 验证加载逻辑
+        window._config.ignore_dirs = ["custom_dir", ".git"]
+        window._apply_config()
+        assert window.ignore_dirs_edit.toPlainText().splitlines() == ["custom_dir", ".git"]
+        window.close()
 
-        config = Config(ignore_dirs=["custom_dir", ".git"])
-        dialog = SettingsDialog(config)
-        assert dialog.ignore_dirs_edit.toPlainText().splitlines() == ["custom_dir", ".git"]
-        dialog.close()
+    def test_save_ignore_to_config_writes_dirs(self, qapp: QApplication) -> None:
+        """_save_ignore_to_config 应将编辑器文本按行写入 config.ignore_dirs，过滤空行。"""
+        window = MainWindow()
+        window.ignore_dirs_edit.setPlainText("new_dir\n.git\n\n  \n")
+        window._save_ignore_to_config()
+        assert window._config.ignore_dirs == ["new_dir", ".git"]
+        window.close()
 
-    def test_save_config_writes_ignore_dirs(self, qapp: QApplication) -> None:
-        """_save_config 应将编辑器文本按行写入 config.ignore_dirs，过滤空行。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
+    def test_save_ignore_to_config_writes_extensions(self, qapp: QApplication) -> None:
+        """_save_ignore_to_config 应将扩展名编辑器文本按行写入 config.ignore_extensions。"""
+        window = MainWindow()
+        window.ignore_extensions_edit.setPlainText("pyc\nexe\n\n")
+        window._save_ignore_to_config()
+        assert window._config.ignore_extensions == ["pyc", "exe"]
+        window.close()
 
-        config = Config()
-        dialog = SettingsDialog(config)
-        dialog.ignore_dirs_edit.setPlainText("new_dir\n.git\n\n  \n")
-        dialog._save_config()
-        assert config.ignore_dirs == ["new_dir", ".git"]
-        dialog.close()
-
-    def test_save_config_writes_ignore_extensions(self, qapp: QApplication) -> None:
-        """_save_config 应将扩展名编辑器文本按行写入 config.ignore_extensions。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
-
-        config = Config()
-        dialog = SettingsDialog(config)
-        dialog.ignore_extensions_edit.setPlainText("pyc\nexe\n\n")
-        dialog._save_config()
-        assert config.ignore_extensions == ["pyc", "exe"]
-        dialog.close()
-
-    def test_save_config_strips_whitespace(self, qapp: QApplication) -> None:
+    def test_save_ignore_to_config_strips_whitespace(self, qapp: QApplication) -> None:
         """保存时应 strip 每行首尾空白。"""
-        from fuscan.config import Config
-        from fuscan.gui.settings_dialog import SettingsDialog
+        window = MainWindow()
+        window.ignore_dirs_edit.setPlainText("  .git  \n  node_modules  \n")
+        window._save_ignore_to_config()
+        assert window._config.ignore_dirs == [".git", "node_modules"]
+        window.close()
 
-        config = Config()
-        dialog = SettingsDialog(config)
-        dialog.ignore_dirs_edit.setPlainText("  .git  \n  node_modules  \n")
-        dialog._save_config()
-        assert config.ignore_dirs == [".git", "node_modules"]
-        dialog.close()
+    def test_on_ignore_changed_starts_timer(self, qapp: QApplication) -> None:
+        """编辑器 textChanged 应启动节流 timer，500ms 后保存。"""
+        window = MainWindow()
+        # 确保初始未运行
+        assert not window._ignore_save_timer.isActive()
+        window.ignore_dirs_edit.setPlainText("new_dir\n.git")
+        # textChanged 触发 _on_ignore_changed 启动 timer
+        assert window._ignore_save_timer.isActive()
+        window._ignore_save_timer.stop()
+        window.close()
+
+    def test_apply_config_does_not_trigger_save_on_load(self, qapp: QApplication) -> None:
+        """_apply_config 加载忽略项时 blockSignals 避免触发节流保存循环。"""
+        window = MainWindow()
+        # 加载后 timer 不应被触发
+        assert not window._ignore_save_timer.isActive()
+        window.close()
 
 
 class TestIcons:

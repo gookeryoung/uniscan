@@ -856,7 +856,7 @@ class TestProgressInfoSummary:
         assert "速度 0 文件/s" in s
 
     def test_summary_walk_phase(self) -> None:
-        """walk 阶段 summary 应突出"正在分析目录结构"并展示已发现文件数，避免 scanned=0 被误以为卡住。"""
+        """walk 阶段 summary 应突出"解析目录"并展示已发现文件数，避免 scanned=0 被误以为卡住。"""
         from fuscan.scanner.result import ProgressInfo
 
         info = ProgressInfo(
@@ -867,7 +867,7 @@ class TestProgressInfoSummary:
             phase="walk",
         )
         s = info.summary()
-        assert "正在分析目录结构" in s
+        assert "解析目录" in s
         assert "已发现 1234 个文件" in s
         assert "跳过 8" in s
         assert "已用 2.5s" in s
@@ -876,7 +876,7 @@ class TestProgressInfoSummary:
         assert "条数" not in s
 
     def test_summary_archive_phase(self) -> None:
-        """archive 阶段 summary 应突出"正在扫描压缩包"并展示已扫描/命中/错误数。"""
+        """archive 阶段 summary 应突出"扫描压缩包"并展示已扫描/命中/错误数。"""
         from fuscan.scanner.result import ProgressInfo
 
         info = ProgressInfo(
@@ -888,7 +888,7 @@ class TestProgressInfoSummary:
             phase="archive",
         )
         s = info.summary()
-        assert "正在扫描压缩包" in s
+        assert "扫描压缩包" in s
         assert "已扫描 42" in s
         assert "命中 3" in s
         assert "错误 1" in s

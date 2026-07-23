@@ -125,23 +125,25 @@ class TestExtractorTreeModelConstruction:
     """模型构造与 rowCount/data 基础行为。"""
 
     def test_category_count_includes_all_order_categories(self, model: ExtractorTreeModel) -> None:
-        """分类数包含 _CATEGORY_ORDER 全部 4 类（即使为空也初始化）。"""
-        assert model.category_count() == 4
+        """分类数包含 _CATEGORY_ORDER 全部 5 类（即使为空也初始化）。"""
+        assert model.category_count() == 5
         assert model.category_name(0) == "文档"
         assert model.category_name(1) == "表格"
         assert model.category_name(2) == "演示"
         assert model.category_name(3) == "邮件"
+        assert model.category_name(4) == "压缩包"
 
     def test_row_count_top_level_equals_category_count(self, model: ExtractorTreeModel) -> None:
-        """顶层 rowCount 等于分类数（4）。"""
-        assert model.rowCount() == 4
+        """顶层 rowCount 等于分类数（5）。"""
+        assert model.rowCount() == 5
 
     def test_row_count_category_returns_children(self, model: ExtractorTreeModel) -> None:
-        """分类节点 rowCount 返回子项数：文档=2，表格=1，演示=0，邮件=0。"""
+        """分类节点 rowCount 返回子项数：文档=2，表格=1，演示=0，邮件=0，压缩包=1。"""
         assert model.rowCount(_cat_index(model, 0)) == 2  # 文档
         assert model.rowCount(_cat_index(model, 1)) == 1  # 表格
         assert model.rowCount(_cat_index(model, 2)) == 0  # 演示
         assert model.rowCount(_cat_index(model, 3)) == 0  # 邮件
+        assert model.rowCount(_cat_index(model, 4)) == 1  # 压缩包
 
     def test_row_count_child_returns_zero(self, model: ExtractorTreeModel) -> None:
         """子项节点 rowCount 返回 0（无孙节点）。"""
@@ -149,15 +151,15 @@ class TestExtractorTreeModelConstruction:
         assert model.rowCount(child) == 0
 
     def test_total_count_equals_extractor_count(self, model: ExtractorTreeModel) -> None:
-        """total_count 等于提取器总数（3）。"""
-        assert model.total_count() == 3
-        assert model.row_count() == 3  # 测试别名
+        """total_count 等于提取器总数（4：3 个提取器 + 1 个压缩包虚拟项）。"""
+        assert model.total_count() == 4
+        assert model.row_count() == 4  # 测试别名
 
     def test_default_all_enabled(self, model: ExtractorTreeModel) -> None:
         """构造后默认全部勾选，disabled_extractors 为空。"""
         assert model.disabled_extractors() == []
         assert model.enabled_extensions() is None
-        assert model.checked_count() == 3
+        assert model.checked_count() == 4
 
     def test_column_count_always_one(self, model: ExtractorTreeModel) -> None:
         """columnCount 固定为 1（顶层与分类均如此）。"""
@@ -170,6 +172,7 @@ class TestExtractorTreeModelConstruction:
         assert model.data(_cat_index(model, 1), Qt.DisplayRole) == "表格（1）"
         assert model.data(_cat_index(model, 2), Qt.DisplayRole) == "演示（0）"
         assert model.data(_cat_index(model, 3), Qt.DisplayRole) == "邮件（0）"
+        assert model.data(_cat_index(model, 4), Qt.DisplayRole) == "压缩包（1）"
 
     def test_child_display_text_format(self, model: ExtractorTreeModel) -> None:
         """子项 DisplayRole 返回 ``{中文名}（{扩展名列表}）``格式。
@@ -189,6 +192,14 @@ class TestExtractorTreeModelConstruction:
         """
         xlsx_idx = _child_index(model, 1, 0)
         assert model.data(xlsx_idx, Qt.DisplayRole) == "Excel（xlsx）"
+
+    def test_archive_display_text(self, model: ExtractorTreeModel) -> None:
+        """压缩包分类虚拟项 DisplayRole 返回 ``压缩文件（7z, rar, zip）``。
+
+        扩展名按字母序排序：7z < rar < zip。
+        """
+        archive_idx = _child_index(model, 4, 0)
+        assert model.data(archive_idx, Qt.DisplayRole) == "压缩文件（7z, rar, zip）"
 
     def test_tooltip_lists_all_extensions(self, model: ExtractorTreeModel) -> None:
         """子项 ToolTipRole 返回所有扩展名（含 6 个的纯文本，按字母序排序）。"""
@@ -317,7 +328,7 @@ class TestExtractorTreeModelParentChildLinkage:
         assert model.data(_child_index(model, 0, 1), Qt.CheckStateRole) == Qt.Unchecked
         # 分类节点 CheckState 也为 Unchecked
         assert model.data(cat_idx, Qt.CheckStateRole) == Qt.Unchecked
-        assert model.checked_count() == 1  # 仅表格的 XlsxExtractor 仍勾选
+        assert model.checked_count() == 2  # 表格 1 + 压缩包 1 仍勾选
 
     def test_category_uncheck_all_then_recheck(self, model: ExtractorTreeModel) -> None:
         """分类节点批量取消后再批量勾选。"""
@@ -437,7 +448,7 @@ class TestExtractorTreeModelEnabledExtensions:
 
     def test_all_disabled_returns_empty_tuple(self, model: ExtractorTreeModel) -> None:
         """全部禁用时返回空元组。"""
-        model.set_disabled_extractors(["PdfExtractor", "TextExtractor", "XlsxExtractor"])
+        model.set_disabled_extractors(["PdfExtractor", "TextExtractor", "XlsxExtractor", "ArchiveFiles"])
         assert model.enabled_extensions() == ()
 
     def test_all_disabled_via_category_toggle(self, model: ExtractorTreeModel) -> None:
@@ -445,6 +456,25 @@ class TestExtractorTreeModelEnabledExtensions:
         model.setData(_cat_index(model, 0), Qt.Unchecked, Qt.CheckStateRole)
         model.setData(_cat_index(model, 1), Qt.Unchecked, Qt.CheckStateRole)
         assert model.enabled_extensions() == ()
+
+    def test_archives_enabled_default_true(self, model: ExtractorTreeModel) -> None:
+        """构造后压缩包分类默认勾选，archives_enabled 返回 True。"""
+        assert model.archives_enabled() is True
+
+    def test_archives_enabled_false_after_uncheck(self, model: ExtractorTreeModel) -> None:
+        """取消压缩包虚拟项勾选后 archives_enabled 返回 False。"""
+        model.setData(_child_index(model, 4, 0), Qt.Unchecked, Qt.CheckStateRole)
+        assert model.archives_enabled() is False
+
+    def test_enabled_extensions_excludes_archive(self, model: ExtractorTreeModel) -> None:
+        """取消压缩包勾选不影响 enabled_extensions：始终排除 zip/rar/7z。
+
+        压缩包扩展名由 ``Config.scan_archives`` 单独控制，不参与
+        ``scan_extensions`` 过滤，因此取消后 enabled_extensions 仍返回 None
+        （其余非压缩包分类全部勾选走快速路径）。
+        """
+        model.setData(_child_index(model, 4, 0), Qt.Unchecked, Qt.CheckStateRole)
+        assert model.enabled_extensions() is None
 
 
 # ----------------------------- checked_count / total_count -----------------------------
@@ -454,23 +484,23 @@ class TestExtractorTreeModelCount:
     """checked_count / total_count 行为。"""
 
     def test_initial_counts(self, model: ExtractorTreeModel) -> None:
-        """初始状态：3/3 全部勾选。"""
-        assert model.total_count() == 3
-        assert model.checked_count() == 3
+        """初始状态：4/4 全部勾选（3 提取器 + 1 压缩包虚拟项）。"""
+        assert model.total_count() == 4
+        assert model.checked_count() == 4
 
     def test_count_after_uncheck_one(self, model: ExtractorTreeModel) -> None:
         """取消 1 项后 checked_count 减 1。"""
         model.setData(_child_index(model, 0, 0), Qt.Unchecked, Qt.CheckStateRole)
-        assert model.checked_count() == 2
-        assert model.total_count() == 3  # 总数不变
+        assert model.checked_count() == 3
+        assert model.total_count() == 4  # 总数不变
 
     def test_count_after_category_uncheck(self, model: ExtractorTreeModel) -> None:
         """批量取消文档分类（2 项）后 checked_count 减 2。"""
         model.setData(_cat_index(model, 0), Qt.Unchecked, Qt.CheckStateRole)
-        assert model.checked_count() == 1  # 仅表格 1 项
+        assert model.checked_count() == 2  # 表格 1 + 压缩包 1
 
     def test_count_after_recheck(self, model: ExtractorTreeModel) -> None:
         """取消后重新勾选，checked_count 恢复。"""
         model.setData(_cat_index(model, 0), Qt.Unchecked, Qt.CheckStateRole)
         model.setData(_cat_index(model, 0), Qt.Checked, Qt.CheckStateRole)
-        assert model.checked_count() == 3
+        assert model.checked_count() == 4

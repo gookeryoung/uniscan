@@ -325,12 +325,12 @@ QPushButton#view_results_btn:disabled {
     border-color: ${COLOR_BORDER};
 }
 
-/* ========== 扫描中页按钮 ========== */
+/* ========== 扫描中页按钮（常规按钮样式，无危险色） ========== */
 
 QPushButton#pause_resume_btn {
-    background: ${COLOR_DANGER};
-    color: ${COLOR_TEXT_ON_PRIMARY};
-    border: none;
+    background: ${COLOR_BG_CARD};
+    color: ${COLOR_TEXT_PRIMARY};
+    border: 1px solid ${COLOR_BORDER};
     border-radius: ${RADIUS_MD};
     font-size: 14px;
     font-weight: bold;
@@ -338,7 +338,15 @@ QPushButton#pause_resume_btn {
 }
 
 QPushButton#pause_resume_btn:hover {
-    background: ${COLOR_DANGER_DARK};
+    background: ${COLOR_BG_HOVER};
+    border-color: ${COLOR_PRIMARY};
+    color: ${COLOR_PRIMARY};
+}
+
+QPushButton#pause_resume_btn:disabled {
+    background: ${COLOR_BG_APP};
+    color: ${COLOR_TEXT_MUTED};
+    border-color: ${COLOR_BORDER};
 }
 
 QPushButton#cancel_btn {
@@ -353,8 +361,14 @@ QPushButton#cancel_btn {
 
 QPushButton#cancel_btn:hover {
     background: ${COLOR_BG_HOVER};
-    border-color: ${COLOR_DANGER};
-    color: ${COLOR_DANGER};
+    border-color: ${COLOR_PRIMARY};
+    color: ${COLOR_PRIMARY};
+}
+
+QPushButton#cancel_btn:disabled {
+    background: ${COLOR_BG_APP};
+    color: ${COLOR_TEXT_MUTED};
+    border-color: ${COLOR_BORDER};
 }
 
 /* ========== 扫描中页标题 ========== */

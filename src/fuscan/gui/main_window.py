@@ -227,12 +227,13 @@ _EXPORT_FMT_TO_EXT: dict[str, str] = {fmt: ext for _, fmt, ext in _EXPORT_FORMAT
 _SCAN_MODE_TO_INDEX: dict[str, int] = {"full": 0, "drive": 1, "folder": 2}
 _INDEX_TO_SCAN_MODE: dict[int, str] = {v: k for k, v in _SCAN_MODE_TO_INDEX.items()}
 
-# 扫描阶段 ↔ current_file_label 前缀文案映射（iter-75）：
-# ProgressInfo.phase 取值见 fuscan.scanner.result.ProgressInfo；缺省回退到"正在解析"。
+# 扫描阶段 ↔ current_file_label 前缀文案映射（iter-79 四阶段）：
+# ProgressInfo.phase 取值见 fuscan.scanner.result.ProgressInfo；缺省回退到"文件解析"。
+# 四阶段：准备扫描（_on_scan 设置）→ 解析目录（walk）→ 文件解析（scan）→ 扫描完成（_on_scan_finished）
 _PHASE_LABELS: dict[str, str] = {
-    "walk": "正在遍历",
-    "scan": "正在解析",
-    "archive": "正在扫描压缩包",
+    "walk": "解析目录",
+    "scan": "文件解析",
+    "archive": "扫描压缩包",
 }
 
 
@@ -304,6 +305,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._result_filter_timer.setSingleShot(True)
             self._result_filter_timer.setInterval(300)
             self._result_filter_timer.timeout.connect(self._refresh_result_tree)
+            # 忽略项节流保存 timer（iter-79）：忽略目录/扩展名编辑器 textChanged
+            # 后节流 500ms 保存到 Config，避免每次按键触发文件 I/O
+            self._ignore_save_timer: QTimer = QTimer(self)
+            self._ignore_save_timer.setSingleShot(True)
+            self._ignore_save_timer.setInterval(500)
+            self._ignore_save_timer.timeout.connect(self._save_ignore_to_config)
 
             with PerfTimer("MainWindow._configure_ui"):
                 self._configure_ui()
@@ -552,11 +559,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.file_types_view.expandAll()
         self._extractor_model.extractors_changed.connect(self._on_extractor_toggled)  # pyrefly: ignore [missing-attribute]
         self._update_file_types_count()
+        # 忽略项编辑器 textChanged 节流保存（iter-79）：从设置对话框迁移到配置页后，
+        # 在此连接信号，避免每次按键触发文件 I/O
+        self.ignore_dirs_edit.textChanged.connect(self._on_ignore_changed)
+        self.ignore_extensions_edit.textChanged.connect(self._on_ignore_changed)
+
+    def _on_ignore_changed(self) -> None:
+        """忽略目录/扩展名编辑器文本变化：启动节流 timer，500ms 后保存到 Config。
+
+        避免每次按键触发文件 I/O；用户停止输入 500ms 后才真正写入配置文件。
+        """
+        self._ignore_save_timer.start()  # pyrefly: ignore [missing-argument]
+
+    def _save_ignore_to_config(self) -> None:
+        """从忽略项编辑器读取文本并保存到 Config（节流 timer 触发）。
+
+        按行解析，strip 首尾空白，过滤空行。保存后立即写入配置文件，
+        确保用户编辑不丢失（即使不立即扫描）。
+        """
+        self._config.ignore_dirs = [
+            line.strip() for line in self.ignore_dirs_edit.toPlainText().splitlines() if line.strip()
+        ]
+        self._config.ignore_extensions = [
+            line.strip() for line in self.ignore_extensions_edit.toPlainText().splitlines() if line.strip()
+        ]
+        save_config(self._config)
 
     @Slot()  # pyrefly: ignore [not-callable]
     def _on_extractor_toggled(self) -> None:
-        """提取器勾选状态变化：从模型读取 disabled_extractors 并即时保存配置。"""
+        """提取器勾选状态变化：从模型读取 disabled_extractors 并即时保存配置。
+
+        压缩包分类的勾选状态同步到 ``Config.scan_archives``（iter-79），
+        取代独立的 ``scan_archives`` 配置项——压缩包是否扫描由文件类型树统一管理。
+        """
         self._config.disabled_extractors = self._extractor_model.disabled_extractors()
+        self._config.scan_archives = self._extractor_model.archives_enabled()
         save_config(self._config)
         self._update_file_types_count()
 
@@ -763,6 +800,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.pause_resume_btn.setEnabled(is_scanning)
         self.cancel_btn.setEnabled(is_scanning)
 
+        # 侧边栏在扫描中阶段禁用（iter-79 需求4）：防止用户在解析目录/文件解析
+        # 阶段切换到其他页面导致扫描状态不一致；准备扫描与扫描完成阶段恢复可用
+        self.sidebar.setEnabled(not is_scanning)
+
         # 结果页
         self.rescan_btn.setEnabled(is_results)
         if is_results and has_report:
@@ -807,8 +848,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._resume_scan()
 
     def _on_cancel_scan(self) -> None:
-        """扫描中页"取消扫描"按钮：取消后台扫描。"""
+        """扫描中页"取消扫描"按钮：立即显示取消状态，后台异步取消扫描。
+
+        点击后立即禁用暂停/取消按钮并显示"取消中..."，给用户即时反馈；
+        ``worker.cancel()`` 仅设置取消标志（非阻塞），实际取消由扫描线程
+        在下次 ``_check_control()`` 检查时生效。
+        """
         if self._worker is not None:
+            self.cancel_btn.setEnabled(False)
+            self.pause_resume_btn.setEnabled(False)
+            self.stats_label.setText("取消中...")
+            self.current_file_label.setText("正在取消扫描...")
             self._worker.cancel()
 
     # ----------------------------- 配置持久化 -----------------------------
@@ -856,11 +906,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         set_perf_enabled(self._config.perf_log_enabled)
 
         # 恢复文件类型勾选状态（blockSignals 避免 extractors_changed 触发 _save_config 循环）
+        # 向后兼容（iter-79）：旧配置 scan_archives=False 但 disabled_extractors 中
+        # 无 "ArchiveFiles" 时，补充禁用压缩包分类
+        disabled = list(self._config.disabled_extractors)
+        if not self._config.scan_archives and "ArchiveFiles" not in disabled:
+            disabled.append("ArchiveFiles")
         self._extractor_model.blockSignals(True)
-        self._extractor_model.set_disabled_extractors(self._config.disabled_extractors)
+        self._extractor_model.set_disabled_extractors(disabled)
         self._extractor_model.blockSignals(False)
         # 恢复后同步计数标签（blockSignals 期间 _on_extractor_toggled 不会触发）
         self._update_file_types_count()
+
+        # 恢复忽略项编辑器内容（iter-79：从设置对话框迁移到配置页）
+        # blockSignals 避免 textChanged 触发 _on_ignore_changed 节流保存循环
+        self.ignore_dirs_edit.blockSignals(True)
+        self.ignore_extensions_edit.blockSignals(True)
+        self.ignore_dirs_edit.setPlainText("\n".join(self._config.ignore_dirs))
+        self.ignore_extensions_edit.setPlainText("\n".join(self._config.ignore_extensions))
+        self.ignore_dirs_edit.blockSignals(False)
+        self.ignore_extensions_edit.blockSignals(False)
 
     def _restore_window_geometry(self) -> None:
         """从配置恢复窗口几何（含屏幕边界夹紧算法）。
@@ -1092,12 +1156,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
             return
 
+        # flush 忽略项节流 timer（iter-79）：用户编辑后可能未满 500ms 就点扫描，
+        # 此处立即保存确保扫描使用最新忽略配置
+        if self._ignore_save_timer.isActive():
+            self._ignore_save_timer.stop()
+            self._save_ignore_to_config()
+
         self.result_tree.clear_results()
         self._detail_panel.clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
         self.current_file_label.setText("准备扫描...")
-        self.stats_label.setText("扫描中...")
+        self.stats_label.setText("准备扫描...")
         # 重置扫描中页列表与增量更新状态：避免上次扫描数据残留、快照干扰本次增量对比
         self._list_updater.reset()
         # 重置扫描中页的分类统计面板（需求6/7）

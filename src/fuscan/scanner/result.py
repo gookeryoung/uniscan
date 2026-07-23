@@ -106,19 +106,19 @@ class ProgressInfo:
     def summary(self) -> str:
         """返回实时进度状态栏文本（含速度计算）。
 
-        根据 ``phase`` 返回不同文案：walk 阶段突出"正在分析目录结构"，
-        scan 阶段展示完整扫描指标，archive 阶段突出"正在扫描压缩包"。
-        与 ``ScanStats.summary`` 不同，此处不含 ``total_files`` 与 ``cancelled``
-        前缀，仅展示当前已扫描的实时指标，供 GUI 进度回调直接调用。
+        根据 ``phase`` 返回不同文案（iter-79 四阶段命名）：
+        walk 阶段（解析目录）突出已发现文件数与白名单跳过数，
+        scan 阶段（文件解析）展示完整扫描指标，
+        archive 阶段突出压缩包扫描进度。
         """
         if self.phase == "walk":
             return (
-                f"正在分析目录结构 | 已发现 {self.total} 个文件 | 跳过 {self.skipped} | "
+                f"解析目录 | 已发现 {self.total} 个文件 | 跳过 {self.skipped} | "
                 f"用户跳过 {self.user_skipped} | 已用 {self.elapsed:.1f}s"
             )
         if self.phase == "archive":
             return (
-                f"正在扫描压缩包 | 已扫描 {self.scanned} | 命中 {self.matched} | "
+                f"扫描压缩包 | 已扫描 {self.scanned} | 命中 {self.matched} | "
                 f"错误 {self.errors} | 已用 {self.elapsed:.1f}s"
             )
         speed = self.scanned / self.elapsed if self.elapsed > 0 else 0.0

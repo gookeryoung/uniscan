@@ -68,7 +68,7 @@ class ArchiveScanner:
         try:
             reader = get_reader(archive_path, password=self._password)
         except ArchiveError:
-            logger.warning("打开压缩包失败: %s", archive_path, exc_info=True)
+            logger.warning("打开压缩包失败（已跳过）: %s", archive_path)
             return (
                 ScanResult(
                     path=archive_path,
@@ -84,7 +84,7 @@ class ArchiveScanner:
         try:
             entries = reader.list_entries()
         except ArchiveError:
-            logger.warning("列出压缩包条目失败: %s", archive_path, exc_info=True)
+            logger.warning("列出压缩包条目失败（已跳过）: %s", archive_path)
             self._close_reader(reader)
             return (
                 ScanResult(
