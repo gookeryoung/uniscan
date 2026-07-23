@@ -282,6 +282,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._use_builtin: bool = True
             # 扫描模式："full"（全盘）、"drive"（盘符）、"folder"（文件夹）
             self._scan_mode: str = "folder"
+            # 取消中标志（iter-79）：用户点击取消后置 True，扫描线程退出前
+            # 进度回调 _on_scan_progress 据此跳过 UI 覆盖，保留"取消中..."文案
+            # 与不确定进度动画；_reset_scan_ui 中重置为 False
+            self._cancelling: bool = False
             # 详情面板控制器：setupUi 已创建详情区 UI 控件，立即构造 DetailPanel，
             # 使后续 _connect_signals/_setup_shortcuts 可安全引用（非 None）
             self._detail_panel: DetailPanel = self._create_detail_panel()
@@ -850,13 +854,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _on_cancel_scan(self) -> None:
         """扫描中页"取消扫描"按钮：立即显示取消状态，后台异步取消扫描。
 
-        点击后立即禁用暂停/取消按钮并显示"取消中..."，给用户即时反馈；
-        ``worker.cancel()`` 仅设置取消标志（非阻塞），实际取消由扫描线程
-        在下次 ``_check_control()`` 检查时生效。
+        点击后立即禁用暂停/取消按钮、切换进度条为不确定动画（转圈）并显示
+        "取消中..."，给用户即时反馈；``worker.cancel()`` 仅设置取消标志（非阻塞），
+        实际取消由扫描线程在下次 ``_check_control()`` 检查时生效。
+
+        ``_cancelling`` 标志防止扫描线程退出前的进度回调覆盖"取消中..."文案
+        与不确定动画（扫描线程退出前仍会 emit progress_info 信号）。
         """
         if self._worker is not None:
+            self._cancelling = True
             self.cancel_btn.setEnabled(False)
             self.pause_resume_btn.setEnabled(False)
+            # 进度条切换为不确定模式（转圈动画），给用户"正在取消"的视觉反馈
+            self.progress.setRange(0, 0)
             self.stats_label.setText("取消中...")
             self.current_file_label.setText("正在取消扫描...")
             self._worker.cancel()
@@ -1250,6 +1260,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     def _reset_scan_ui(self) -> None:
         """重置扫描 UI 到空闲状态。"""
         self._scan_state = ScanState.IDLE
+        self._cancelling = False
         self.pause_resume_btn.setText("暂停扫描")
         # 重置进度条为确定模式（0/100），避免下次进入扫描页时残留 indeterminate 动画
         self.progress.setRange(0, 100)
@@ -1276,7 +1287,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         列表更新采用增量 append + 独立节流（0.5 秒），避免每次回调全量
         clear+重添 O(N) 阻塞主线程导致点击设置等交互卡滞。
+
+        取消中状态（``_cancelling=True``）跳过全部 UI 更新，保留"取消中..."
+        文案与不确定进度动画，避免扫描线程退出前的最终进度回调覆盖取消反馈。
         """
+        if self._cancelling:
+            return
         # 切换为确定进度模式（walk 阶段 total 仍在增长，scan 阶段 total 已固定）
         if info.total > 0 and self.progress.maximum() != info.total:
             self.progress.setRange(0, info.total)

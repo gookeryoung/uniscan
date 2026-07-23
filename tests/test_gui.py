@@ -1481,6 +1481,60 @@ class TestWorkflowStage:
         window._worker = None
         window.close()
 
+    def test_on_cancel_scan_sets_cancelling_flag_and_indeterminate_progress(self, qapp: QApplication) -> None:
+        """iter-79：取消后应设置 _cancelling 标志、进度条切不确定模式、显示"取消中..."。"""
+
+        class _FakeWorker:
+            def __init__(self) -> None:
+                self.cancelled = False
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+        window = MainWindow()
+        fake = _FakeWorker()
+        window._worker = fake  # type: ignore[assignment]
+        window._on_cancel_scan()
+        assert window._cancelling is True
+        assert window.stats_label.text() == "取消中..."
+        assert window.current_file_label.text() == "正在取消扫描..."
+        # 进度条应为不确定模式（minimum=0, maximum=0）
+        assert window.progress.minimum() == 0
+        assert window.progress.maximum() == 0
+        window._worker = None
+        window.close()
+
+    def test_on_scan_progress_skipped_when_cancelling(self, qapp: QApplication) -> None:
+        """iter-79：_cancelling=True 时进度回调应跳过 UI 覆盖，保留"取消中..."文案。"""
+        from fuscan.scanner.result import ProgressInfo
+
+        window = MainWindow()
+        window._cancelling = True
+        window.stats_label.setText("取消中...")
+        window.current_file_label.setText("正在取消扫描...")
+        # 模拟扫描线程退出前的最终进度回调
+        info = ProgressInfo(
+            current_file="/some/file.txt",
+            scanned=100,
+            total=200,
+            matched=5,
+            phase="scan",
+        )
+        window._on_scan_progress(info)
+        # 文案不应被覆盖
+        assert window.stats_label.text() == "取消中..."
+        assert window.current_file_label.text() == "正在取消扫描..."
+        window.close()
+
+    def test_reset_scan_ui_clears_cancelling_flag(self, qapp: QApplication) -> None:
+        """iter-79：_reset_scan_ui 应重置 _cancelling 为 False。"""
+        window = MainWindow()
+        window._cancelling = True
+        window._scan_state = ScanState.RUNNING
+        window._reset_scan_ui()
+        assert window._cancelling is False
+        window.close()
+
     def test_on_cancel_scan_without_worker_does_nothing(self, qapp: QApplication) -> None:
         """无 worker 时 _on_cancel_scan 不应崩溃。"""
         window = MainWindow()
