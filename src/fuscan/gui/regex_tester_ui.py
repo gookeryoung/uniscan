@@ -39,11 +39,6 @@ class Ui_RegexTesterDialog(object):
 
         self.regex_input_layout.addWidget(self.regex_case_sensitive_check)
 
-        self.regex_test_btn = QPushButton(RegexTesterDialog)
-        self.regex_test_btn.setObjectName(u"regex_test_btn")
-
-        self.regex_input_layout.addWidget(self.regex_test_btn)
-
 
         self.main_layout.addLayout(self.regex_input_layout)
 
@@ -112,9 +107,6 @@ class Ui_RegexTesterDialog(object):
         self.retranslateUi(RegexTesterDialog)
         self.close_btn.clicked.connect(RegexTesterDialog.accept)
 
-        self.regex_test_btn.setDefault(True)
-
-
         QMetaObject.connectSlotsByName(RegexTesterDialog)
     # setupUi
 
@@ -130,10 +122,6 @@ class Ui_RegexTesterDialog(object):
         self.regex_case_sensitive_check.setToolTip(QCoreApplication.translate("RegexTesterDialog", u"\u52fe\u9009\u540e\u533a\u5206\u5927\u5c0f\u5199\uff08\u9ed8\u8ba4\u5ffd\u7565\u5927\u5c0f\u5199\uff0c\u4e0e\u89c4\u5219\u9ed8\u8ba4\u884c\u4e3a\u4e00\u81f4\uff09", None))
 #endif // QT_CONFIG(tooltip)
         self.regex_case_sensitive_check.setText(QCoreApplication.translate("RegexTesterDialog", u"\u533a\u5206\u5927\u5c0f\u5199", None))
-#if QT_CONFIG(tooltip)
-        self.regex_test_btn.setToolTip(QCoreApplication.translate("RegexTesterDialog", u"\u5bf9\u6d4b\u8bd5\u6587\u672c\u6267\u884c\u6b63\u5219\u5339\u914d\u5e76\u663e\u793a\u547d\u4e2d\u7ed3\u679c", None))
-#endif // QT_CONFIG(tooltip)
-        self.regex_test_btn.setText(QCoreApplication.translate("RegexTesterDialog", u"\u6d4b\u8bd5", None))
         self.test_text_label.setText(QCoreApplication.translate("RegexTesterDialog", u"\u6d4b\u8bd5\u6587\u672c:", None))
 #if QT_CONFIG(tooltip)
         self.regex_test_text_edit.setToolTip(QCoreApplication.translate("RegexTesterDialog", u"\u652f\u6301\u591a\u884c\u6587\u672c\uff1b\u6bcf\u884c\u72ec\u7acb\u5339\u914d\uff0c\u8de8\u884c\u4e0d\u8fde\u63a5", None))

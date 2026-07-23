@@ -55,19 +55,6 @@
        </property>
       </widget>
      </item>
-     <item>
-      <widget class="QPushButton" name="regex_test_btn">
-       <property name="toolTip">
-        <string>对测试文本执行正则匹配并显示命中结果</string>
-       </property>
-       <property name="text">
-        <string>测试</string>
-       </property>
-       <property name="default">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
     </layout>
    </item>
    <item>

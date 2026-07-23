@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 import re
 
+from PySide2.QtCore import Slot
+
 try:
     from PySide2.QtWidgets import QDialog, QWidget
 except ImportError:  # pragma: no cover
@@ -85,38 +87,43 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
         initial_pattern：初始正则表达式，便于规则编辑器预填待测内容。
     """
 
-    def __init__(
-        self,
-        parent: QWidget | None = None,
-        initial_pattern: str = "",
-    ) -> None:
+    _compiled: re.Pattern | None = None
+
+    def __init__(self, parent: QWidget | None = None, initial_pattern: str = "") -> None:
         super().__init__(parent)
         self.setupUi(self)
-        self._configure_ui(initial_pattern)
 
-    def _configure_ui(self, initial_pattern: str) -> None:
-        """配置 .ui 无法静态表达的动态属性、初始内容与信号槽连接。"""
-        # 信号槽连接：测试按钮点击 + 正则输入框回车均触发匹配
-        self.regex_test_btn.clicked.connect(self._on_test_regex)
-        self.regex_pattern_edit.returnPressed.connect(self._on_test_regex)
-
-        # 初始化速查手册内容
-        self.regex_cheatsheet_view.setPlainText(_REGEX_CHEATSHEET)
-
-        # 预填待测正则表达式
         if initial_pattern:
             self.regex_pattern_edit.setText(initial_pattern)
 
-        # layout 伸缩比例：
-        # 0 regex_input_layout, 1 regex_io_layout, 2 regex_cheatsheet_label,
-        # 3 regex_cheatsheet_view, 4 close_btn
-        # 输入行/速查手册标签/关闭按钮固定，文本结果列与速查手册内容各占 1
-        self.main_layout.setStretch(0, 0)
-        self.main_layout.setStretch(1, 1)
-        self.main_layout.setStretch(2, 0)
-        self.main_layout.setStretch(3, 1)
-        self.main_layout.setStretch(4, 0)
+        self._connect_signals()
 
+    def _connect_signals(self) -> None:
+        """配置 .ui 无法静态表达的动态属性、初始内容与信号槽连接。"""
+        self.regex_pattern_edit.textChanged.connect(self._on_pattern_changed)
+        self.regex_test_text_edit.textChanged.connect(self._on_test_regex)
+        self.regex_cheatsheet_view.setPlainText(_REGEX_CHEATSHEET)
+
+    @Slot()
+    def _on_pattern_changed(self) -> None:
+        """正则表达式输入框内容改变时触发，更新结果视图。"""
+        pattern = self.regex_pattern_edit.text().strip()
+        if not pattern:
+            self._compiled = None
+            return
+
+        case_sensitive = self.regex_case_sensitive_check.isChecked()
+        flags = 0 if case_sensitive else re.IGNORECASE
+        try:
+            self._compiled = re.compile(pattern, flags)
+        except re.error as exc:
+            self.regex_result_view.setPlainText(f"正则编译失败:\n{exc}")
+            return
+
+        # 触发测试匹配
+        self._on_test_regex()
+
+    @Slot()
     def _on_test_regex(self) -> None:
         """对测试文本执行正则匹配并显示命中结果。
 
@@ -124,23 +131,20 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
         使用 ``re.compile(...).finditer(text)`` 收集所有非重叠匹配，
         显示每个命中的位置、文本与捕获组。
         """
-        pattern = self.regex_pattern_edit.text().strip()
-        if not pattern:
+        if not self._compiled:
             self.regex_result_view.setPlainText("（请输入正则表达式）")
             return
+
         text = self.regex_test_text_edit.toPlainText()
-        case_sensitive = self.regex_case_sensitive_check.isChecked()
-        flags = 0 if case_sensitive else re.IGNORECASE
-        try:
-            compiled = re.compile(pattern, flags)
-        except re.error as exc:
-            self.regex_result_view.setPlainText(f"正则编译失败:\n{exc}")
+        if not text:
+            self.regex_result_view.setPlainText("（请输入测试文本）")
             return
-        # 与 matchers._apply_regex 一致：finditer 收集所有匹配
-        matches = list(compiled.finditer(text))
+
+        matches = list(self._compiled.finditer(text))
         if not matches:
             self.regex_result_view.setPlainText(f"未命中（扫描 {len(text)} 字符）")
             return
+
         lines = [f"共命中 {len(matches)} 处：", ""]
         for i, m in enumerate(matches, 1):
             start, end = m.span()
@@ -152,4 +156,5 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
             named = m.groupdict()
             if named:
                 lines.append(f"    命名组: {named}")
+
         self.regex_result_view.setPlainText("\n".join(lines))
