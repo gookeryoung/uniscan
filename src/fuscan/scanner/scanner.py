@@ -26,7 +26,7 @@ from fuscan.perf import PerfStats
 from fuscan.rules.model import MatchSpec, MatchTarget, Rule, RuleSet
 from fuscan.scanner.context import ContentProvider, FileEntry, MatchContext
 from fuscan.scanner.matchers import Matcher, build_matcher
-from fuscan.scanner.result import ProgressInfo, RuleHit, ScanReport, ScanResult, ScanStats
+from fuscan.scanner.result import ProgressInfo, RuleHit, ScanReport, ScanResult, ScanStats, WalkResult
 from fuscan.scanner.walker import FileWalker
 
 if TYPE_CHECKING:
@@ -295,61 +295,132 @@ class Scanner:
         self._skipped_dirs.append(dir_path)
 
     def scan(self, root: Path) -> ScanReport:
-        """扫描根目录，返回完整报告。
+        """扫描根目录，返回完整报告（``collect_entries`` + ``scan_entries`` 串联）。
 
         两阶段扫描架构（iter-71）：
 
-        1. **阶段 1 - 收集**：单线程遍历目录树，按全局 ``scan_extensions`` 过滤
-           生成待扫描文件清单。遍历为 I/O 轻量操作，单线程已足够。
-        2. **阶段 2 - 扫描**：``max_workers > 1`` 时用 ThreadPoolExecutor 并发扫描
-           文件清单，否则顺序扫描。先收集再扫描避免了 walk 与 scan 争抢磁盘 I/O
-           导致的吞吐下降，且可对清单做全局后缀过滤减少无效提交。
+        1. **阶段 1 - 收集**：:meth:`collect_entries` 单线程遍历目录树，按全局
+           ``scan_extensions`` 过滤生成待扫描文件清单。遍历为 I/O 轻量操作，单线程已足够。
+        2. **阶段 2 - 扫描**：:meth:`scan_entries` 在 ``max_workers > 1`` 时用
+           ThreadPoolExecutor 并发扫描文件清单，否则顺序扫描。先收集再扫描避免了 walk
+           与 scan 争抢磁盘 I/O 导致的吞吐下降，且可对清单做全局后缀过滤减少无效提交。
         3. **阶段 3 - 压缩包**：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）。
 
         ``on_progress`` 回调在遍历和扫描阶段按时间节流反馈进度。
+        职责拆分后，``FileStatsWorker`` 可独立调用 :meth:`collect_entries`，
+        ``ScanWorker`` 接收 :class:`WalkResult` 后调用 :meth:`scan_entries` 跳过 walk。
+        """
+        walk_result = self.collect_entries(root)
+        return self.scan_entries(root, walk_result)
+
+    def collect_entries(self, root: Path) -> WalkResult:
+        """walk 阶段：单线程遍历目录树收集待扫描文件清单，按过滤规则筛选。
+
+        独立调用（如 ``FileStatsWorker``）时仅执行 walk 阶段；与 :meth:`scan_entries`
+        配合时由 :meth:`scan` 串联。本方法重置进度上下文与收集列表，并在结束时
+        清除 ``_cancel_event``，使 Scanner 可在取消/异常后复用（C1 修复语义保持）。
+
+        过滤规则：
+
+        - ``skip_paths``：用户标记跳过的文件计入 ``user_skipped``，不进入清单
+        - ``scan_extensions``：不在白名单的文件计入 ``skipped``，不进入清单
+        - ``ignore_dirs``/``ignore_extensions``：在 ``FileWalker`` 内部过滤，
+          跳过的目录收集到 ``skipped_dirs`` 供 UI 展示
+
+        :param root: 待遍历的根路径
+        :return: walk 产物 :class:`WalkResult`，含 entries 与统计
         """
         self._progress_start = time.perf_counter()
-        # 重置暂停状态（取消状态在 finally 中清除，保留"scan() 前取消"语义）
+        # 重置暂停状态（取消状态在末尾清除，保留"collect 前取消"语义）
         self._pause_event.set()
-        # 重置每次扫描的收集列表，避免跨多次 scan() 累积
+        # 重置每次扫描的收集列表，避免跨多次调用累积
         self._skipped_dirs.clear()
         self._matched_files.clear()
-        # 重置性能统计，使每次 scan() 的汇总独立
+        # 重置性能统计，使每次调用的汇总独立
         self._perf.reset()
 
-        results: list[ScanResult] = []
         entries: list[FileEntry] = []
         total = 0
         skipped = 0
         user_skipped = 0
+        cancelled = self.is_cancelled
+
+        if not cancelled:
+            # 阶段 1：单线程遍历收集待扫描 entry（I/O 轻量，按全局后缀过滤）
+            with self._perf.measure("walk"):
+                for entry in self._walker.walk(root):
+                    if self._check_control():
+                        break
+                    total += 1
+                    # iter-77：用户标记跳过的文件计入 user_skipped（区别于
+                    # 按扩展名/目录过滤的 skipped），不进入扫描队列
+                    if str(entry.path) in self._skip_paths:
+                        user_skipped += 1
+                        continue
+                    if not self._should_scan(entry):
+                        skipped += 1
+                        continue
+                    entries.append(entry)
+                    if total % 200 == 0:
+                        self._emit_progress(str(entry.path), 0, 0, 0, phase="walk")
+
+        self._progress_total = total
+        self._progress_skipped = skipped
+        self._progress_user_skipped = user_skipped
+        # 记录取消状态后清除标志，使 Scanner 可在取消/异常后复用（C1 修复）：
+        # 否则下次 collect_entries 的 is_cancelled 仍为 True，静默跳过全部逻辑
+        cancelled = self.is_cancelled
+        self._cancel_event.clear()
+
+        return WalkResult(
+            root=root,
+            entries=tuple(entries),
+            total=total,
+            skipped=skipped,
+            user_skipped=user_skipped,
+            skipped_dirs=tuple(self._skipped_dirs),
+            cancelled=cancelled,
+        )
+
+    def scan_entries(self, root: Path, walk_result: WalkResult) -> ScanReport:
+        """scan + archive 阶段：对预收集的 entries 执行内容扫描。
+
+        接收 :meth:`collect_entries` 的产物，跳过 walk 直接进入阶段 2/3。
+        与 :meth:`collect_entries` 配合实现 stats/scan worker 职责拆分：
+        ``FileStatsWorker`` 跑完 walk 产出 ``WalkResult``，``ScanWorker`` 接收后
+        调本方法，使 UI 从 scan 阶段开始即展示确定的 ``total``。
+
+        本方法重置 ``_progress_start``，``duration_seconds`` 仅反映 scan/archive
+        阶段耗时（walk 已由 ``FileStatsWorker`` 独立计时）。
+
+        :param root: 扫描根路径（用于 ScanReport.root）
+        :param walk_result: :meth:`collect_entries` 的产物
+        :return: 完整扫描报告
+        """
+        # 重置 scan 阶段计时起点，使 duration 仅反映 scan/archive 耗时
+        self._progress_start = time.perf_counter()
+        self._pause_event.set()
+
+        entries = list(walk_result.entries)
+        total = walk_result.total
+        skipped = walk_result.skipped
+        user_skipped = walk_result.user_skipped
+        # walk_result.cancelled 来自 collect_entries 末尾的 is_cancelled 快照，
+        # 此处沿用：walk 被取消则跳过 scan/archive 阶段
+        cancelled = walk_result.cancelled
+
+        results: list[ScanResult] = []
         scanned = 0
         matched = 0
         errors = 0
         matches = 0
-        cancelled = self.is_cancelled
+        # 复位 walk 累积的进度上下文，供 _emit_progress 在 scan 阶段使用
+        self._progress_total = total
+        self._progress_skipped = skipped
+        self._progress_user_skipped = user_skipped
 
         try:
             if not cancelled:
-                # 阶段 1：单线程遍历收集待扫描 entry（I/O 轻量，按全局后缀过滤）
-                with self._perf.measure("walk"):
-                    for entry in self._walker.walk(root):
-                        if self._check_control():
-                            break
-                        total += 1
-                        # iter-77：用户标记跳过的文件计入 user_skipped（区别于
-                        # 按扩展名/目录过滤的 skipped），不进入扫描队列
-                        if str(entry.path) in self._skip_paths:
-                            user_skipped += 1
-                            continue
-                        if not self._should_scan(entry):
-                            skipped += 1
-                            continue
-                        entries.append(entry)
-                        if total % 200 == 0:
-                            self._emit_progress(str(entry.path), 0, 0, 0, phase="walk")
-                self._progress_total = total
-                self._progress_skipped = skipped
-                self._progress_user_skipped = user_skipped
                 # 阶段 2：并发扫描（max_workers > 1）或顺序扫描
                 if self._max_workers and self._max_workers > 1:
                     scanned, matched, errors, matches = self._scan_concurrent(entries, results)
@@ -374,8 +445,7 @@ class Scanner:
             # 异常路径（如 MemoryError、walker 未捕获错误）也 flush 已累积批次，
             # 避免最后一批（最多 _BATCH_THRESHOLD 个文件）缓存数据丢失
             self._flush_batch()
-            # 记录取消状态后清除标志，使 Scanner 可在取消/异常后复用（C1 修复）：
-            # 否则下次 scan() 的 is_cancelled 仍为 True，静默跳过全部扫描逻辑
+            # 记录取消状态后清除标志，使 Scanner 可在取消/异常后复用（C1 修复）
             cancelled = self.is_cancelled
             self._cancel_event.clear()
 

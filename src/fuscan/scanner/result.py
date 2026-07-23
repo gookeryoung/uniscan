@@ -24,6 +24,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from fuscan.rules.model import Severity
+from fuscan.scanner.context import FileEntry
 
 __all__ = [
     "MatchResult",
@@ -32,6 +33,7 @@ __all__ = [
     "ScanReport",
     "ScanResult",
     "ScanStats",
+    "WalkResult",
     "format_size",
 ]
 
@@ -274,6 +276,32 @@ class ScanStats:
             f"命中 {self.matched_files} | 条数 {self.total_matches} | "
             f"错误 {self.errors} | 耗时 {self.duration_seconds:.2f}s"
         )
+
+
+@dataclass(frozen=True)
+class WalkResult:
+    """walk 阶段产物：单根路径遍历收集的待扫描文件清单与统计。
+
+    职责拆分（stats/scan worker 分离）后，``FileStatsWorker`` 执行 walk 阶段
+    产出本对象，``ScanWorker`` 接收后跳过 walk 直接进入 scan/archive 阶段，
+    使 UI 能更早展示确定的 ``total``，且两 worker 的取消/暂停各自独立。
+
+    :param root: 本次 walk 的根路径
+    :param entries: 通过过滤的待扫描文件清单（已剔除 ignored/user_skipped）
+    :param total: walk 发现的文件总数（含跳过项，用于进度条总量）
+    :param skipped: 按扩展名/目录过滤跳过的文件数
+    :param user_skipped: 用户标记跳过的文件数（区别于 skipped）
+    :param skipped_dirs: walk 阶段跳过的目录路径元组（最近条目，供 UI 展示）
+    :param cancelled: walk 是否被取消
+    """
+
+    root: Path
+    entries: tuple[FileEntry, ...] = field(default_factory=tuple)
+    total: int = 0
+    skipped: int = 0
+    user_skipped: int = 0
+    skipped_dirs: tuple[str, ...] = ()
+    cancelled: bool = False
 
 
 @dataclass(frozen=True)

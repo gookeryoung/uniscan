@@ -35,6 +35,7 @@ from fuscan.scanner.result import (
     ScanReport,
     ScanResult,
     ScanStats,
+    WalkResult,
 )
 from fuscan.scanner.scanner import Scanner, default_extract_content, default_extract_content_with_hash
 from fuscan.scanner.walker import FileWalker, list_drives
@@ -59,6 +60,7 @@ __all__ = [
     "ScanResult",
     "ScanStats",
     "Scanner",
+    "WalkResult",
     "build_matcher",
     "default_content_provider",
     "default_extract_content",
