@@ -251,55 +251,6 @@ QPushButton[drive]:checked:hover {
     color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
-/* ========== 主操作按钮 ========== */
-
-QPushButton#scan_btn {
-    background: ${COLOR_PRIMARY};
-    color: ${COLOR_TEXT_ON_PRIMARY};
-    border: none;
-    border-radius: ${RADIUS_MD};
-    font-size: 14px;
-    font-weight: bold;
-    padding: 8px 32px;
-    min-width: 180px;
-    min-height: 44px;
-}
-
-QPushButton#scan_btn:hover {
-    background: ${COLOR_PRIMARY_DARK};
-}
-
-QPushButton#scan_btn:pressed {
-    background: ${COLOR_PRIMARY_DARKER};
-}
-
-QPushButton#scan_btn:disabled {
-    background: ${COLOR_BORDER};
-    color: ${COLOR_TEXT_ON_PRIMARY};
-}
-
-/* ========== 次要按钮 ========== */
-
-QPushButton#export_btn, QPushButton#rescan_btn {
-    background: ${COLOR_PRIMARY};
-    color: ${COLOR_TEXT_ON_PRIMARY};
-    border: none;
-    border-radius: ${RADIUS_MD};
-    font-size: ${FONT_SIZE_BODY};
-    font-weight: bold;
-    padding: 6px 16px;
-    min-height: 32px;
-}
-
-QPushButton#export_btn:hover, QPushButton#rescan_btn:hover {
-    background: ${COLOR_PRIMARY_DARK};
-}
-
-QPushButton#export_btn:disabled, QPushButton#rescan_btn:disabled {
-    background: ${COLOR_BORDER};
-    color: ${COLOR_TEXT_ON_PRIMARY};
-}
-
 /* ========== 查看结果按钮（配置页次操作，轮廓样式区分主次） ========== */
 
 QPushButton#view_results_btn {

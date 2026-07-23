@@ -166,7 +166,7 @@
           </widget>
           <widget class="QStackedWidget" name="main_stack">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="setup_page">
             <layout class="QVBoxLayout" name="setup_layout">
@@ -579,7 +579,7 @@
                   <property name="minimumSize">
                    <size>
                     <width>180</width>
-                    <height>44</height>
+                    <height>40</height>
                    </size>
                   </property>
                   <property name="cursor">
@@ -601,7 +601,7 @@
                   <property name="minimumSize">
                    <size>
                     <width>180</width>
-                    <height>44</height>
+                    <height>40</height>
                    </size>
                   </property>
                   <property name="cursor">
