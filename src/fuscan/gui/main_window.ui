@@ -19,6 +19,10 @@
   <property name="windowTitle">
    <string>fuscan 通用文件扫描器</string>
   </property>
+  <property name="windowIcon">
+   <iconset resource="../resources.qrc">
+    <normaloff>:/assets/icons/favicon.svg</normaloff>:/assets/icons/favicon.svg</iconset>
+  </property>
   <widget class="QWidget" name="central">
    <layout class="QVBoxLayout" name="central_layout">
     <property name="spacing">
@@ -1237,11 +1241,11 @@
                         <property name="editTriggers">
                          <set>QAbstractItemView::NoEditTriggers</set>
                         </property>
-                        <property name="selectionBehavior">
-                         <enum>QAbstractItemView::SelectRows</enum>
-                        </property>
                         <property name="tabKeyNavigation">
                          <bool>false</bool>
+                        </property>
+                        <property name="selectionBehavior">
+                         <enum>QAbstractItemView::SelectRows</enum>
                         </property>
                         <column>
                          <property name="text">
