@@ -21,8 +21,9 @@
 | `src/fuscan/gui/result_filter_panel.py` | 新增 ResultFilterPanel 控制器：封装路径输入 + 规则筛选 + 分组模式 + 结果树 + 节流 timer（report_getter 回调避免双状态同步、populate / refresh / clear API） |
 | `src/fuscan/gui/export_controller.py` | 新增 ExportController 控制器：封装导出流程（格式选择对话框 + 文件保存 + ExportWorker 后台导出 + 结果回调，button_restore_requested 信号解耦按钮状态管理） |
 | `src/fuscan/gui/rules_panel.py` | 新增 RulesFilePanel 控制器：封装规则文件列表（刷新 + 上移/下移/移除 + 内置勾选 + 右键菜单，rules_changed 信号触发主窗口重载与持久化） |
-| `src/fuscan/gui/main_window.py` | 删除迁出方法（约 200 行），新增 _setup_*_panel / _setup_export_controller 构造方法；_use_builtin / _rules_paths 改为 property 转发到 RulesFilePanel；closeEvent 新增 _export_controller.cleanup()；删除 Qt 导入（不再使用） |
-| `tests/test_gui.py` | 约 50 处引用更新：window._on_export_menu → window._export_controller.show_menu；window._on_move_rule_up → window._rules_panel.move_up；window._refresh_rules_file_list → window._rules_panel.refresh；右键菜单 mock 从 main_window.QMenu 改为 rules_panel.QMenu 等 |
+| `src/fuscan/gui/stage_controller.py` | 新增 StageController 控制器：封装工作流阶段切换（三页切换 + 17 个控件可用性管理，4 个 callback 读取外部状态避免持有主窗口扫描状态与规则集）；WorkflowStage 枚举与阶段映射常量迁入此文件 |
+| `src/fuscan/gui/main_window.py` | 删除迁出方法（约 350 行），新增 _setup_*_panel / _setup_export_controller / _setup_stage_controller 构造方法；_use_builtin / _rules_paths / _workflow_stage 改为 property 转发；closeEvent 新增 _export_controller.cleanup()；删除 Qt 导入（不再使用） |
+| `tests/test_gui.py` | 约 90 处引用更新：window._on_export_menu → window._export_controller.show_menu；window._on_move_rule_up → window._rules_panel.move_up；window._refresh_rules_file_list → window._rules_panel.refresh；window._switch_stage → window._stage_controller.switch_stage；window._update_stage_actions → window._stage_controller.update_actions；右键菜单 mock 从 main_window.QMenu 改为 rules_panel.QMenu 等 |
 
 ## 关键决策与依据
 
@@ -77,9 +78,25 @@ RulesFilePanel，而非直接删除让测试改用 panel API。
   （基于 workflow_stage 与 has_report）
 - 信号解耦避免 controller 反向调用主窗口方法
 
+### D5：StageController 的 callback 模式与 WorkflowStage 迁移
+
+**决策**：StageController 通过 4 个 callback 读取外部状态（`is_paused_getter` /
+`has_report_getter` / `has_hits_getter` / `can_start_scan_getter`），不持有
+主窗口的扫描状态与规则集；`WorkflowStage` 枚举与阶段映射常量迁入
+stage_controller.py，main_window.py 通过 `__all__` 重新导出保持兼容。
+
+**依据**：
+- `_update_stage_actions` 需要读取 `_scan_state` / `_last_report` / `_ruleset`
+  等主窗口状态，如果 panel 持有这些引用会导致状态同步问题
+- callback 模式让 panel 在 `update_actions` 时实时读取主窗口状态，无需同步
+- `_can_start_scan` 保留在主窗口（依赖 `_scan_state` / `_ruleset` /
+  `_scan_mode_panel`），通过 `can_start_scan_getter` callback 供 panel 读取
+- `WorkflowStage` 迁入 stage_controller.py 避免循环导入（panel 需要使用它），
+  main_window.py 通过 `__all__` 重新导出保持测试兼容
+
 ## 代码实现情况
 
-### 已抽取的 8 个控制器
+### 已抽取的 9 个控制器
 
 | 控制器 | 职责 | 信号 | commit |
 |--------|------|------|--------|
@@ -91,29 +108,32 @@ RulesFilePanel，而非直接删除让测试改用 panel API。
 | ResultFilterPanel | 结果树筛选 + 节流 timer + 刷新 | — | 7f9f594 |
 | ExportController | 导出流程（格式选择 + 文件保存 + 后台导出） | button_restore_requested | 1d20a85 |
 | RulesFilePanel | 规则文件列表（刷新 + 上移/下移/移除 + 内置勾选 + 右键菜单） | rules_changed | 7f947b8 |
+| StageController | 工作流阶段切换（三页切换 + 17 个控件可用性管理） | — | 4b4c49e |
 
 ### main_window.py 规模变化
 
 - 抽离前：1681 行
-- 抽离后：1634 行（减少 47 行；删除迁出方法约 200 行，新增 property 转发 +
-  _setup_*_panel + _on_rules_changed 等约 150 行）
+- 抽离后：1539 行（减少 142 行；删除迁出方法约 350 行，新增 property 转发 +
+  _setup_*_panel / _setup_stage_controller + _on_rules_changed 等约 210 行）
 
 ## 测试验证结果
 
 - ruff check：All checks passed
 - ruff format --check：101 files already formatted
 - pyrefly check：0 errors
-- pytest：1564 passed, 16 deselected, coverage 95.09%
+- pytest：1564 passed, 16 deselected, coverage 95.08%
 
 ## 遗留事项
 
-- 剩余模块（工作流阶段切换 7 方法、扫描流程 12 方法、详情区回调 9 方法）与
-  主窗口状态（_workflow_stage / _scan_state / _worker / _ruleset / _last_report）
-  耦合过深，抽离需要传入大量状态或 callback，边际收益递减，暂不抽离
-- 扫描统计面板（_setup_scan_stats_panel / _update_scan_stats）仅 2 个方法、
-  HTML 富文本格式化逻辑独立但规模太小，抽离价值有限
+- 扫描流程（12 方法）与主窗口状态（_worker / _scan_state / _cache / _ruleset /
+  多个 panel）耦合过深，抽离需要传入大量状态或 callback，复杂度高，暂不抽离
+- 详情区回调（9 方法）涉及 skip_store 和 _remove_result_from_report，与
+  DetailPanel 信号回调紧密相关，抽离与 DetailPanel 职责重叠，暂不抽离
+- 扫描统计面板（2 方法 + 1 控件）、关于/手册（2 方法）、性能日志（2 方法）
+  规模太小，抽离边际收益低
 
 ## 下一轮计划
 
-UI 控件解耦系列已完成 8 个控制器抽取，剩余模块抽离收益有限。后续如有新功能
-开发，优先将新 UI 控件设计为独立控制器，避免 MainWindow 再次膨胀。
+UI 控件解耦系列已完成 9 个控制器抽取，main_window.py 从 1681 行降至 1539 行。
+剩余模块抽离边际收益递减。后续如有新功能开发，优先将新 UI 控件设计为独立
+控制器，避免 MainWindow 再次膨胀。
