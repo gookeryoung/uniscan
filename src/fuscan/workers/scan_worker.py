@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover
 from fuscan.perf import PerfStats
 from fuscan.rules.model import RuleSet
 from fuscan.scanner import ScanReport
-from fuscan.scanner.result import ProgressInfo, ScanResult, ScanStats
+from fuscan.scanner.result import ProgressInfo, ScanResult, ScanStats, WalkResult
 from fuscan.scanner.scanner import Scanner
 
 if TYPE_CHECKING:
@@ -62,6 +62,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         progress_interval: float = 0.3,
         scan_extensions: tuple[str, ...] | None = None,
         skip_paths: frozenset[str] | None = None,
+        precollected: list[WalkResult] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -81,6 +82,10 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._scan_extensions: tuple[str, ...] | None = scan_extensions
         # 用户标记跳过的路径集合（iter-77）：传给 Scanner 在 walk 阶段跳过
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
+        # 预收集的 walk 产物（stats/scan worker 分离）：非 None 时 run() 跳过 walk，
+        # 直接调 Scanner.scan_entries。由 FileStatsWorker.finished_stats 提供，
+        # 与 roots 一一对应（WalkResult.root == roots[i]）
+        self._precollected: list[WalkResult] | None = precollected
         self._scanner: Scanner | None = None
         self._cancel_requested: bool = False
         # 多根路径累计性能统计（iter-66）：每次 scan() 后合并 perf_summary
@@ -134,7 +139,12 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         )
 
     def run(self) -> None:
-        """线程入口：依次扫描所有根路径并合并结果。"""
+        """线程入口：依次扫描所有根路径并合并结果。
+
+        ``precollected`` 非 None 时跳过 walk 阶段，直接对预收集的
+        :class:`WalkResult` 调 :meth:`Scanner.scan_entries`，与
+        :class:`FileStatsWorker` 配合实现 stats/scan 职责拆分。
+        """
         try:
             self._start_time = time.monotonic()
             self._scanner = Scanner(
@@ -162,36 +172,63 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
             total_errors = 0
             total_matches = 0
             total_user_skipped = 0
-            # 基于 report.cancelled 判断取消状态：C1 修复后 scan() 在 finally 中
-            # 清除 _cancel_event，scan() 返回后 self._scanner.is_cancelled 恒为 False，
+            # 基于 report.cancelled 判断取消状态：C1 修复后 scan()/scan_entries() 在
+            # finally 中清除 _cancel_event，返回后 self._scanner.is_cancelled 恒为 False，
             # 必须用 report.cancelled 累积取消标志，否则取消的扫描会被误判为正常完成
             was_cancelled = False
 
-            for root in self._roots:
-                if was_cancelled:
-                    break
-                report: ScanReport = self._scanner.scan(root)
-                all_results.extend(report.results)
-                total_scanned += report.stats.scanned_files
-                total_files += report.stats.total_files
-                total_matched += report.stats.matched_files
-                total_skipped += report.stats.skipped_files
-                total_errors += report.stats.errors
-                total_matches += report.stats.total_matches
-                total_user_skipped += report.stats.user_skipped
-                # 累计各根路径的性能统计（iter-66）
-                if report.stats.perf_summary:
-                    self._perf.merge_dict(report.stats.perf_summary)
-                # 更新累计值，供下一个根路径的进度回调使用
-                self._cum_scanned = total_scanned
-                self._cum_total = total_files
-                self._cum_skipped = total_skipped
-                self._cum_matched = total_matched
-                self._cum_errors = total_errors
-                self._cum_matches = total_matches
-                self._cum_user_skipped = total_user_skipped
-                if report.cancelled:
-                    was_cancelled = True
+            # precollected 模式：跳过 walk，遍历预收集的 WalkResult 调 scan_entries；
+            # 否则遍历 roots 调 scan（walk + scan 串联，向后兼容）
+            if self._precollected is not None:
+                for walk_result in self._precollected:
+                    if was_cancelled:
+                        break
+                    report: ScanReport = self._scanner.scan_entries(walk_result.root, walk_result)
+                    all_results.extend(report.results)
+                    total_scanned += report.stats.scanned_files
+                    total_files += report.stats.total_files
+                    total_matched += report.stats.matched_files
+                    total_skipped += report.stats.skipped_files
+                    total_errors += report.stats.errors
+                    total_matches += report.stats.total_matches
+                    total_user_skipped += report.stats.user_skipped
+                    if report.stats.perf_summary:
+                        self._perf.merge_dict(report.stats.perf_summary)
+                    self._cum_scanned = total_scanned
+                    self._cum_total = total_files
+                    self._cum_skipped = total_skipped
+                    self._cum_matched = total_matched
+                    self._cum_errors = total_errors
+                    self._cum_matches = total_matches
+                    self._cum_user_skipped = total_user_skipped
+                    if report.cancelled:
+                        was_cancelled = True
+            else:
+                for root in self._roots:
+                    if was_cancelled:
+                        break
+                    report = self._scanner.scan(root)
+                    all_results.extend(report.results)
+                    total_scanned += report.stats.scanned_files
+                    total_files += report.stats.total_files
+                    total_matched += report.stats.matched_files
+                    total_skipped += report.stats.skipped_files
+                    total_errors += report.stats.errors
+                    total_matches += report.stats.total_matches
+                    total_user_skipped += report.stats.user_skipped
+                    # 累计各根路径的性能统计（iter-66）
+                    if report.stats.perf_summary:
+                        self._perf.merge_dict(report.stats.perf_summary)
+                    # 更新累计值，供下一个根路径的进度回调使用
+                    self._cum_scanned = total_scanned
+                    self._cum_total = total_files
+                    self._cum_skipped = total_skipped
+                    self._cum_matched = total_matched
+                    self._cum_errors = total_errors
+                    self._cum_matches = total_matches
+                    self._cum_user_skipped = total_user_skipped
+                    if report.cancelled:
+                        was_cancelled = True
             elapsed = time.monotonic() - self._start_time
             merged = ScanReport(
                 root=self._roots[0] if len(self._roots) == 1 else Path("（多路径）"),

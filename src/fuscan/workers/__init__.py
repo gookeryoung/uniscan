@@ -4,7 +4,8 @@
 
 公共 API：
 
-- :class:`ScanWorker`：后台扫描线程
+- :class:`FileStatsWorker`：后台文件统计线程（walk 阶段，产出待扫描文件清单）
+- :class:`ScanWorker`：后台扫描线程（scan/archive 阶段，可接收预收集清单）
 - :class:`ExportWorker`：后台导出线程
 """
 
@@ -12,5 +13,6 @@ from __future__ import annotations
 
 from fuscan.workers.export_worker import ExportWorker
 from fuscan.workers.scan_worker import ScanWorker
+from fuscan.workers.stats_worker import FileStatsWorker
 
-__all__ = ["ExportWorker", "ScanWorker"]
+__all__ = ["ExportWorker", "FileStatsWorker", "ScanWorker"]

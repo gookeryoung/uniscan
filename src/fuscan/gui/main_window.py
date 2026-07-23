@@ -153,9 +153,9 @@ from fuscan.perf import PerfTimer, set_perf_enabled
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport
-from fuscan.scanner.result import ScanResult
+from fuscan.scanner.result import ScanResult, WalkResult
 from fuscan.skip_store import SkipStore
-from fuscan.workers import ScanWorker
+from fuscan.workers import FileStatsWorker, ScanWorker
 
 if TYPE_CHECKING:
     from PySide2.QtGui import QIcon
@@ -250,6 +250,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             # _rules_paths / _use_builtin 由 RulesFilePanel 持有，通过 property 转发访问
             self._last_report: ScanReport | None = None
             self._worker: ScanWorker | None = None
+            # 文件统计线程（stats/scan 职责拆分）：scan 启动前先行 walk 收集清单，
+            # finished_stats 后构造带 precollected 的 ScanWorker 进入 scan 阶段
+            self._stats_worker: FileStatsWorker | None = None
             self._scan_state: ScanState = ScanState.IDLE
             # _workflow_stage 由 StageController 持有，通过 property 转发访问
             # 取消中标志（iter-79）：用户点击取消后置 True，扫描线程退出前
@@ -780,15 +783,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         ``_cancelling`` 标志防止扫描线程退出前的进度回调覆盖"取消中..."文案
         与不确定动画（扫描线程退出前仍会 emit progress_info 信号）。
+
+        stats/scan 职责拆分后，取消同时对 stats 与 scan worker 生效：
+        stats 阶段取消触发 ``_on_stats_cancelled``，scan 阶段取消触发
+        ``_on_scan_cancelled``。
         """
+        if self._worker is None and self._stats_worker is None:
+            return
+        self._cancelling = True
+        self.cancel_btn.setEnabled(False)
+        self.pause_resume_btn.setEnabled(False)
+        # 进度条切换为不确定模式（转圈动画），给用户"正在取消"的视觉反馈
+        self.progress.setRange(0, 0)
+        self.stats_label.setText("取消中...")
+        self.current_file_label.setText("正在取消扫描...")
+        if self._stats_worker is not None:
+            self._stats_worker.cancel()
         if self._worker is not None:
-            self._cancelling = True
-            self.cancel_btn.setEnabled(False)
-            self.pause_resume_btn.setEnabled(False)
-            # 进度条切换为不确定模式（转圈动画），给用户"正在取消"的视觉反馈
-            self.progress.setRange(0, 0)
-            self.stats_label.setText("取消中...")
-            self.current_file_label.setText("正在取消扫描...")
             self._worker.cancel()
 
     # ----------------------------- 配置持久化 -----------------------------
@@ -996,7 +1007,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._scan_mode_panel.set_folder_root(path if path.exists() else None)
 
     def _on_scan(self) -> None:
-        """开始扫描（仅配置页可触发，扫描中页的暂停/继续由 _on_pause_resume 处理）。"""
+        """开始扫描（仅配置页可触发，扫描中页的暂停/继续由 _on_pause_resume 处理）。
+
+        stats/scan 职责拆分：先启动 :class:`FileStatsWorker` 执行 walk 阶段收集
+        文件清单，``finished_stats`` 后构造带 ``precollected`` 的 :class:`ScanWorker`
+        进入 scan/archive 阶段。两阶段串行，UI 从 scan 阶段起即展示确定的 ``total``。
+        """
         if self._workflow_stage != WorkflowStage.SETUP:
             return
         if self._scan_state in (ScanState.RUNNING, ScanState.PAUSED):
@@ -1018,18 +1034,42 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._detail_panel.clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
-        self.current_file_label.setText("准备扫描...")
-        self.stats_label.setText("准备扫描...")
+        self.current_file_label.setText("准备统计...")
+        self.stats_label.setText("准备统计...")
         # 重置扫描中页列表与增量更新状态：避免上次扫描数据残留、快照干扰本次增量对比
         self._list_updater.reset()
         # 重置扫描中页的分类统计面板（需求6/7）
         self._update_scan_stats(0, 0, 0, 0, 0)
         self._stage_controller.switch_stage(WorkflowStage.SCANNING)
 
+        # 阶段 1：FileStatsWorker 执行 walk 收集文件清单
+        self._stats_worker = FileStatsWorker(
+            ruleset=self._ruleset,
+            roots=roots,
+            scan_archives=self._config.scan_archives,
+            max_depth=self._config.max_depth,
+            ignore_dirs=tuple(self._config.ignore_dirs),
+            ignore_extensions=tuple(self._config.ignore_extensions),
+            scan_extensions=self._content_panel.enabled_extensions(),
+            skip_paths=self._skip_store.paths(),
+        )
+        self._stats_worker.progress_info.connect(self._on_scan_progress)  # pyrefly: ignore [missing-attribute]
+        self._stats_worker.finished_stats.connect(self._on_stats_finished)  # pyrefly: ignore [missing-attribute]
+        self._stats_worker.failed.connect(self._on_stats_failed)  # pyrefly: ignore [missing-attribute]
+        self._stats_worker.cancelled.connect(self._on_stats_cancelled)  # pyrefly: ignore [missing-attribute]
+        self._stats_worker.start()
+
+    @Slot(object)  # pyrefly: ignore [not-callable]
+    def _on_stats_finished(self, results: list[WalkResult]) -> None:
+        """统计完成回调：清理 stats 线程，构造带 precollected 的 ScanWorker 启动 scan 阶段。
+
+        :param results: 每个根路径的 :class:`WalkResult` 列表，与 ``roots`` 一一对应
+        """
+        self._cleanup_stats_worker()
         cache, source_files = self._build_cache_context()
         self._worker = ScanWorker(
             ruleset=self._ruleset,
-            roots=roots,
+            roots=[wr.root for wr in results],
             scan_archives=self._config.scan_archives,
             max_workers=self._config.max_workers,
             max_depth=self._config.max_depth,
@@ -1040,12 +1080,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             source_files=source_files,
             scan_extensions=self._content_panel.enabled_extensions(),
             skip_paths=self._skip_store.paths(),
+            precollected=results,
         )
         self._worker.progress_info.connect(self._on_scan_progress)  # pyrefly: ignore [missing-attribute]
         self._worker.finished_report.connect(self._on_scan_finished)  # pyrefly: ignore [missing-attribute]
         self._worker.failed.connect(self._on_scan_failed)  # pyrefly: ignore [missing-attribute]
         self._worker.cancelled.connect(self._on_scan_cancelled)  # pyrefly: ignore [missing-attribute]
         self._worker.start()
+
+    @Slot(str)  # pyrefly: ignore [not-callable]
+    def _on_stats_failed(self, error: str) -> None:
+        """统计失败回调：切回配置页并提示。"""
+        self._reset_scan_ui()
+        self.stats_label.setText("统计失败")
+        self._stage_controller.switch_stage(WorkflowStage.SETUP)
+        QMessageBox.critical(self, "统计失败", error)
+
+    @Slot(object)  # pyrefly: ignore [not-callable]
+    def _on_stats_cancelled(self, results: list[WalkResult]) -> None:
+        """统计被取消后的回调：stats 阶段无扫描结果，切回配置页。
+
+        :param results: 已完成的 ``WalkResult`` 列表（部分根路径可能未统计）
+        """
+        logger.info("统计被取消，已完成 %d 个根路径的统计", len(results))
+        self._reset_scan_ui()
+        self.stats_label.setText("已取消统计")
+        self._stage_controller.switch_stage(WorkflowStage.SETUP)
 
     def _build_cache_context(self) -> tuple[CacheStore | None, dict[Path, str] | None]:
         """构造扫描缓存上下文。
@@ -1070,7 +1130,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         return self._cache, source_files
 
     def _pause_scan(self) -> None:
-        """暂停扫描。"""
+        """暂停扫描（stats 或 scan 阶段均生效，按当前活跃 worker 委托）。"""
+        if self._stats_worker is not None:
+            self._stats_worker.pause()
         if self._worker is not None:
             self._worker.pause()
         self._scan_state = ScanState.PAUSED
@@ -1078,7 +1140,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.stats_label.setText("已暂停")
 
     def _resume_scan(self) -> None:
-        """恢复扫描。"""
+        """恢复扫描（stats 或 scan 阶段均生效，按当前活跃 worker 委托）。"""
+        if self._stats_worker is not None:
+            self._stats_worker.resume()
         if self._worker is not None:
             self._worker.resume()
         self._scan_state = ScanState.RUNNING
@@ -1111,12 +1175,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._cleanup_worker()
 
     def _cleanup_worker(self) -> None:
-        """清理后台扫描线程：等待退出后释放引用。"""
-        if self._worker is None:
+        """清理后台扫描与统计线程：等待退出后释放引用。"""
+        if self._worker is not None:
+            self._worker.wait(2000)
+            self._worker.deleteLater()
+            self._worker = None
+        self._cleanup_stats_worker()
+
+    def _cleanup_stats_worker(self) -> None:
+        """清理后台统计线程：等待退出后释放引用。
+
+        在 ``_on_stats_finished`` 中调用以在启动 ScanWorker 前释放 stats 线程，
+        也在 ``_cleanup_worker`` 中统一清理（取消/失败路径）。
+        """
+        if self._stats_worker is None:
             return
-        self._worker.wait(2000)
-        self._worker.deleteLater()
-        self._worker = None
+        self._stats_worker.wait(2000)
+        self._stats_worker.deleteLater()
+        self._stats_worker = None
 
     @Slot(object)  # pyrefly: ignore [not-callable]
     def _on_scan_progress(self, info) -> None:  # type: ignore[no-untyped-def]
@@ -1590,6 +1666,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         if self._worker is not None and self._worker.isRunning():
             self._worker.cancel()
             self._worker.wait(3000)
+        if self._stats_worker is not None and self._stats_worker.isRunning():
+            self._stats_worker.cancel()
+            self._stats_worker.wait(3000)
         self._export_controller.cleanup()
         if self._cache is not None:
             try:

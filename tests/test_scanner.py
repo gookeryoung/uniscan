@@ -22,7 +22,7 @@ from fuscan.rules.model import (
     Severity,
 )
 from fuscan.scanner import Scanner, ScanReport, ScanResult
-from fuscan.scanner.result import ProgressInfo, ScanStats
+from fuscan.scanner.result import ProgressInfo, ScanStats, WalkResult
 
 
 def _build_ruleset(*rules: Rule) -> RuleSet:
@@ -159,6 +159,100 @@ class TestScannerBasic:
         # 最终进度应反映 user_skipped=1
         last = captured[-1]
         assert last.user_skipped == 1
+
+
+class TestScannerCollectScanSplit:
+    """collect_entries + scan_entries 职责拆分测试（stats/scan worker 分离）。"""
+
+    def test_collect_entries_returns_walk_result(self, tmp_path: Path) -> None:
+        """collect_entries 返回 WalkResult，含 entries 与统计。"""
+        (tmp_path / "a.txt").write_text("password", encoding="utf-8")
+        (tmp_path / "b.md").write_text("normal", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs)
+        walk_result = scanner.collect_entries(tmp_path)
+        assert walk_result.root == tmp_path
+        assert walk_result.total == 2
+        assert walk_result.cancelled is False
+        # 两个文件都进入扫描队列（无 scan_extensions 过滤）
+        assert len(walk_result.entries) == 2
+        assert {e.path.name for e in walk_result.entries} == {"a.txt", "b.md"}
+
+    def test_collect_entries_respects_scan_extensions(self, tmp_path: Path) -> None:
+        """collect_entries 按 scan_extensions 过滤，未匹配文件计入 skipped。"""
+        (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "b.md").write_text("y", encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("r", "x"))
+        scanner = Scanner(rs, scan_extensions=("txt",))
+        walk_result = scanner.collect_entries(tmp_path)
+        assert walk_result.total == 2
+        assert walk_result.skipped == 1  # b.md 被过滤
+        assert len(walk_result.entries) == 1
+        assert walk_result.entries[0].path.name == "a.txt"
+
+    def test_collect_entries_respects_skip_paths(self, tmp_path: Path) -> None:
+        """collect_entries 按 skip_paths 跳过，计入 user_skipped。"""
+        skip_file = tmp_path / "skip.txt"
+        skip_file.write_text("x", encoding="utf-8")
+        (tmp_path / "scan.txt").write_text("y", encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("r", "x"))
+        scanner = Scanner(rs, skip_paths=frozenset({str(skip_file)}))
+        walk_result = scanner.collect_entries(tmp_path)
+        assert walk_result.total == 2
+        assert walk_result.user_skipped == 1
+        assert len(walk_result.entries) == 1
+        assert walk_result.entries[0].path.name == "scan.txt"
+
+    def test_scan_entries_equivalent_to_scan(self, tmp_path: Path) -> None:
+        """collect_entries + scan_entries 应与 scan 产生等价的 hits 与统计。"""
+        (tmp_path / "password.txt").write_text("db_password=x", encoding="utf-8")
+        (tmp_path / "readme.md").write_text("normal", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        # 完整 scan
+        scanner_full = Scanner(rs)
+        report_full = scanner_full.scan(tmp_path)
+
+        # 拆分：collect + scan_entries
+        scanner_split = Scanner(rs)
+        walk_result = scanner_split.collect_entries(tmp_path)
+        report_split = scanner_split.scan_entries(tmp_path, walk_result)
+
+        # hits 等价（路径与规则名一致）
+        assert {r.path for r in report_full.hits} == {r.path for r in report_split.hits}
+        assert report_full.stats.matched_files == report_split.stats.matched_files
+        assert report_full.stats.scanned_files == report_split.stats.scanned_files
+        assert report_full.stats.total_files == report_split.stats.total_files
+        assert report_full.stats.skipped_files == report_split.stats.skipped_files
+        assert report_full.stats.user_skipped == report_split.stats.user_skipped
+
+    def test_scan_entries_with_scan_extensions_equivalent(self, tmp_path: Path) -> None:
+        """带 scan_extensions 时拆分模式与完整 scan 等价。"""
+        (tmp_path / "a.conf").write_text("password", encoding="utf-8")
+        (tmp_path / "b.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+
+        scanner_full = Scanner(rs, scan_extensions=("conf",))
+        report_full = scanner_full.scan(tmp_path)
+
+        scanner_split = Scanner(rs, scan_extensions=("conf",))
+        walk_result = scanner_split.collect_entries(tmp_path)
+        report_split = scanner_split.scan_entries(tmp_path, walk_result)
+
+        assert report_full.stats.matched_files == report_split.stats.matched_files == 1
+        assert report_full.stats.skipped_files == report_split.stats.skipped_files == 1
+        assert {r.path for r in report_full.hits} == {r.path for r in report_split.hits}
+
+    def test_scan_entries_walk_cancelled_skips_scan(self, tmp_path: Path) -> None:
+        """walk_result.cancelled=True 时 scan_entries 跳过 scan 阶段，返回空结果。"""
+        (tmp_path / "a.txt").write_text("password", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = Scanner(rs)
+        cancelled_walk = WalkResult(root=tmp_path, entries=(), total=0, cancelled=True)
+        report = scanner.scan_entries(tmp_path, cancelled_walk)
+        assert report.cancelled is True
+        assert report.stats.scanned_files == 0
+        assert report.hits == ()
 
 
 class TestScannerRules:

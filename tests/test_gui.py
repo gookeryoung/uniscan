@@ -51,7 +51,7 @@ try:
         Severity,
     )
     from fuscan.scanner import ScanReport
-    from fuscan.workers import ScanWorker
+    from fuscan.workers import FileStatsWorker, ScanWorker
 
     PYSIDE_AVAILABLE = True
 except ImportError:
@@ -1091,6 +1091,117 @@ class TestScanWorker:
         assert not worker.isRunning()
         # 无效路径返回空报告，不应有 error
         assert len(errors) == 0
+
+
+class TestStatsWorker:
+    """FileStatsWorker 测试：walk 阶段独立执行，产出 WalkResult 清单。"""
+
+    def test_stats_worker_collects_entries(self, qapp: QApplication, tmp_path: Path) -> None:
+        """FileStatsWorker 应在后台完成 walk 并产出 WalkResult 列表。"""
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "readme.md").write_text("y", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+
+        results: list[Any] = []
+        worker.finished_stats.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        worker.start()
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
+
+        worker.wait(2000)
+        assert not worker.isRunning()
+        assert len(results) == 1
+        walk_list = results[0]
+        assert len(walk_list) == 1  # 单根路径
+        walk_result = walk_list[0]
+        assert walk_result.root == tmp_path
+        assert walk_result.total == 2
+        assert walk_result.cancelled is False
+        assert len(walk_result.entries) == 2
+
+    def test_stats_worker_invalid_path(self, qapp: QApplication, tmp_path: Path) -> None:
+        """无效路径应正常完成（collect_entries 返回空 WalkResult）。"""
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path / "nonexistent"])
+
+        results: list[Any] = []
+        errors: list[Any] = []
+        worker.finished_stats.connect(lambda r: results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        worker.failed.connect(lambda msg: errors.append(msg))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        worker.start()
+
+        loop = QEventLoop()
+        worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
+
+        worker.wait(2000)
+        assert not worker.isRunning()
+        assert len(errors) == 0
+        assert len(results) == 1
+        assert results[0][0].total == 0
+
+    def test_stats_then_scan_precollected_equivalent(self, qapp: QApplication, tmp_path: Path) -> None:
+        """FileStatsWorker 产出后 ScanWorker(precollected) 应与直接 ScanWorker 等价。"""
+        try:
+            from PySide2.QtCore import QEventLoop, QTimer
+        except ImportError:  # pragma: no cover
+            from PySide6.QtCore import QEventLoop, QTimer  # pyrefly: ignore [missing-import]
+
+        (tmp_path / "secret.txt").write_text("topsecret", encoding="utf-8")
+        (tmp_path / "normal.md").write_text("plain", encoding="utf-8")
+
+        rs = _build_ruleset()
+
+        # 阶段 1：FileStatsWorker 收集
+        stats_worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+        stats_results: list[Any] = []
+        stats_worker.finished_stats.connect(lambda r: stats_results.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        stats_worker.start()
+        loop = QEventLoop()
+        stats_worker.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
+        (loop.exec if hasattr(loop, "exec") else loop.exec_)()
+        stats_worker.wait(2000)
+        assert len(stats_results) == 1
+        precollected = stats_results[0]
+
+        # 阶段 2：ScanWorker(precollected) 扫描
+        scan_worker = ScanWorker(
+            ruleset=rs,
+            roots=[wr.root for wr in precollected],
+            precollected=precollected,
+        )
+        scan_reports: list[Any] = []
+        scan_worker.finished_report.connect(lambda r: scan_reports.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        scan_worker.start()
+        loop2 = QEventLoop()
+        scan_worker.finished.connect(loop2.quit)
+        QTimer.singleShot(10000, loop2.quit)  # pyrefly: ignore [bad-argument-type, missing-argument]
+        (loop2.exec if hasattr(loop2, "exec") else loop2.exec_)()
+        scan_worker.wait(2000)
+
+        assert len(scan_reports) == 1
+        report = scan_reports[0]
+        # secret.txt 命中（文件名含 secret），normal.md 不命中
+        assert report.stats.total_files == 2
+        assert report.stats.matched_files == 1
+        assert report.hits[0].path.name == "secret.txt"
 
 
 class TestScanControlUI:
