@@ -626,12 +626,14 @@ class Ui_MainWindow(object):
 
         self.detail_nonempty_main_layout.addWidget(self.detail_info_label)
 
-        self.detail_hits_title_label = QLabel(self.detail_nonempty_main)
-        self.detail_hits_title_label.setObjectName(u"detail_hits_title_label")
-
-        self.detail_nonempty_main_layout.addWidget(self.detail_hits_title_label)
-
-        self.detail_hits_table = QTableWidget(self.detail_nonempty_main)
+        self.detail_content_splitter = QSplitter(self.detail_nonempty_main)
+        self.detail_content_splitter.setObjectName(u"detail_content_splitter")
+        sizePolicy2.setHeightForWidth(self.detail_content_splitter.sizePolicy().hasHeightForWidth())
+        self.detail_content_splitter.setSizePolicy(sizePolicy2)
+        self.detail_content_splitter.setOrientation(Qt.Vertical)
+        self.detail_content_splitter.setHandleWidth(6)
+        self.detail_content_splitter.setChildrenCollapsible(False)
+        self.detail_hits_table = QTableWidget(self.detail_content_splitter)
         if (self.detail_hits_table.columnCount() < 6):
             self.detail_hits_table.setColumnCount(6)
         __qtablewidgetitem = QTableWidgetItem()
@@ -649,19 +651,14 @@ class Ui_MainWindow(object):
         self.detail_hits_table.setObjectName(u"detail_hits_table")
         self.detail_hits_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.detail_hits_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-
-        self.detail_nonempty_main_layout.addWidget(self.detail_hits_table)
-
-        self.detail_preview_title_label = QLabel(self.detail_nonempty_main)
-        self.detail_preview_title_label.setObjectName(u"detail_preview_title_label")
-
-        self.detail_nonempty_main_layout.addWidget(self.detail_preview_title_label)
-
-        self.detail_preview = QTextEdit(self.detail_nonempty_main)
+        self.detail_hits_table.setTabKeyNavigation(False)
+        self.detail_content_splitter.addWidget(self.detail_hits_table)
+        self.detail_preview = QTextEdit(self.detail_content_splitter)
         self.detail_preview.setObjectName(u"detail_preview")
         self.detail_preview.setReadOnly(True)
+        self.detail_content_splitter.addWidget(self.detail_preview)
 
-        self.detail_nonempty_main_layout.addWidget(self.detail_preview)
+        self.detail_nonempty_main_layout.addWidget(self.detail_content_splitter)
 
         self.detail_actions_layout = QHBoxLayout()
         self.detail_actions_layout.setSpacing(8)
@@ -957,7 +954,6 @@ class Ui_MainWindow(object):
         self.detail_open_location_btn.setText(QCoreApplication.translate("MainWindow", u"\u6253\u5f00\u6587\u4ef6\u4f4d\u7f6e", None))
         self.detail_empty_hint.setText(QCoreApplication.translate("MainWindow", u"\u672a\u9009\u4e2d\u4efb\u4f55\u9879\n"
 "\u8bf7\u9009\u62e9\u5de6\u4fa7\u7ed3\u679c\u9879\u67e5\u770b\u8be6\u60c5", None))
-        self.detail_hits_title_label.setText(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u89c4\u5219:", None))
         ___qtablewidgetitem = self.detail_hits_table.horizontalHeaderItem(0)
         ___qtablewidgetitem.setText(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u540d", None));
         ___qtablewidgetitem1 = self.detail_hits_table.horizontalHeaderItem(1)
@@ -970,7 +966,12 @@ class Ui_MainWindow(object):
         ___qtablewidgetitem4.setText(QCoreApplication.translate("MainWindow", u"\u8be6\u60c5", None));
         ___qtablewidgetitem5 = self.detail_hits_table.horizontalHeaderItem(5)
         ___qtablewidgetitem5.setText(QCoreApplication.translate("MainWindow", u"\u63cf\u8ff0", None));
-        self.detail_preview_title_label.setText(QCoreApplication.translate("MainWindow", u"\u5185\u5bb9\u9884\u89c8 (\u5173\u952e\u8bcd\u9ad8\u4eae):", None))
+#if QT_CONFIG(tooltip)
+        self.detail_hits_table.setToolTip(QCoreApplication.translate("MainWindow", u"\u547d\u4e2d\u89c4\u5219\u8be6\u60c5\uff0c\u70b9\u51fb\u884c\u8df3\u8f6c\u5230\u5bf9\u5e94\u9ad8\u4eae\u4f4d\u7f6e", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        self.detail_preview.setToolTip(QCoreApplication.translate("MainWindow", u"\u6587\u4ef6\u5185\u5bb9\u9884\u89c8\uff08\u5173\u952e\u8bcd\u9ad8\u4eae\uff0cF3 \u5207\u6362\u4e0b\u4e00\u6761\u547d\u4e2d\uff09", None))
+#endif // QT_CONFIG(tooltip)
 #if QT_CONFIG(tooltip)
         self.move_to_staging_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u5c06\u5f53\u524d\u6587\u4ef6\u79fb\u52a8\u5230\u6682\u5b58\u533a\u76ee\u5f55\uff08\u53ef\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\uff09", None))
 #endif // QT_CONFIG(tooltip)

@@ -270,7 +270,7 @@ QPushButton[drive]:checked:hover {
     color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
-/* ========== L1 主操作按钮（48px，醒目入口） ========== */
+/* ========== L1 主操作按钮（实际 48px = padding 8*2 + min-height 32） ========== */
 /* scan_btn / rescan_btn：主色填充；view_results_btn / export_btn：主色边框 */
 
 QPushButton#scan_btn,
@@ -333,8 +333,8 @@ QPushButton#export_btn:disabled {
     border-color: ${COLOR_BORDER};
 }
 
-/* ========== L2 次要操作按钮（40px，灰边框） ========== */
-/* pause_resume_btn / cancel_btn（扫描中页）/ select_path_btn（路径选择） */
+/* ========== L2 次要操作按钮（实际 40px = padding 4*2 + min-height 32） ========== */
+/* pause_resume_btn / cancel_btn（扫描中页）/ select_path_btn（路径选择，与同行 combo 同高） */
 
 QPushButton#pause_resume_btn,
 QPushButton#cancel_btn,
@@ -386,7 +386,7 @@ QLabel#scanning_title_label {
     color: ${COLOR_PRIMARY};
 }
 
-/* ========== 详情导航按钮（L3 辅助） ========== */
+/* ========== 详情导航按钮（L3 辅助，实际 32px = padding 4*2 + min-height 24） ========== */
 
 QPushButton#detail_prev_btn,
 QPushButton#detail_next_btn,
@@ -408,7 +408,7 @@ QPushButton#detail_open_location_btn:hover {
     color: ${COLOR_PRIMARY};
 }
 
-/* ========== 通用 QPushButton 兜底（L3 辅助样式） ========== */
+/* ========== 通用 QPushButton 兜底（L3 辅助样式，实际 32px） ========== */
 /* 作用于未在上方 objectName 选择器中显式覆盖的所有按钮：
  * 子对话框按钮（save_btn/close_btn/reload_btn 等）、规则管理按钮（load_rules_btn/edit_rule_btn）、
  * 设置对话框（staging_dir_browse_btn）、详情操作（move_to_staging_btn/toggle_skip_btn）等。 */

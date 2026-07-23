@@ -190,19 +190,6 @@ class Ui_SettingsDialog(object):
 
         self.scan_page_layout.addWidget(self.file_size_group)
 
-        self.options_group = QGroupBox(self.scan_page)
-        self.options_group.setObjectName(u"options_group")
-        self.options_layout = QVBoxLayout(self.options_group)
-        self.options_layout.setSpacing(8)
-        self.options_layout.setObjectName(u"options_layout")
-        self.scan_archives_check = QCheckBox(self.options_group)
-        self.scan_archives_check.setObjectName(u"scan_archives_check")
-
-        self.options_layout.addWidget(self.scan_archives_check)
-
-
-        self.scan_page_layout.addWidget(self.options_group)
-
         self.scan_page_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
         self.scan_page_layout.addItem(self.scan_page_spacer)
@@ -273,11 +260,6 @@ class Ui_SettingsDialog(object):
         self.max_file_size_spin.setToolTip(QCoreApplication.translate("SettingsDialog", u"\u8df3\u8fc7\u5927\u4e8e\u6b64\u5927\u5c0f\u7684\u6587\u4ef6\uff0c\u907f\u514d\u5927\u6587\u4ef6\u8bfb\u53d6\u5bfc\u81f4\u5361\u6b7b\uff1b0 \u8868\u793a\u4e0d\u9650\u5236", None))
 #endif // QT_CONFIG(tooltip)
         self.max_file_size_spin.setSpecialValueText(QCoreApplication.translate("SettingsDialog", u"\u4e0d\u9650\u5236", None))
-        self.options_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u9009\u9879", None))
-#if QT_CONFIG(tooltip)
-        self.scan_archives_check.setToolTip(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u538b\u7f29\u6587\u4ef6\u5185\u7684\u6587\u4ef6\u5185\u5bb9\uff08\u5f00\u542f\u540e\u81ea\u52a8\u653e\u884c\u5df2\u5ffd\u7565\u7684\u538b\u7f29\u5305\u6269\u5c55\u540d\uff09", None))
-#endif // QT_CONFIG(tooltip)
-        self.scan_archives_check.setText(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u538b\u7f29\u5305\uff08ZIP/RAR/7Z\uff09", None))
         self.settings_tab_widget.setTabText(self.settings_tab_widget.indexOf(self.scan_page), QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u8bbe\u7f6e", None))
     # retranslateUi
 

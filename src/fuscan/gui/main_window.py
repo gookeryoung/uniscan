@@ -289,12 +289,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # detail_layout: detail_action_stack / detail_main_stack
         self.detail_layout.setStretch(0, 0)
         self.detail_layout.setStretch(1, 1)
+        # detail_nonempty_main_layout（iter-85 重构为 splitter 布局）：
+        #   item 0: detail_info_label（固定高度）
+        #   item 1: detail_content_splitter（伸展填充，含 hits_table + preview）
+        #   item 2: detail_actions_layout（固定高度）
         self.detail_nonempty_main_layout.setStretch(0, 0)
-        self.detail_nonempty_main_layout.setStretch(1, 0)
-        self.detail_nonempty_main_layout.setStretch(2, 1)
-        self.detail_nonempty_main_layout.setStretch(3, 0)
-        self.detail_nonempty_main_layout.setStretch(4, 2)
-        self.detail_nonempty_main_layout.setStretch(5, 0)
+        self.detail_nonempty_main_layout.setStretch(1, 1)
+        self.detail_nonempty_main_layout.setStretch(2, 0)
+        # QSplitter 初始比例：命中表 1 : 内容预览 2（用户可拖动调整）
+        self.detail_content_splitter.setStretchFactor(0, 1)
+        self.detail_content_splitter.setStretchFactor(1, 2)
+        self.detail_content_splitter.setSizes([100, 200])
 
     def _setup_scan_stats_panel(self) -> None:
         """初始化扫描中页的已扫描文件分类统计面板。

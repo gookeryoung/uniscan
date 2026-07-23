@@ -346,28 +346,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="options_group">
-         <property name="title">
-          <string>扫描选项</string>
-         </property>
-         <layout class="QVBoxLayout" name="options_layout">
-          <property name="spacing">
-           <number>8</number>
-          </property>
-          <item>
-           <widget class="QCheckBox" name="scan_archives_check">
-            <property name="toolTip">
-             <string>扫描压缩文件内的文件内容（开启后自动放行已忽略的压缩包扩展名）</string>
-            </property>
-            <property name="text">
-             <string>扫描压缩包（ZIP/RAR/7Z）</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
         <spacer name="scan_page_spacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>

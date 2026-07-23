@@ -136,18 +136,23 @@ CONTROL_HEIGHT = "32px"
 #
 # 设计意图：主操作大尺寸醒目、次要操作中尺寸常规、辅助操作小尺寸弱化视觉权重。
 # QSS 中按 objectName 选择器分别引用以下令牌；minimumSize 在 .ui 中与令牌保持一致。
+#
+# 高度语义：BTN_HEIGHT_* 表示 QSS ``min-height``（内容区最小高度），实际控件总高度
+# = padding-top + max(content, min-height) + padding-bottom。调整 padding 时须同步
+# 评估实际总高度是否仍与 .ui ``minimumSize`` 匹配（iter-85 修正：原先 padding 过大
+# 导致 L1/L2 实际高度达 72/56px，远超 .ui 的 48/40px，与同行 QComboBox 40px 不一致）。
 
-BTN_HEIGHT_PRIMARY = "48px"
-BTN_HEIGHT_SECONDARY = "40px"
-BTN_HEIGHT_GHOST = "32px"
+BTN_HEIGHT_PRIMARY = "32px"
+BTN_HEIGHT_SECONDARY = "32px"
+BTN_HEIGHT_GHOST = "24px"
 
 BTN_FONT_PRIMARY = FONT_SIZE_HEADING  # 15px
 BTN_FONT_SECONDARY = "14px"
 BTN_FONT_GHOST = FONT_SIZE_BODY  # 13px
 
-BTN_PADDING_PRIMARY = "12px 28px"
-BTN_PADDING_SECONDARY = "8px 20px"
-BTN_PADDING_GHOST = "6px 14px"
+BTN_PADDING_PRIMARY = "8px 28px"
+BTN_PADDING_SECONDARY = "4px 20px"
+BTN_PADDING_GHOST = "4px 14px"
 
 BTN_RADIUS_PRIMARY = RADIUS_LG  # 8px
 BTN_RADIUS_SECONDARY = RADIUS_MD  # 6px

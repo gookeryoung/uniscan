@@ -3,10 +3,11 @@
 使用 QTabWidget 实现多页面切换，避免设置项过于臃肿：
 
 1. 通用设置：是否包含网络映射盘、是否启用内置规则、缓存设置、暂存区路径
-2. 扫描设置：最大工作线程数、最大扫描深度、是否扫描压缩包、大文件跳过
+2. 扫描设置：最大工作线程数、最大扫描深度、大文件跳过
 
 忽略项（忽略目录/忽略扩展名）已移至主窗口配置页文件类型区右侧
 （iter-79），通过 QTabWidget 切换，便于与文件类型勾选联动查看。
+扫描压缩包开关同样由主界面文件类型树统一管理（iter-85），不在设置对话框暴露。
 
 UI 装配委托给 ``Ui_SettingsDialog``（对应 ``settings_dialog.ui``），
 本模块仅负责信号槽连接、配置加载与保存等业务逻辑。
@@ -51,7 +52,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.max_depth_spin.setValue(self.config.max_depth or 0)
         # 字节转 MB（0 表示不限制，SpinBox 最小值 0 + specialValueText "不限制"）
         self.max_file_size_spin.setValue(self.config.max_file_size // (1024 * 1024))
-        self.scan_archives_check.setChecked(self.config.scan_archives)
+        # scan_archives 由主界面文件类型树的"压缩包"勾选项控制（iter-85），此处不暴露
         self.include_network_check.setChecked(self.config.include_network_drives)
         self.use_builtin_check.setChecked(self.config.use_builtin)
         self.cache_enabled_check.setChecked(self.config.cache_enabled)
@@ -66,7 +67,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.config.max_depth = depth if depth > 0 else None
         # MB 转 bytes（0 表示不限制，与 Scanner._normalize_max_file_size 语义一致）
         self.config.max_file_size = self.max_file_size_spin.value() * 1024 * 1024
-        self.config.scan_archives = self.scan_archives_check.isChecked()
+        # scan_archives 由主界面文件类型树控制，此处不保存（iter-85）
         self.config.include_network_drives = self.include_network_check.isChecked()
         self.config.use_builtin = self.use_builtin_check.isChecked()
         self.config.cache_enabled = self.cache_enabled_check.isChecked()

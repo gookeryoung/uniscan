@@ -1214,64 +1214,74 @@
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="detail_hits_title_label">
-                       <property name="text">
-                        <string>命中规则:</string>
+                      <widget class="QSplitter" name="detail_content_splitter">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>1</verstretch>
+                        </sizepolicy>
                        </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QTableWidget" name="detail_hits_table">
-                       <property name="editTriggers">
-                        <set>QAbstractItemView::NoEditTriggers</set>
+                       <property name="orientation">
+                        <enum>Qt::Vertical</enum>
                        </property>
-                       <property name="selectionBehavior">
-                        <enum>QAbstractItemView::SelectRows</enum>
+                       <property name="handleWidth">
+                        <number>6</number>
                        </property>
-                       <column>
-                        <property name="text">
-                         <string>规则名</string>
-                        </property>
-                       </column>
-                       <column>
-                        <property name="text">
-                         <string>严重等级</string>
-                        </property>
-                       </column>
-                       <column>
-                        <property name="text">
-                         <string>条数</string>
-                        </property>
-                       </column>
-                       <column>
-                        <property name="text">
-                         <string>位置数</string>
-                        </property>
-                       </column>
-                       <column>
-                        <property name="text">
-                         <string>详情</string>
-                        </property>
-                       </column>
-                       <column>
-                        <property name="text">
-                         <string>描述</string>
-                        </property>
-                       </column>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QLabel" name="detail_preview_title_label">
-                       <property name="text">
-                        <string>内容预览 (关键词高亮):</string>
+                       <property name="childrenCollapsible">
+                        <bool>false</bool>
                        </property>
-                      </widget>
-                     </item>
-                     <item>
-                      <widget class="QTextEdit" name="detail_preview">
-                       <property name="readOnly">
-                        <bool>true</bool>
-                       </property>
+                       <widget class="QTableWidget" name="detail_hits_table">
+                        <property name="toolTip">
+                         <string>命中规则详情，点击行跳转到对应高亮位置</string>
+                        </property>
+                        <property name="editTriggers">
+                         <set>QAbstractItemView::NoEditTriggers</set>
+                        </property>
+                        <property name="selectionBehavior">
+                         <enum>QAbstractItemView::SelectRows</enum>
+                        </property>
+                        <property name="tabKeyNavigation">
+                         <bool>false</bool>
+                        </property>
+                        <column>
+                         <property name="text">
+                          <string>规则名</string>
+                         </property>
+                        </column>
+                        <column>
+                         <property name="text">
+                          <string>严重等级</string>
+                         </property>
+                        </column>
+                        <column>
+                         <property name="text">
+                          <string>条数</string>
+                         </property>
+                        </column>
+                        <column>
+                         <property name="text">
+                          <string>位置数</string>
+                         </property>
+                        </column>
+                        <column>
+                         <property name="text">
+                          <string>详情</string>
+                         </property>
+                        </column>
+                        <column>
+                         <property name="text">
+                          <string>描述</string>
+                         </property>
+                        </column>
+                       </widget>
+                       <widget class="QTextEdit" name="detail_preview">
+                        <property name="toolTip">
+                         <string>文件内容预览（关键词高亮，F3 切换下一条命中）</string>
+                        </property>
+                        <property name="readOnly">
+                         <bool>true</bool>
+                        </property>
+                       </widget>
                       </widget>
                      </item>
                      <item>

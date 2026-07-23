@@ -2505,15 +2505,32 @@ class TestThemeAndStylesheet:
             assert isinstance(value, str), f"令牌 {key} 不是字符串：{type(value)}"
 
     def test_button_hierarchy_tokens_distinct(self) -> None:
-        """三级按钮层级令牌应有清晰差异：primary > secondary > ghost。"""
+        """三级按钮层级令牌应有清晰差异：实际总高度 primary > secondary > ghost。
+
+        iter-85 起 ``BTN_HEIGHT_*`` 语义为 QSS ``min-height``（内容区高度），
+        实际总高度 = padding-top + min-height + padding-bottom。
+        L1/L2 内容区同为 32px，但 padding 不同（L1=8px / L2=4px），
+        实际总高度 L1=48px > L2=40px > L3=32px，与 .ui minimumSize 一致。
+        """
         from fuscan import theme
 
-        # 尺寸差异：高度 48 > 40 > 32
-        assert theme.BTN_HEIGHT_PRIMARY == "48px"
-        assert theme.BTN_HEIGHT_SECONDARY == "40px"
-        assert theme.BTN_HEIGHT_GHOST == "32px"
-        assert int(theme.BTN_HEIGHT_PRIMARY.rstrip("px")) > int(theme.BTN_HEIGHT_SECONDARY.rstrip("px"))
-        assert int(theme.BTN_HEIGHT_SECONDARY.rstrip("px")) > int(theme.BTN_HEIGHT_GHOST.rstrip("px"))
+        # QSS min-height（内容区）：L1=L2=32px > L3=24px
+        assert theme.BTN_HEIGHT_PRIMARY == "32px"
+        assert theme.BTN_HEIGHT_SECONDARY == "32px"
+        assert theme.BTN_HEIGHT_GHOST == "24px"
+        # padding 上下之和：L1=16 > L2=8 > L3=8（L1/L2 差异化由 padding 提供）
+        primary_pad = int(theme.BTN_PADDING_PRIMARY.split()[0].rstrip("px"))
+        secondary_pad = int(theme.BTN_PADDING_SECONDARY.split()[0].rstrip("px"))
+        ghost_pad = int(theme.BTN_PADDING_GHOST.split()[0].rstrip("px"))
+        # 实际总高度 = padding*2 + min-height
+        primary_total = primary_pad * 2 + int(theme.BTN_HEIGHT_PRIMARY.rstrip("px"))
+        secondary_total = secondary_pad * 2 + int(theme.BTN_HEIGHT_SECONDARY.rstrip("px"))
+        ghost_total = ghost_pad * 2 + int(theme.BTN_HEIGHT_GHOST.rstrip("px"))
+        # 三级差异化：48 > 40 > 32
+        assert primary_total == 48
+        assert secondary_total == 40
+        assert ghost_total == 32
+        assert primary_total > secondary_total > ghost_total
         # 圆角差异：8 > 6 > 4
         assert theme.BTN_RADIUS_PRIMARY == "8px"
         assert theme.BTN_RADIUS_SECONDARY == "6px"
@@ -6579,7 +6596,11 @@ class TestSettingsDialog:
         window.close()
 
     def test_settings_dialog_save_and_get_config(self, qapp: QApplication) -> None:
-        """_save_config 应将控件值保存到配置，对话框应持有同一配置对象。"""
+        """_save_config 应将控件值保存到配置，对话框应持有同一配置对象。
+
+        iter-85 起 scan_archives 由主界面文件类型树控制，不再由设置对话框保存，
+        故本测试不再覆盖 scan_archives 字段（保留初始值不变）。
+        """
         from fuscan.config import Config
         from fuscan.gui.settings_dialog import SettingsDialog
 
@@ -6594,7 +6615,6 @@ class TestSettingsDialog:
         # 修改控件值
         dialog.max_workers_spin.setValue(8)
         dialog.max_depth_spin.setValue(20)
-        dialog.scan_archives_check.setChecked(True)
         dialog.include_network_check.setChecked(False)
         dialog.use_builtin_check.setChecked(True)
 
@@ -6602,7 +6622,8 @@ class TestSettingsDialog:
 
         assert config.max_workers == 8
         assert config.max_depth == 20
-        assert config.scan_archives is True
+        # scan_archives 不由设置对话框保存，保持初始值 False
+        assert config.scan_archives is False
         assert config.include_network_drives is False
         assert config.use_builtin is True
 
