@@ -6087,6 +6087,25 @@ class TestSettingsDialogIgnore:
         assert "扩展名" in dialog.ignore_extensions_edit.placeholderText()
         dialog.close()
 
+    def test_ignore_page_tab_with_large_editors(self, qapp: QApplication) -> None:
+        """iter-76：忽略项应独立为第三个 Tab，编辑器有足够最小高度避免内容被压缩。"""
+        from fuscan.config import Config
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(Config())
+        # ignore_page 存在且为 TabWidget 中的一个 Tab
+        assert dialog.ignore_page is not None
+        tab_index = dialog.settings_tab_widget.indexOf(dialog.ignore_page)
+        assert tab_index >= 0
+        assert dialog.settings_tab_widget.tabText(tab_index) == "忽略项"
+        # 两个编辑器均有最小高度，避免内容显示太少被压缩
+        assert dialog.ignore_dirs_edit.minimumHeight() >= 300
+        assert dialog.ignore_extensions_edit.minimumHeight() >= 300
+        # ignore_page_layout 按宽度 2:1 分配（目录栏列表更长，更宽）
+        assert dialog.ignore_page_layout.stretch(0) == 2
+        assert dialog.ignore_page_layout.stretch(1) == 1
+        dialog.close()
+
     def test_default_ignore_dirs_loaded(self, qapp: QApplication) -> None:
         """默认 Config 的 ignore_dirs 应加载到编辑器。"""
         from fuscan.config import Config

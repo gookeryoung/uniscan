@@ -2,8 +2,9 @@
 
 使用 QTabWidget 实现多页面切换，避免设置项过于臃肿：
 
-1. 扫描设置：最大工作线程数、最大扫描深度、是否扫描压缩包、忽略目录/扩展名
-2. 通用设置：是否包含网络映射盘、是否启用内置规则、缓存设置
+1. 通用设置：是否包含网络映射盘、是否启用内置规则、缓存设置
+2. 扫描设置：最大工作线程数、最大扫描深度、是否扫描压缩包
+3. 忽略项：忽略目录、忽略扩展名（左右双栏大尺寸编辑器，便于查看长列表）
 
 UI 装配委托给 ``Ui_SettingsDialog``（对应 ``settings_dialog.ui``），
 本模块仅负责信号槽连接、配置加载与保存等业务逻辑。
@@ -37,6 +38,10 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         """配置 .ui 无法静态表达的信号槽连接。"""
         self.button_box.accepted.connect(self.on_accept)
         self.button_box.rejected.connect(self.reject)
+        # 忽略目录列表通常远长于扩展名列表，给左侧目录栏更大拉伸比例（2:1），
+        # 使两个编辑器在「忽略项」Tab 中按宽度 2:1 分配可用空间。
+        self.ignore_page_layout.setStretch(0, 2)
+        self.ignore_page_layout.setStretch(1, 1)
 
     def _load_config(self) -> None:
         """加载当前配置到控件。"""

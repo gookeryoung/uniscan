@@ -23,12 +23,32 @@ class TestConfig:
         assert config.last_drive is None
 
     def test_default_ignore_dirs(self) -> None:
-        """默认 ignore_dirs 应包含常见开发/构建目录。"""
+        """默认 ignore_dirs 应包含常见开发/构建目录及系统/缓存目录（iter-76 扩充）。"""
         config = Config()
+        # 版本控制 / Python / Node
         assert ".git" in config.ignore_dirs
         assert "node_modules" in config.ignore_dirs
         assert "__pycache__" in config.ignore_dirs
-        assert len(config.ignore_dirs) >= 20
+        # Rust / Cargo 缓存
+        assert ".cargo" in config.ignore_dirs
+        assert ".rustup" in config.ignore_dirs
+        assert "target" in config.ignore_dirs
+        # .NET / Visual Studio
+        assert ".vs" in config.ignore_dirs
+        assert "packages" in config.ignore_dirs
+        assert ".nuget" in config.ignore_dirs
+        # 其他语言生态
+        assert "vendor" in config.ignore_dirs
+        assert "Pods" in config.ignore_dirs
+        assert ".m2" in config.ignore_dirs
+        # Windows 系统目录（含大量二进制/系统文件，扫描无意义）
+        assert "Program Files" in config.ignore_dirs
+        assert "Program Files (x86)" in config.ignore_dirs
+        assert "Windows" in config.ignore_dirs
+        assert "WinSxS" in config.ignore_dirs
+        assert "$Recycle.Bin" in config.ignore_dirs
+        # 默认列表应足够全面（iter-76 由 21 项扩充至 50+ 项）
+        assert len(config.ignore_dirs) >= 50
 
     def test_default_ignore_extensions(self) -> None:
         """默认 ignore_extensions 应包含常见二进制/临时文件扩展名。"""

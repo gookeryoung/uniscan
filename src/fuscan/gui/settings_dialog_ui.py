@@ -17,8 +17,8 @@ class Ui_SettingsDialog(object):
     def setupUi(self, SettingsDialog):
         if not SettingsDialog.objectName():
             SettingsDialog.setObjectName(u"SettingsDialog")
-        SettingsDialog.resize(500, 460)
-        SettingsDialog.setMinimumSize(QSize(500, 460))
+        SettingsDialog.resize(640, 620)
+        SettingsDialog.setMinimumSize(QSize(640, 620))
         self.main_layout = QVBoxLayout(SettingsDialog)
         self.main_layout.setSpacing(12)
         self.main_layout.setObjectName(u"main_layout")
@@ -169,40 +169,58 @@ class Ui_SettingsDialog(object):
 
         self.scan_page_layout.addWidget(self.options_group)
 
-        self.ignore_group = QGroupBox(self.scan_page)
-        self.ignore_group.setObjectName(u"ignore_group")
-        self.ignore_layout = QFormLayout(self.ignore_group)
-        self.ignore_layout.setObjectName(u"ignore_layout")
-        self.ignore_layout.setHorizontalSpacing(8)
-        self.ignore_layout.setVerticalSpacing(8)
-        self.ignore_dirs_label = QLabel(self.ignore_group)
-        self.ignore_dirs_label.setObjectName(u"ignore_dirs_label")
-
-        self.ignore_layout.setWidget(0, QFormLayout.LabelRole, self.ignore_dirs_label)
-
-        self.ignore_dirs_edit = QPlainTextEdit(self.ignore_group)
-        self.ignore_dirs_edit.setObjectName(u"ignore_dirs_edit")
-
-        self.ignore_layout.setWidget(0, QFormLayout.FieldRole, self.ignore_dirs_edit)
-
-        self.ignore_extensions_label = QLabel(self.ignore_group)
-        self.ignore_extensions_label.setObjectName(u"ignore_extensions_label")
-
-        self.ignore_layout.setWidget(1, QFormLayout.LabelRole, self.ignore_extensions_label)
-
-        self.ignore_extensions_edit = QPlainTextEdit(self.ignore_group)
-        self.ignore_extensions_edit.setObjectName(u"ignore_extensions_edit")
-
-        self.ignore_layout.setWidget(1, QFormLayout.FieldRole, self.ignore_extensions_edit)
-
-
-        self.scan_page_layout.addWidget(self.ignore_group)
-
         self.scan_page_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
         self.scan_page_layout.addItem(self.scan_page_spacer)
 
         self.settings_tab_widget.addTab(self.scan_page, "")
+        self.ignore_page = QWidget()
+        self.ignore_page.setObjectName(u"ignore_page")
+        self.ignore_page_layout = QHBoxLayout(self.ignore_page)
+        self.ignore_page_layout.setSpacing(12)
+        self.ignore_page_layout.setObjectName(u"ignore_page_layout")
+        self.ignore_page_layout.setContentsMargins(8, 8, 8, 8)
+        self.ignore_dirs_group = QGroupBox(self.ignore_page)
+        self.ignore_dirs_group.setObjectName(u"ignore_dirs_group")
+        self.ignore_dirs_group_layout = QVBoxLayout(self.ignore_dirs_group)
+        self.ignore_dirs_group_layout.setSpacing(6)
+        self.ignore_dirs_group_layout.setObjectName(u"ignore_dirs_group_layout")
+        self.ignore_dirs_hint_label = QLabel(self.ignore_dirs_group)
+        self.ignore_dirs_hint_label.setObjectName(u"ignore_dirs_hint_label")
+        self.ignore_dirs_hint_label.setWordWrap(True)
+
+        self.ignore_dirs_group_layout.addWidget(self.ignore_dirs_hint_label)
+
+        self.ignore_dirs_edit = QPlainTextEdit(self.ignore_dirs_group)
+        self.ignore_dirs_edit.setObjectName(u"ignore_dirs_edit")
+        self.ignore_dirs_edit.setMinimumSize(QSize(0, 320))
+
+        self.ignore_dirs_group_layout.addWidget(self.ignore_dirs_edit)
+
+
+        self.ignore_page_layout.addWidget(self.ignore_dirs_group)
+
+        self.ignore_extensions_group = QGroupBox(self.ignore_page)
+        self.ignore_extensions_group.setObjectName(u"ignore_extensions_group")
+        self.ignore_extensions_group_layout = QVBoxLayout(self.ignore_extensions_group)
+        self.ignore_extensions_group_layout.setSpacing(6)
+        self.ignore_extensions_group_layout.setObjectName(u"ignore_extensions_group_layout")
+        self.ignore_extensions_hint_label = QLabel(self.ignore_extensions_group)
+        self.ignore_extensions_hint_label.setObjectName(u"ignore_extensions_hint_label")
+        self.ignore_extensions_hint_label.setWordWrap(True)
+
+        self.ignore_extensions_group_layout.addWidget(self.ignore_extensions_hint_label)
+
+        self.ignore_extensions_edit = QPlainTextEdit(self.ignore_extensions_group)
+        self.ignore_extensions_edit.setObjectName(u"ignore_extensions_edit")
+        self.ignore_extensions_edit.setMinimumSize(QSize(0, 320))
+
+        self.ignore_extensions_group_layout.addWidget(self.ignore_extensions_edit)
+
+
+        self.ignore_page_layout.addWidget(self.ignore_extensions_group)
+
+        self.settings_tab_widget.addTab(self.ignore_page, "")
 
         self.main_layout.addWidget(self.settings_tab_widget)
 
@@ -266,15 +284,19 @@ class Ui_SettingsDialog(object):
         self.scan_archives_check.setToolTip(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u538b\u7f29\u6587\u4ef6\u5185\u7684\u6587\u4ef6\u5185\u5bb9\uff08\u5f00\u542f\u540e\u81ea\u52a8\u653e\u884c\u5df2\u5ffd\u7565\u7684\u538b\u7f29\u5305\u6269\u5c55\u540d\uff09", None))
 #endif // QT_CONFIG(tooltip)
         self.scan_archives_check.setText(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u538b\u7f29\u5305\uff08ZIP/RAR/7Z\uff09", None))
-        self.ignore_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u9879", None))
-        self.ignore_dirs_label.setText(QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u76ee\u5f55:", None))
+        self.settings_tab_widget.setTabText(self.settings_tab_widget.indexOf(self.scan_page), QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u8bbe\u7f6e", None))
+        self.ignore_dirs_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u76ee\u5f55", None))
+        self.ignore_dirs_hint_label.setText(QCoreApplication.translate("SettingsDialog", u"\u6309\u76ee\u5f55\u540d\u5339\u914d\u4efb\u610f\u5c42\u7ea7\uff08\u5927\u5c0f\u5199\u4e0d\u654f\u611f\uff09\uff0c\u547d\u4e2d\u5373\u8df3\u8fc7\u5176\u4e0b\u6240\u6709\u6587\u4ef6", None))
         self.ignore_dirs_edit.setPlaceholderText(QCoreApplication.translate("SettingsDialog", u"\u4e00\u884c\u4e00\u4e2a\u76ee\u5f55\u540d\uff08\u5927\u5c0f\u5199\u4e0d\u654f\u611f\uff09\n"
 "\u5982\uff1a.git\n"
-"    node_modules", None))
-        self.ignore_extensions_label.setText(QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u6269\u5c55\u540d:", None))
+"    node_modules\n"
+"    Program Files", None))
+        self.ignore_extensions_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u6269\u5c55\u540d", None))
+        self.ignore_extensions_hint_label.setText(QCoreApplication.translate("SettingsDialog", u"\u4e0d\u542b\u70b9\uff0c\u5927\u5c0f\u5199\u4e0d\u654f\u611f\uff0c\u547d\u4e2d\u5373\u8df3\u8fc7\u8be5\u7c7b\u6587\u4ef6", None))
         self.ignore_extensions_edit.setPlaceholderText(QCoreApplication.translate("SettingsDialog", u"\u4e00\u884c\u4e00\u4e2a\u6269\u5c55\u540d\uff08\u4e0d\u542b\u70b9\uff09\n"
 "\u5982\uff1apyc\n"
-"    exe", None))
-        self.settings_tab_widget.setTabText(self.settings_tab_widget.indexOf(self.scan_page), QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u8bbe\u7f6e", None))
+"    exe\n"
+"    dll", None))
+        self.settings_tab_widget.setTabText(self.settings_tab_widget.indexOf(self.ignore_page), QCoreApplication.translate("SettingsDialog", u"\u5ffd\u7565\u9879", None))
     # retranslateUi
 

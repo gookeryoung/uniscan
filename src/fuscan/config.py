@@ -72,13 +72,17 @@ class Config:
     disabled_extractors: list[str] = field(default_factory=list)
     # 缓存数据库路径（None 表示默认 ~/.fuscan/cache.db）
     cache_path: str | None = None
-    # 忽略目录名（按目录名匹配任意层级，大小写不敏感）
+    # 忽略目录名（按目录名匹配任意层级，大小写不敏感）。
+    # 含版本控制元数据、语言工具链缓存、构建输出、IDE 配置、临时/日志目录，
+    # 以及 Windows 系统目录（含大量二进制/系统文件，扫描无意义且拖慢速度）。
+    # 用户可在设置对话框「忽略项」Tab 中增删。
     ignore_dirs: list[str] = field(
         default_factory=lambda: [
+            # 版本控制
             ".git",
             ".svn",
             ".hg",
-            "node_modules",
+            # Python
             "__pycache__",
             ".mypy_cache",
             ".pytest_cache",
@@ -86,17 +90,61 @@ class Config:
             ".venv",
             "venv",
             "env",
-            "dist",
-            "build",
-            "target",
-            "out",
-            ".idea",
-            ".vscode",
-            ".cache",
-            ".gradle",
             ".tox",
             ".eggs",
+            # Node / JavaScript
+            "node_modules",
             ".sass-cache",
+            ".npm",
+            ".yarn",
+            ".pnpm-store",
+            ".next",
+            ".nuxt",
+            ".turbo",
+            ".parcel-cache",
+            ".svelte-kit",
+            # Rust / Cargo
+            "target",
+            ".cargo",
+            ".rustup",
+            # Java
+            ".gradle",
+            ".m2",
+            ".ivy",
+            # .NET / Visual Studio
+            ".vs",
+            "packages",
+            ".nuget",
+            # PHP
+            "vendor",
+            # Apple
+            "Pods",
+            "DerivedData",
+            # Flutter / Dart
+            ".dart_tool",
+            # 构建输出
+            "dist",
+            "build",
+            "out",
+            # IDE
+            ".idea",
+            ".vscode",
+            # 缓存 / 临时 / 日志
+            ".cache",
+            "tmp",
+            "temp",
+            "logs",
+            "log",
+            ".Trash",
+            "Trash",
+            # Windows 系统目录（含大量二进制/系统文件，扫描无意义）
+            "Program Files",
+            "Program Files (x86)",
+            "Windows",
+            "WinSxS",
+            "ProgramData",
+            "System Volume Information",
+            "$Recycle.Bin",
         ]
     )
     # 忽略扩展名（不含点，大小写不敏感）

@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>500</width>
-    <height>460</height>
+    <width>640</width>
+    <height>620</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>500</width>
-    <height>460</height>
+    <width>640</width>
+    <height>620</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -318,53 +318,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="ignore_group">
-         <property name="title">
-          <string>忽略项</string>
-         </property>
-         <layout class="QFormLayout" name="ignore_layout">
-          <property name="horizontalSpacing">
-           <number>8</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>8</number>
-          </property>
-          <item row="0" column="0">
-           <widget class="QLabel" name="ignore_dirs_label">
-            <property name="text">
-             <string>忽略目录:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QPlainTextEdit" name="ignore_dirs_edit">
-            <property name="placeholderText">
-             <string>一行一个目录名（大小写不敏感）
-如：.git
-    node_modules</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="ignore_extensions_label">
-            <property name="text">
-             <string>忽略扩展名:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QPlainTextEdit" name="ignore_extensions_edit">
-            <property name="placeholderText">
-             <string>一行一个扩展名（不含点）
-如：pyc
-    exe</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
         <spacer name="scan_page_spacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -376,6 +329,104 @@
           </size>
          </property>
         </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="ignore_page">
+      <attribute name="title">
+       <string>忽略项</string>
+      </attribute>
+      <layout class="QHBoxLayout" name="ignore_page_layout">
+       <property name="spacing">
+        <number>12</number>
+       </property>
+       <property name="leftMargin">
+        <number>8</number>
+       </property>
+       <property name="topMargin">
+        <number>8</number>
+       </property>
+       <property name="rightMargin">
+        <number>8</number>
+       </property>
+       <property name="bottomMargin">
+        <number>8</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="ignore_dirs_group">
+         <property name="title">
+          <string>忽略目录</string>
+         </property>
+         <layout class="QVBoxLayout" name="ignore_dirs_group_layout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="ignore_dirs_hint_label">
+            <property name="text">
+             <string>按目录名匹配任意层级（大小写不敏感），命中即跳过其下所有文件</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="ignore_dirs_edit">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>320</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>一行一个目录名（大小写不敏感）
+如：.git
+    node_modules
+    Program Files</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="ignore_extensions_group">
+         <property name="title">
+          <string>忽略扩展名</string>
+         </property>
+         <layout class="QVBoxLayout" name="ignore_extensions_group_layout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="ignore_extensions_hint_label">
+            <property name="text">
+             <string>不含点，大小写不敏感，命中即跳过该类文件</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="ignore_extensions_edit">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>320</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>一行一个扩展名（不含点）
+如：pyc
+    exe
+    dll</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
        </item>
       </layout>
      </widget>
