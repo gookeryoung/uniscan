@@ -16,10 +16,19 @@ alwaysApply: true
 
 ## 配置与资源
 
-- 配置在 `config.py` 定义。GUI 采用 Qt 原生样式，不维护 QSS 主题层与设计令牌系统；颜色等视觉属性按需在 `.ui` 或代码中直接设置。
+- 配置在 `config.py` 定义。GUI 视觉属性通过设计令牌统一管理：
+  - 令牌集中定义在 `src/fuscan/theme.py`（色彩/排版/间距/圆角/按钮层级），QSS 通过 `string.Template` 引用 `QSS_TOKENS` 字典。
+  - 样式表 `src/fuscan/gui/styles.qss` 由 `app.load_stylesheet()` 在启动时加载并替换占位符后应用为 `app.setStyleSheet`。
+  - **禁止在 QSS 或代码中硬编码色值/字号/圆角**，须引用 `theme.py` 中的对应令牌；新增令牌同步追加到 `__all__` 与 `QSS_TOKENS`。
+  - 按钮采用三级层级差异化设计，QSS 与 `.ui` 中 `minimumSize` 须保持一致：
+    - **L1 主操作**（`scan_btn`/`view_results_btn`/`rescan_btn`/`export_btn`）：48px 高，主色填充或主色边框
+    - **L2 次要**（`pause_resume_btn`/`cancel_btn`/`select_path_btn`）：40px 高，灰边框
+    - **L3 辅助**（详情导航/规则管理/子对话框按钮）：32px 高，扁平兜底（通用 `QPushButton` 选择器）
+  - 例外：HTML 着色（如 `regex_tester` 速查表）无法引用 QSS 令牌，使用内联十六进制色值并在 docstring 注明。
 - 布局用 `QLayout` 管理器，禁止绝对像素坐标，确保高 DPI 与跨平台适配。
 - 同一菜单图标风格一致；窗口图标常量化指向 `assets/icons/`，`QIcon.isNull()` 校验。
 - 10MB 以下图标、图片、字体纳入 `.qrc` 资源文件；10MB 以上用 `QResource` 加载，避免占用内存。
+- `styles.qss` 须在 `pyproject.toml` 的 `[tool.hatch.build.targets.wheel.force-include]` 中声明，确保随包分发。
 
 ## 控件与窗口生命周期
 
@@ -34,4 +43,4 @@ alwaysApply: true
 
 ## 详细参考
 
-本规则为硬约束简表，四区布局规范、UI 设计规范、实现模式与代码模板见 `gui-pyside` SKILL（含 SKILL.md / UI-DESIGN.md / LAYOUT.md / PATTERNS.md 四文档，调用指引见 `rule-03-触发场景.md`）。fuscan 不采用 SKILL 中的设计令牌/QSS 主题系统，GUI 使用 Qt 原生样式。
+本规则为硬约束简表，四区布局规范、UI 设计规范、实现模式与代码模板见 `gui-pyside` SKILL（含 SKILL.md / UI-DESIGN.md / LAYOUT.md / PATTERNS.md 四文档，调用指引见 `rule-03-触发场景.md`）。fuscan 采用 SKILL 中的令牌/QSS 系统设计，配色沿用 GitHub Desktop 风格（详见 `theme.py`），按钮三级层级差异化设计详见「配置与资源」章节。
