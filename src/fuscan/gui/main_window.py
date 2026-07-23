@@ -394,11 +394,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _setup_layouts(self) -> None:
         """设置各 layout 伸缩因子（.ui 不支持 stretch vector）。"""
-        # 配置页：target_group 自然尺寸 + setup_action_bar 紧随其后 + 底部弹簧填充剩余空间
+        # 配置页：target_group 自然尺寸 + file_types_group 伸展填充 + setup_action_bar 固定底部
         self.setup_layout.setStretch(0, 0)
-        self.setup_layout.setStretch(1, 0)
-        self.setup_layout.addStretch()
-        self.setup_layout.setStretch(2, 1)
+        self.setup_layout.setStretch(1, 1)
+        self.setup_layout.setStretch(2, 0)
         # target_group 内：scan_mode_layout（history 已移至 history_tab）
         self.target_group_layout.setStretch(0, 0)
         # rules_group 内：rules_btn_row / rules_file_label / rules_file_list / rules_tree

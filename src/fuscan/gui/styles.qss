@@ -649,7 +649,7 @@ QListWidget::item:hover {
 
 /* ========== 文件类型勾选区（Model/View） ========== */
 
-QListView#file_types_view {
+QTreeView#file_types_view {
     background: transparent;
     border: none;
     outline: none;
@@ -658,20 +658,24 @@ QListView#file_types_view {
     selection-color: ${COLOR_TEXT_ON_PRIMARY};
 }
 
-QListView#file_types_view::item {
+QTreeView#file_types_view::item {
     padding: 2px 6px;
     border-radius: ${RADIUS_SM};
     /* 让 item 背景仅在选中/悬停时绘制，避免覆盖 QGroupBox 卡片底色 */
     background: transparent;
 }
 
-QListView#file_types_view::item:hover {
+QTreeView#file_types_view::item:hover {
     background: ${COLOR_BG_HOVER};
 }
 
-QListView#file_types_view::item:selected {
+QTreeView#file_types_view::item:selected {
     background: ${COLOR_PRIMARY_DARK};
     color: ${COLOR_TEXT_ON_PRIMARY};
+}
+
+QTreeView#file_types_view::branch {
+    background: transparent;
 }
 
 QTableWidget {
