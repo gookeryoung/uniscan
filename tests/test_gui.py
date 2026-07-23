@@ -984,7 +984,7 @@ class TestConfigPersistence:
         _save_impl(config, tmp_path / "config.yaml")
 
         window = MainWindow()
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         window.show()
         qapp.processEvents()
         sizes = window.results_splitter.sizes()
@@ -1339,8 +1339,8 @@ class TestWorkflowStage:
     def test_results_to_setup_on_rescan(self, qapp: QApplication) -> None:
         """结果页点击重新扫描应返回 SETUP 页。"""
         window = MainWindow()
-        window._switch_stage(WorkflowStage.RESULTS)
-        window._on_rescan()
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.rescan()
         assert window.main_stack.currentIndex() == 0
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
@@ -1355,8 +1355,8 @@ class TestWorkflowStage:
 
         window = MainWindow()
         window._last_report = report
-        window._update_stage_actions()
-        window._on_view_results()
+        window._stage_controller.update_actions()
+        window._stage_controller.view_results()
         assert window.main_stack.currentIndex() == 2
         window.close()
 
@@ -1380,7 +1380,7 @@ class TestWorkflowStage:
 
         window = MainWindow()
         window._last_report = report
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         window.show()
         qapp.processEvents()
         assert window.view_results_btn.isVisible()
@@ -1391,7 +1391,7 @@ class TestWorkflowStage:
         """无规则集时扫描按钮应禁用。"""
         window = MainWindow()
         window._ruleset = None
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         assert not window.scan_btn.isEnabled()
         window.close()
 
@@ -1402,23 +1402,23 @@ class TestWorkflowStage:
         window._ruleset = _build_ruleset()
         window._scan_mode_panel._folder_root = tmp_path
         window._scan_mode_panel._scan_mode = "folder"
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         assert window.scan_btn.isEnabled()
         window.close()
 
     def test_rescan_btn_disabled_in_setup(self, qapp: QApplication) -> None:
         """SETUP 阶段重新扫描按钮应禁用，RESULTS 阶段应启用。"""
         window = MainWindow()
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         assert not window.rescan_btn.isEnabled()
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         assert window.rescan_btn.isEnabled()
         window.close()
 
     def test_pause_cancel_btn_disabled_in_setup(self, qapp: QApplication) -> None:
         """SETUP 阶段（扫描前）暂停与取消按钮应禁用。"""
         window = MainWindow()
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         assert not window.pause_resume_btn.isEnabled()
         assert not window.cancel_btn.isEnabled()
         window.close()
@@ -1427,7 +1427,7 @@ class TestWorkflowStage:
         """SCANNING 阶段暂停与取消按钮应启用。"""
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         assert window.pause_resume_btn.isEnabled()
         assert window.cancel_btn.isEnabled()
         window.close()
@@ -1435,7 +1435,7 @@ class TestWorkflowStage:
     def test_pause_cancel_btn_disabled_in_results(self, qapp: QApplication) -> None:
         """RESULTS 阶段（扫描完成后）暂停与取消按钮应禁用。"""
         window = MainWindow()
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         assert not window.pause_resume_btn.isEnabled()
         assert not window.cancel_btn.isEnabled()
         window.close()
@@ -1444,7 +1444,7 @@ class TestWorkflowStage:
         """SCANNING 阶段 RUNNING 状态 pause_resume_btn 文本为"暂停扫描"。"""
         window = MainWindow()
         window._scan_state = ScanState.RUNNING
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         assert window.pause_resume_btn.text() == "暂停扫描"
         window.close()
 
@@ -1452,7 +1452,7 @@ class TestWorkflowStage:
         """SCANNING 阶段 PAUSED 状态 pause_resume_btn 文本为"继续扫描"。"""
         window = MainWindow()
         window._scan_state = ScanState.PAUSED
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         assert window.pause_resume_btn.text() == "继续扫描"
         window.close()
 
@@ -1576,14 +1576,14 @@ class TestWorkflowStage:
     def test_scan_action_disabled_in_scanning(self, qapp: QApplication) -> None:
         """SCANNING 阶段扫描菜单项应禁用。"""
         window = MainWindow()
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         assert not window.scan_action.isEnabled()
         window.close()
 
     def test_export_actions_disabled_in_setup(self, qapp: QApplication) -> None:
         """SETUP 阶段导出菜单项应禁用。"""
         window = MainWindow()
-        window._update_stage_actions()
+        window._stage_controller.update_actions()
         assert not window.export_csv_action.isEnabled()
         assert not window.export_json_action.isEnabled()
         window.close()
@@ -1598,7 +1598,7 @@ class TestWorkflowStage:
 
         window = MainWindow()
         window._last_report = report
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         assert window.export_csv_action.isEnabled()
         assert window.export_json_action.isEnabled()
         window.close()
@@ -1606,7 +1606,7 @@ class TestWorkflowStage:
     def test_load_edit_rules_actions_disabled_in_results(self, qapp: QApplication) -> None:
         """RESULTS 阶段加载/编辑规则菜单项应禁用。"""
         window = MainWindow()
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         assert not window.load_rules_action.isEnabled()
         assert not window.edit_rules_action.isEnabled()
         window.close()
@@ -1614,11 +1614,11 @@ class TestWorkflowStage:
     def test_switch_stage_syncs_sidebar(self, qapp: QApplication) -> None:
         """_switch_stage 应同步侧边栏选中项。"""
         window = MainWindow()
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         assert window.sidebar.currentRow() == 1
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         assert window.sidebar.currentRow() == 2
-        window._switch_stage(WorkflowStage.SETUP)
+        window._stage_controller.switch_stage(WorkflowStage.SETUP)
         assert window.sidebar.currentRow() == 0
         window.close()
 
@@ -1627,13 +1627,13 @@ class TestWorkflowStage:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window._on_header_tab_changed(1)
+        window._stage_controller.on_header_tab_changed(1)
         assert window.tab_stack.currentIndex() == 1
         assert not window.sidebar.isVisible()
-        window._on_header_tab_changed(2)
+        window._stage_controller.on_header_tab_changed(2)
         assert window.tab_stack.currentIndex() == 2
         assert not window.sidebar.isVisible()
-        window._on_header_tab_changed(0)
+        window._stage_controller.on_header_tab_changed(0)
         assert window.tab_stack.currentIndex() == 0
         assert window.sidebar.isVisible()
         window.close()
@@ -1641,13 +1641,13 @@ class TestWorkflowStage:
     def test_on_sidebar_stage_changed_switches_main_stack(self, qapp: QApplication) -> None:
         """_on_sidebar_stage_changed 应映射 row 到 WorkflowStage 并切换 main_stack。"""
         window = MainWindow()
-        window._on_sidebar_stage_changed(1)
+        window._stage_controller.on_sidebar_stage_changed(1)
         assert window.main_stack.currentIndex() == 1
         assert window._workflow_stage == WorkflowStage.SCANNING
-        window._on_sidebar_stage_changed(2)
+        window._stage_controller.on_sidebar_stage_changed(2)
         assert window.main_stack.currentIndex() == 2
         assert window._workflow_stage == WorkflowStage.RESULTS
-        window._on_sidebar_stage_changed(0)
+        window._stage_controller.on_sidebar_stage_changed(0)
         assert window.main_stack.currentIndex() == 0
         assert window._workflow_stage == WorkflowStage.SETUP
         window.close()
@@ -1881,7 +1881,7 @@ class TestScanningPageLayout:
         qapp.processEvents()
         assert not window.current_file_label.isVisible()
         # 进入扫描中阶段后应可见
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         qapp.processEvents()
         assert window.current_file_label.isVisible()
         assert window.progress.isVisible()
@@ -1892,11 +1892,11 @@ class TestScanningPageLayout:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window._switch_stage(WorkflowStage.SETUP)
+        window._stage_controller.switch_stage(WorkflowStage.SETUP)
         qapp.processEvents()
         assert not window.progress.isVisible()
         assert not window.current_file_label.isVisible()
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         qapp.processEvents()
         assert not window.progress.isVisible()
         assert not window.current_file_label.isVisible()
@@ -1907,7 +1907,7 @@ class TestScanningPageLayout:
         from fuscan.scanner.result import ProgressInfo
 
         window = MainWindow()
-        window._switch_stage(WorkflowStage.SCANNING)
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         info = ProgressInfo(
             total=100,
             scanned=50,
@@ -2007,7 +2007,7 @@ class TestSeverityDisplay:
 
         window = MainWindow()
         window._last_report = report
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         window._result_filter_panel.refresh()
 
         expected_bg = SEVERITY_BACKGROUNDS[Severity.WARNING]
@@ -2040,7 +2040,7 @@ class TestSeverityDisplay:
 
         window = MainWindow()
         window._last_report = report
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         window._result_filter_panel.refresh()
 
         top_item = window.result_tree.model().item(0, 0)
@@ -6560,7 +6560,7 @@ class TestSeverityBackground:
 
         window = MainWindow()
         window._last_report = report
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         window._result_filter_panel.refresh()
 
         top_item = window.result_tree.model().item(0, 0)
@@ -6583,7 +6583,7 @@ class TestSeverityBackground:
 
         window = MainWindow()
         window._last_report = report
-        window._switch_stage(WorkflowStage.RESULTS)
+        window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         idx = window.group_mode_combo.findData("severity")
         window.group_mode_combo.setCurrentIndex(idx)
         window._result_filter_panel.refresh()

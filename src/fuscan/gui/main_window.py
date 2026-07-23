@@ -148,6 +148,7 @@ from fuscan.gui.rules_panel import RulesFilePanel
 from fuscan.gui.scan_mode_panel import ScanModePanel
 from fuscan.gui.scan_path_history import ScanPathHistory
 from fuscan.gui.scan_progress_lists import ScanListUpdater
+from fuscan.gui.stage_controller import StageController, StageControls, WorkflowStage
 from fuscan.gui.worker import ScanWorker
 from fuscan.perf import PerfTimer, set_perf_enabled
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
@@ -230,21 +231,8 @@ class ScanState(enum.Enum):
     PAUSED = "paused"
 
 
-class WorkflowStage(enum.Enum):
-    """工作流阶段，决定主界面 QStackedWidget 显示哪一页。"""
-
-    SETUP = "setup"
-    SCANNING = "scanning"
-    RESULTS = "results"
-
-
-# 工作流阶段 ↔ main_stack page index / sidebar row 双向映射（定义在 WorkflowStage 之后）
-_STAGE_TO_PAGE_INDEX: dict[WorkflowStage, int] = {
-    WorkflowStage.SETUP: 0,
-    WorkflowStage.SCANNING: 1,
-    WorkflowStage.RESULTS: 2,
-}
-_SIDEBAR_ROW_TO_STAGE: dict[int, WorkflowStage] = {v: k for k, v in _STAGE_TO_PAGE_INDEX.items()}
+# WorkflowStage / _STAGE_TO_PAGE_INDEX / _SIDEBAR_ROW_TO_STAGE 已移到
+# StageController（iter-80 UI 控件解耦），main_window 通过 __all__ 重新导出
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheritance]
@@ -262,7 +250,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._last_report: ScanReport | None = None
             self._worker: ScanWorker | None = None
             self._scan_state: ScanState = ScanState.IDLE
-            self._workflow_stage: WorkflowStage = WorkflowStage.SETUP
+            # _workflow_stage 由 StageController 持有，通过 property 转发访问
             # 取消中标志（iter-79）：用户点击取消后置 True，扫描线程退出前
             # 进度回调 _on_scan_progress 据此跳过 UI 覆盖，保留"取消中..."文案
             # 与不确定进度动画；_reset_scan_ui 中重置为 False
@@ -325,6 +313,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._setup_icons()
         self._setup_button_groups()
         self._setup_scan_mode_panel()
+        self._setup_stage_controller()
         self._setup_export_controller()
         self._setup_rules_panel()
         self._setup_sidebar()
@@ -333,7 +322,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._setup_context_menus()
         self._setup_shortcuts()
         # 初始阶段：配置页
-        self._switch_stage(WorkflowStage.SETUP)
+        self._stage_controller.switch_stage(WorkflowStage.SETUP)
 
     def _setup_status_bar(self) -> None:
         """创建状态栏组件：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）。"""
@@ -552,7 +541,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             parent_widget=self,
             parent=self,
         )
-        self._export_controller.button_restore_requested.connect(self._update_stage_actions)  # pyrefly: ignore [missing-attribute]
+        self._export_controller.button_restore_requested.connect(self._stage_controller.update_actions)  # pyrefly: ignore [missing-attribute]
 
     def _setup_rules_panel(self) -> None:
         """构造规则文件列表面板控制器（列表显示 + 顺序操作 + 内置勾选 + 右键菜单）。
@@ -565,6 +554,43 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         """
         self._rules_panel = RulesFilePanel(self.rules_file_list, parent=self)
         self._rules_panel.rules_changed.connect(self._on_rules_changed)  # pyrefly: ignore [missing-attribute]
+
+    def _setup_stage_controller(self) -> None:
+        """构造工作流阶段控制器（三页切换 + 按钮/actions 可用性管理）。
+
+        委托 :class:`StageController` 封装 ``main_stack`` / ``sidebar`` /
+        ``tab_stack`` 的页面切换与 17 个按钮/actions 的可用性更新（iter-80
+        UI 控件解耦）。主窗口通过 ``_workflow_stage`` property 转发访问
+        panel 状态，保持向后兼容；4 个 callback 读取主窗口的扫描状态、
+        报告与规则集，避免 panel 持有这些引用。
+        """
+        controls = StageControls(
+            main_stack=self.main_stack,
+            sidebar=self.sidebar,
+            tab_stack=self.tab_stack,
+            scan_btn=self.scan_btn,
+            view_results_btn=self.view_results_btn,
+            progress=self.progress,
+            current_file_label=self.current_file_label,
+            pause_resume_btn=self.pause_resume_btn,
+            cancel_btn=self.cancel_btn,
+            rescan_btn=self.rescan_btn,
+            export_btn=self.export_btn,
+            scan_action=self.scan_action,
+            select_path_action=self.select_path_action,
+            export_csv_action=self.export_csv_action,
+            export_json_action=self.export_json_action,
+            load_rules_action=self.load_rules_action,
+            edit_rules_action=self.edit_rules_action,
+        )
+        self._stage_controller = StageController(
+            controls=controls,
+            is_paused_getter=lambda: self._scan_state == ScanState.PAUSED,
+            has_report_getter=lambda: self._last_report is not None,
+            has_hits_getter=lambda: self._last_report is not None and len(self._last_report.hits) > 0,
+            can_start_scan_getter=self._can_start_scan,
+            parent=self,
+        )
 
     def _setup_file_types(self) -> None:
         """构造内容 TAB 面板控制器（文件类型树 + 忽略目录 + 忽略扩展名）。
@@ -587,10 +613,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         """连接所有信号槽（按钮、actions、worker、头部栏与侧边栏）。"""
         # 扫描控制
         self.scan_btn.clicked.connect(self._on_scan)
-        self.view_results_btn.clicked.connect(self._on_view_results)
+        self.view_results_btn.clicked.connect(self._stage_controller.view_results)
         self.pause_resume_btn.clicked.connect(self._on_pause_resume)
         self.cancel_btn.clicked.connect(self._on_cancel_scan)
-        self.rescan_btn.clicked.connect(self._on_rescan)
+        self.rescan_btn.clicked.connect(self._stage_controller.rescan)
         # 扫描目标（scan_mode_combo 信号已由 ScanModePanel 内部连接）
         self._scan_mode_panel.mode_changed.connect(self._update_scan_button)  # pyrefly: ignore [missing-attribute]
         self.path_combo.currentIndexChanged.connect(self._on_path_selected)
@@ -615,8 +641,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 扫描中页命中文件列表双击：弹出简化详情与定位按钮（需求5）
         self.matched_files_list.itemDoubleClicked.connect(self._on_matched_file_double_clicked)
         # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
-        self._header_button_group.idClicked.connect(self._on_header_tab_changed)
-        self.sidebar.currentRowChanged.connect(self._on_sidebar_stage_changed)
+        self._header_button_group.idClicked.connect(self._stage_controller.on_header_tab_changed)
+        self.sidebar.currentRowChanged.connect(self._stage_controller.on_sidebar_stage_changed)
         self.settings_btn.clicked.connect(self._on_settings)
         self.about_btn.clicked.connect(self._on_about)
         # actions
@@ -712,102 +738,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     # ----------------------------- 工作流阶段切换 -----------------------------
 
-    def _switch_stage(self, stage: WorkflowStage) -> None:
-        """切换工作流阶段页面并更新控件状态。
+    # 阶段切换相关方法（_switch_stage / _on_header_tab_changed /
+    # _on_sidebar_stage_changed / _update_stage_actions / _on_view_results /
+    # _on_rescan）已移到 StageController（iter-80 UI 控件解耦），
+    # 主窗口通过 self._stage_controller 公共 API 驱动；_can_start_scan
+    # 保留在主窗口（依赖 _scan_state / _ruleset / _scan_mode_panel），
+    # 通过 callback 供 StageController.update_actions 读取
 
-        SETUP=0 配置页、SCANNING=1 扫描中页、RESULTS=2 结果页。
-        同步侧边栏选中项，避免循环触发信号。
-        """
-        self._workflow_stage = stage
-        page_index = _STAGE_TO_PAGE_INDEX[stage]
-        self.main_stack.setCurrentIndex(page_index)
-        self.sidebar.blockSignals(True)
-        self.sidebar.setCurrentRow(page_index)  # pyrefly: ignore [missing-argument]
-        self.sidebar.blockSignals(False)
-        self._update_stage_actions()
-
-    def _on_header_tab_changed(self, tab_id: int) -> None:
-        """头部 Tab 切换：切换 tab_stack 页面，非扫描 Tab 隐藏侧边栏。
-
-        :param tab_id: 0=扫描 / 1=规则管理 / 2=扫描历史
-        """
-        self.tab_stack.setCurrentIndex(tab_id)
-        self.sidebar.setVisible(tab_id == 0)
-
-    def _on_sidebar_stage_changed(self, row: int) -> None:
-        """侧边栏阶段项切换：映射 row 到 WorkflowStage 并切换页面。
-
-        :param row: 0=配置 / 1=扫描中 / 2=结果
-        """
-        stage = _SIDEBAR_ROW_TO_STAGE.get(row)
-        if stage is not None:
-            self._switch_stage(stage)
-
-    def _update_stage_actions(self) -> None:
-        """根据当前阶段与扫描状态更新按钮和菜单的可用性。"""
-        is_setup = self._workflow_stage == WorkflowStage.SETUP
-        is_scanning = self._workflow_stage == WorkflowStage.SCANNING
-        is_results = self._workflow_stage == WorkflowStage.RESULTS
-        has_report = self._last_report is not None
-
-        # 配置页：scan_btn 仅在 SETUP 可用；view_results_btn 始终可见，根据是否有结果启用
-        self.scan_btn.setEnabled(is_setup and self._can_start_scan())
-        self.view_results_btn.setVisible(is_setup)
-        self.view_results_btn.setEnabled(has_report)
-
-        # 状态栏进度条与当前文件标签：扫描中阶段可见，其余阶段隐藏。
-        # 进度条初始为确定模式（0/100），不会显示 indeterminate 动画；
-        # 仅在 _start_scan 中切换为 indeterminate 模式。
-        self.progress.setVisible(is_scanning)
-        self.current_file_label.setVisible(is_scanning)
-
-        # 扫描中页：pause_resume_btn 文本随 ScanState 切换
-        if self._workflow_stage == WorkflowStage.SCANNING:
-            if self._scan_state == ScanState.PAUSED:
-                self.pause_resume_btn.setText("继续扫描")
-            else:
-                self.pause_resume_btn.setText("暂停扫描")
-
-        # 暂停/取消按钮仅在扫描中阶段可用（配置页与结果页均禁用，
-        # 避免用户在未扫描时误触发出无效操作）
-        self.pause_resume_btn.setEnabled(is_scanning)
-        self.cancel_btn.setEnabled(is_scanning)
-
-        # 侧边栏在扫描中阶段禁用（iter-79 需求4）：防止用户在解析目录/文件解析
-        # 阶段切换到其他页面导致扫描状态不一致；准备扫描与扫描完成阶段恢复可用
-        self.sidebar.setEnabled(not is_scanning)
-
-        # 结果页
-        self.rescan_btn.setEnabled(is_results)
-        if is_results and has_report:
-            self.export_btn.setEnabled(len(self._last_report.hits) > 0)  # pyrefly: ignore [missing-attribute]
-        else:
-            self.export_btn.setEnabled(False)
-
-        # 菜单 actions
-        self.scan_action.setEnabled(is_setup and self._can_start_scan())
-        self.select_path_action.setEnabled(is_setup)
-        self.export_csv_action.setEnabled(is_results and has_report)
-        self.export_json_action.setEnabled(is_results and has_report)
-        self.load_rules_action.setEnabled(is_setup)
-        self.edit_rules_action.setEnabled(is_setup)
+    @property
+    def _workflow_stage(self) -> WorkflowStage:
+        return self._stage_controller.current_stage
 
     def _can_start_scan(self) -> bool:
-        """判断是否满足开始扫描的条件。"""
+        """判断是否满足开始扫描的条件。
+
+        保留在主窗口：依赖 ``_scan_state`` / ``_ruleset`` /
+        ``_scan_mode_panel.can_start_scan()``，通过 callback 供
+        :class:`StageController.update_actions` 读取。
+        """
         if self._scan_state in (ScanState.RUNNING, ScanState.PAUSED):
             return True
         if self._ruleset is None:
             return False
         return self._scan_mode_panel.can_start_scan()
-
-    def _on_view_results(self) -> None:
-        """配置页"查看结果"按钮：切换到结果页。"""
-        if self._last_report is not None:
-            self._switch_stage(WorkflowStage.RESULTS)
-
-    def _on_rescan(self) -> None:
-        """结果页"重新扫描"按钮：返回配置页。"""
-        self._switch_stage(WorkflowStage.SETUP)
 
     def _on_pause_resume(self) -> None:
         """扫描中页"暂停/继续"按钮：根据 ScanState 切换。"""
@@ -933,7 +886,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._scan_mode_panel.select_folder_mode()
         self._scan_mode_panel.set_folder_root(path)
         self._add_scan_path_history(path_str)
-        self._update_stage_actions()
+        self._stage_controller.update_actions()
 
     # ----------------------------- 规则加载 -----------------------------
 
@@ -1069,7 +1022,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._list_updater.reset()
         # 重置扫描中页的分类统计面板（需求6/7）
         self._update_scan_stats(0, 0, 0, 0, 0)
-        self._switch_stage(WorkflowStage.SCANNING)
+        self._stage_controller.switch_stage(WorkflowStage.SCANNING)
 
         cache, source_files = self._build_cache_context()
         self._worker = ScanWorker(
@@ -1140,9 +1093,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # （scanner.scan 直接返回的 report 默认 cancelled=False）
         self.stats_label.setText(report.stats.summary(cancelled=True))
         if len(report.hits) > 0:
-            self._switch_stage(WorkflowStage.RESULTS)
+            self._stage_controller.switch_stage(WorkflowStage.RESULTS)
         else:
-            self._switch_stage(WorkflowStage.SETUP)
+            self._stage_controller.switch_stage(WorkflowStage.SETUP)
 
     def _reset_scan_ui(self) -> None:
         """重置扫描 UI 到空闲状态。"""
@@ -1223,14 +1176,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             hotspots = " | ".join(f"{name} {info.get('total_ms', 0.0) / total_ms * 100:.0f}%" for name, info in ranked)
             summary += f" | 热点: {hotspots}"
         self.stats_label.setText(summary)
-        self._switch_stage(WorkflowStage.RESULTS)
+        self._stage_controller.switch_stage(WorkflowStage.RESULTS)
 
     @Slot(str)  # pyrefly: ignore [not-callable]
     def _on_scan_failed(self, error: str) -> None:
         """扫描失败回调：切回配置页并提示。"""
         self._reset_scan_ui()
         self.stats_label.setText("扫描失败")
-        self._switch_stage(WorkflowStage.SETUP)
+        self._stage_controller.switch_stage(WorkflowStage.SETUP)
         QMessageBox.critical(self, "扫描失败", error)
 
     def _on_about(self) -> None:
@@ -1616,7 +1569,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _update_scan_button(self) -> None:
         """更新扫描按钮状态（委托给 _update_stage_actions 统一管理）。"""
-        self._update_stage_actions()
+        self._stage_controller.update_actions()
 
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         """关闭时保存配置、释放缓存并终止后台线程。"""
