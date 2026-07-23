@@ -2032,14 +2032,14 @@ class TestWorkflowStage:
 class TestSetupActionBar:
     """配置页操作条（setup_action_bar）结构与样式测试。"""
 
-    def test_scan_btn_height_is_40(self, qapp: QApplication) -> None:
-        """scan_btn 最小高度应为 40（与扫描中页按钮一致）。"""
+    def test_scan_btn_height_is_primary(self, qapp: QApplication) -> None:
+        """scan_btn 最小高度应为 48（L1 主操作按钮层级）。"""
         window = MainWindow()
-        assert window.scan_btn.minimumHeight() == 40
+        assert window.scan_btn.minimumHeight() == 48
         window.close()
 
     def test_scan_btn_minimum_width_180(self, qapp: QApplication) -> None:
-        """scan_btn 最小宽度应为 180。"""
+        """scan_btn 最小宽度应至少 180（L1 主操作按钮）。"""
         window = MainWindow()
         assert window.scan_btn.minimumWidth() >= 180
         window.close()
@@ -2052,12 +2052,26 @@ class TestSetupActionBar:
         window.close()
 
     def test_view_results_btn_same_size_as_scan_btn(self, qapp: QApplication) -> None:
-        """view_results_btn 与 scan_btn 最小尺寸应一致（180x40）。"""
+        """view_results_btn 与 scan_btn 最小尺寸应一致（L1 主操作 200x48）。"""
         window = MainWindow()
         assert window.view_results_btn.minimumWidth() == window.scan_btn.minimumWidth()
         assert window.view_results_btn.minimumHeight() == window.scan_btn.minimumHeight()
-        assert window.scan_btn.minimumWidth() == 180
-        assert window.scan_btn.minimumHeight() == 40
+        assert window.scan_btn.minimumWidth() == 200
+        assert window.scan_btn.minimumHeight() == 48
+        window.close()
+
+    def test_primary_buttons_larger_than_secondary(self, qapp: QApplication) -> None:
+        """L1 主操作按钮（scan_btn/rescan_btn/export_btn）最小高度应大于 L2 次要按钮
+        （pause_resume_btn/cancel_btn），实现按钮大小差异化。"""
+        window = MainWindow()
+        primary_height = window.scan_btn.minimumHeight()
+        secondary_height = window.pause_resume_btn.minimumHeight()
+        assert primary_height == 48
+        assert secondary_height == 40
+        assert window.rescan_btn.minimumHeight() == primary_height
+        assert window.export_btn.minimumHeight() == primary_height
+        assert window.cancel_btn.minimumHeight() == secondary_height
+        assert primary_height > secondary_height
         window.close()
 
     def test_view_results_btn_adjacent_to_scan_btn(self, qapp: QApplication) -> None:
@@ -2350,6 +2364,7 @@ class TestLaunchApp:
 
         created: list[Any] = []
         set_attrs: list[Any] = []
+        set_stylesheets: list[str] = []
 
         class FakeApp:
             def __init__(self, args):  # type: ignore[no-untyped-def]
@@ -2358,6 +2373,9 @@ class TestLaunchApp:
 
             def setApplicationName(self, name: str) -> None:
                 self._app_name = name
+
+            def setStyleSheet(self, qss: str) -> None:
+                set_stylesheets.append(qss)
 
             def exec_(self) -> int:
                 return 0
@@ -2391,6 +2409,10 @@ class TestLaunchApp:
         assert len(shown) == 1
         # 验证高 DPI 属性已设置
         assert len(set_attrs) == 2
+        # 验证 QSS 已加载并应用（包含令牌替换后的内容，非空）
+        assert len(set_stylesheets) == 1
+        assert set_stylesheets[0]  # 非空
+        assert "${" not in set_stylesheets[0]  # 令牌占位符已被替换
 
     def test_launch_reuses_existing_app(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """已有 QApplication 实例时复用，不创建新实例。"""
@@ -2402,6 +2424,7 @@ class TestLaunchApp:
             {
                 "exec_": lambda self: 0,
                 "setApplicationName": lambda self, n: None,
+                "setStyleSheet": lambda self, q: None,
             },
         )()
         created: list[Any] = []
@@ -2411,6 +2434,9 @@ class TestLaunchApp:
                 created.append(self)
 
             def setApplicationName(self, name: str) -> None:
+                pass
+
+            def setStyleSheet(self, qss: str) -> None:
                 pass
 
             def exec_(self) -> int:
@@ -2457,6 +2483,71 @@ class TestLaunchApp:
 
         with pytest.raises(AttributeError, match="has no attribute"):
             _ = fuscan.gui.__getattr__("nonexistent_attr")
+
+
+class TestThemeAndStylesheet:
+    """设计令牌（theme.py）与 QSS 加载（app.load_stylesheet）测试。"""
+
+    def test_qss_tokens_dict_covers_all_token_constants(self) -> None:
+        """QSS_TOKENS 字典应包含所有公开导出的令牌常量名（一一映射）。"""
+        from fuscan import theme
+
+        public_tokens = set(theme.__all__) - {"QSS_TOKENS"}
+        dict_keys = set(theme.QSS_TOKENS.keys())
+        missing = public_tokens - dict_keys
+        assert not missing, f"QSS_TOKENS 缺失令牌：{missing}"
+
+    def test_qss_tokens_values_are_strings(self) -> None:
+        """QSS_TOKENS 所有值应为字符串（QSS substitute 入参类型）。"""
+        from fuscan import theme
+
+        for key, value in theme.QSS_TOKENS.items():
+            assert isinstance(value, str), f"令牌 {key} 不是字符串：{type(value)}"
+
+    def test_button_hierarchy_tokens_distinct(self) -> None:
+        """三级按钮层级令牌应有清晰差异：primary > secondary > ghost。"""
+        from fuscan import theme
+
+        # 尺寸差异：高度 48 > 40 > 32
+        assert theme.BTN_HEIGHT_PRIMARY == "48px"
+        assert theme.BTN_HEIGHT_SECONDARY == "40px"
+        assert theme.BTN_HEIGHT_GHOST == "32px"
+        assert int(theme.BTN_HEIGHT_PRIMARY.rstrip("px")) > int(theme.BTN_HEIGHT_SECONDARY.rstrip("px"))
+        assert int(theme.BTN_HEIGHT_SECONDARY.rstrip("px")) > int(theme.BTN_HEIGHT_GHOST.rstrip("px"))
+        # 圆角差异：8 > 6 > 4
+        assert theme.BTN_RADIUS_PRIMARY == "8px"
+        assert theme.BTN_RADIUS_SECONDARY == "6px"
+        assert theme.BTN_RADIUS_GHOST == "4px"
+
+    def test_load_stylesheet_returns_non_empty_and_no_placeholders(self) -> None:
+        """load_stylesheet 应返回非空 QSS，且所有 ${TOKEN} 占位符已替换。"""
+        from fuscan.gui import app as app_module
+
+        qss = app_module.load_stylesheet()
+        assert qss
+        assert "${" not in qss
+        # 关键令牌值应出现在结果中（替换成功而非被清空）
+        from fuscan import theme
+
+        assert theme.COLOR_PRIMARY in qss
+        assert theme.BTN_HEIGHT_PRIMARY in qss
+
+    def test_load_stylesheet_handles_missing_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """QSS 文件缺失时应返回空串并记录 warning，不抛异常。"""
+        from fuscan.gui import app as app_module
+
+        fake_path = type("FakePath", (), {"is_file": lambda self: False, "__str__": lambda self: "missing"})()
+        monkeypatch.setattr(app_module, "_QSS_PATH", fake_path)
+        assert app_module.load_stylesheet() == ""
+
+    def test_load_stylesheet_handles_invalid_template(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """QSS 含未定义令牌（${UNKNOWN}）时应捕获 ValueError 返回空串。"""
+        from fuscan.gui import app as app_module
+
+        bad_qss = tmp_path / "bad.qss"
+        bad_qss.write_text("QWidget { color: ${UNKNOWN_TOKEN}; }", encoding="utf-8")
+        monkeypatch.setattr(app_module, "_QSS_PATH", bad_qss)
+        assert app_module.load_stylesheet() == ""
 
 
 class TestPreviewHelpers:

@@ -6,7 +6,7 @@ except ImportError:
 
 from fuscan import __author__, __description__, __license__, __version__
 
-from .about_ui import Ui_AboutDialog
+from .about_dialog_ui import Ui_AboutDialog
 
 
 class AboutDialog(QDialog, Ui_AboutDialog):
@@ -25,3 +25,4 @@ class AboutDialog(QDialog, Ui_AboutDialog):
             f"<p><b>作者</b>: {__author__}<br>"
             f"<b>许可证</b>: {__license__}</p>"
         )
+        self.adjustSize()

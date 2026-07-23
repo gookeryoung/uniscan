@@ -721,7 +721,7 @@
                  <property name="minimumSize">
                   <size>
                    <width>140</width>
-                   <height>44</height>
+                   <height>40</height>
                   </size>
                  </property>
                  <property name="text">
@@ -738,7 +738,7 @@
                  <property name="minimumSize">
                   <size>
                    <width>140</width>
-                   <height>44</height>
+                   <height>40</height>
                   </size>
                  </property>
                  <property name="text">
@@ -825,9 +825,12 @@
                  <widget class="QPushButton" name="rescan_btn">
                   <property name="minimumSize">
                    <size>
-                    <width>160</width>
-                    <height>50</height>
+                    <width>180</width>
+                    <height>48</height>
                    </size>
+                  </property>
+                  <property name="cursor">
+                   <cursorShape>PointingHandCursor</cursorShape>
                   </property>
                   <property name="toolTip">
                    <string>返回配置页重新扫描</string>
@@ -848,9 +851,12 @@
                   </property>
                   <property name="minimumSize">
                    <size>
-                    <width>160</width>
-                    <height>50</height>
+                    <width>180</width>
+                    <height>48</height>
                    </size>
+                  </property>
+                  <property name="cursor">
+                   <cursorShape>PointingHandCursor</cursorShape>
                   </property>
                   <property name="toolTip">
                    <string>导出扫描结果到文件</string>

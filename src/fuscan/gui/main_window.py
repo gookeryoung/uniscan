@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MANUAL_PDF as _MANUAL_PDF
 from fuscan.config import Config, detect_default_staging_dir, load_config, save_config
-from fuscan.gui.about import AboutDialog
+from fuscan.gui.about_dialog import AboutDialog
 from fuscan.gui.content_panel import ContentTabPanel
 from fuscan.gui.detail_panel import DetailControls, DetailPanel
 from fuscan.gui.explorer import open_path_in_explorer
@@ -144,7 +144,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             with PerfTimer("MainWindow.setupUi"):
                 self.setupUi(self)
 
-            self._about = AboutDialog(self)
+            self._about_dialog = AboutDialog(self)
             self._config: Config = load_config()
             self._ruleset: RuleSet | None = None
             self._last_report: ScanReport | None = None
@@ -1115,7 +1115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _on_about(self) -> None:
         """关于对话框。"""
-        self._about.show()
+        self._about_dialog.show()
 
     def _on_open_manual(self) -> None:
         """打开用户手册 PDF（随包分发的 assets/docs/fuscan-用户手册.pdf）。
