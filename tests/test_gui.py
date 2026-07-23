@@ -4375,7 +4375,7 @@ class TestRegexTesterDialog:
     def test_case_sensitive_state_changed_triggers_refresh(self, qapp: QApplication) -> None:
         """勾选/取消「区分大小写」应触发重编译，影响匹配结果。
 
-        覆盖 Bug 2 修复：stateChanged 信号连接到 _schedule_refresh，
+        覆盖 Bug 2 修复：stateChanged 信号连接到 _on_test_regex，
         使大小写敏感切换后结果立即更新。
         """
         from fuscan.gui.regex_tester import RegexTesterDialog
@@ -4387,16 +4387,14 @@ class TestRegexTesterDialog:
         dialog._on_test_regex()
         result_ci = dialog.regex_result_view.toPlainText()
         assert "共命中 2 处" in result_ci
-        # 切换为区分大小写：仅命中 1 处（abc）
+        # 切换为区分大小写：stateChanged 同步触发 _on_test_regex，仅命中 1 处（abc）
         dialog.regex_case_sensitive_check.setChecked(True)
-        # stateChanged 触发防抖定时器，模拟定时器到期执行
-        dialog._debounce_timer.timeout.emit()
         result_cs = dialog.regex_result_view.toPlainText()
         assert "共命中 1 处" in result_cs
         dialog.close()
 
-    def test_text_truncated_above_limit(self, qapp: QApplication) -> None:
-        """测试文本超过 _MAX_TEXT_LEN 应截断并在结果中提示。"""
+    def test_text_truncated_silently(self, qapp: QApplication) -> None:
+        """测试文本超过 _MAX_TEXT_LEN 应静默截断，命中数对应截断后文本。"""
         from fuscan.gui.regex_tester import _MAX_TEXT_LEN, RegexTesterDialog
 
         dialog = RegexTesterDialog()
@@ -4406,12 +4404,15 @@ class TestRegexTesterDialog:
         dialog.regex_test_text_edit.setPlainText(big_text)
         dialog._on_test_regex()
         result = dialog.regex_result_view.toPlainText()
-        assert "已截断" in result
-        assert str(_MAX_TEXT_LEN) in result
+        # 截断后命中数对应 _MAX_TEXT_LEN 字符的文本：
+        # "a\n" 每两字符一个 a，截断后约 _MAX_TEXT_LEN/2 个命中，远超展示上限
+        assert "共命中" in result
+        # 截断生效：若未截断应有 _MAX_TEXT_LEN+100 个 a，截断后大幅减少
+        assert str(_MAX_TEXT_LEN + 100) not in result
         dialog.close()
 
     def test_match_display_cap(self, qapp: QApplication) -> None:
-        """命中数超过 _MAX_DISPLAY_MATCHES 应仅展示前 N 处并提示剩余。"""
+        """命中数超过 _MAX_DISPLAY_MATCHES 应仅展示前 N 处并提示总数。"""
         from fuscan.gui.regex_tester import _MAX_DISPLAY_MATCHES, RegexTesterDialog
 
         dialog = RegexTesterDialog()
@@ -4423,37 +4424,7 @@ class TestRegexTesterDialog:
         result = dialog.regex_result_view.toPlainText()
         assert f"共命中 {count} 处" in result
         assert f"仅展示前 {_MAX_DISPLAY_MATCHES} 处" in result
-        assert "还有 50 处未显示" in result
-        dialog.close()
-
-    def test_debounce_timer_started_on_text_changed(self, qapp: QApplication) -> None:
-        """textChanged 应启动防抖定时器，而非同步执行匹配。"""
-        from fuscan.gui.regex_tester import RegexTesterDialog
-
-        dialog = RegexTesterDialog()
-        # 初始定时器未启动
-        assert not dialog._debounce_timer.isActive()
-        dialog.regex_pattern_edit.setText(r"\d+")
-        # textChanged 触发 _schedule_refresh → timer.start()
-        assert dialog._debounce_timer.isActive()
-        # 同步状态下结果视图尚未更新（防抖未到期）
-        assert dialog.regex_result_view.toPlainText() == ""
-        dialog._debounce_timer.stop()
-        dialog.close()
-
-    def test_debounce_timeout_triggers_refresh(self, qapp: QApplication) -> None:
-        """防抖定时器到期应触发 _on_test_regex，更新结果视图。"""
-        from fuscan.gui.regex_tester import RegexTesterDialog
-
-        dialog = RegexTesterDialog()
-        dialog.regex_pattern_edit.setText(r"\d+")
-        dialog.regex_test_text_edit.setPlainText("abc 123")
-        # 防抖启动后结果视图尚未更新
-        assert dialog.regex_result_view.toPlainText() == ""
-        # 模拟定时器到期（绕过真实等待 300ms）
-        dialog._debounce_timer.timeout.emit()
-        result = dialog.regex_result_view.toPlainText()
-        assert "共命中 1 处" in result
+        assert f"共 {count} 处" in result
         dialog.close()
 
     def test_invalid_pattern_does_not_retain_old_compiled(self, qapp: QApplication) -> None:

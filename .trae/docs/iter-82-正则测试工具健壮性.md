@@ -54,17 +54,22 @@
 
 ### D3：防抖而非 Worker 化
 
-**决策**：用 `QTimer` 300ms 防抖处理 textChanged/stateChanged，**不**引入
-QThread Worker。
+**决策**：~~用 `QTimer` 300ms 防抖处理 textChanged/stateChanged~~ **去除防抖**，
+三个输入信号直接同步连接 `_on_test_regex`。
 
 **依据**：
-- 99% 场景正则测试 <10ms，QThread 启动开销（~5-10ms）反而劣化即时反馈体验
+- 99% 场景正则测试 <10ms，QThread 启动开销反而劣化即时反馈体验
 - Python `re` 无超时机制，Worker 对灾难性回溯（如 `(a+)+b` 对 `aaaa...`）
   无防护作用——后台线程卡死后取消信号也无法处理；Windows 上 `signal.SIGALRM`
   不可用
 - 真正的防护是输入规模限制（`_MAX_TEXT_LEN=100_000` + `_MAX_DISPLAY_MATCHES=1000`）
-- 与既有 `result_filter_panel.py`、`content_panel.py`、`watcher/tray.py` 的
-  QTimer 防抖模式一致
+- **防抖初版被判定为过度设计**：典型正则测试耗时 <10ms，同步触发即时反馈
+  体验更佳；防抖引入 QTimer 实例管理、`_schedule_refresh` 间接层、
+  `returnPressed` 特例连接、定时器测试复杂度，收益不抵成本。文本上限
+  已能兜底最坏情况（100KB + 复杂正则的单次匹配仍可接受）
+- 与既有 `result_filter_panel.py` 的防抖场景不同：过滤面板触发的是
+  `QTreeWidget` 列表重建（O(n) 行插入），而正则测试触发的是
+  `QTextEdit.setPlainText`（单次设值），无需防抖
 
 ### D4：输入/输出上限取值
 
@@ -90,55 +95,50 @@ QThread Worker。
 
 ## 代码实现情况
 
-### 新结构
+### 新结构（简化版，150 行）
 
 ```python
 class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):
     def __init__(self, parent=None, initial_pattern="") -> None:
-        # 初始化 _debounce_timer（QTimer.singleShot, 300ms）
-        # 预填 initial_pattern 时立即同步执行一次
-    def _connect_signals(self) -> None: ...
-    def _schedule_refresh(self) -> None: ...
+        # setupUi + 填充速查手册
+        # 三个输入信号同步连接 _on_test_regex（无防抖）
+        # 预填 initial_pattern 时 setText 自动触发首次匹配
     @Slot()
-    def _on_test_regex(self) -> None: ...  # 编译+匹配全流程，含截断/上限
+    def _on_test_regex(self) -> None: ...  # 编译+匹配全流程，含静默截断/上限
 ```
 
-### 防抖与信号连接
+### 信号连接
 
-- `pattern_edit.textChanged` → `_schedule_refresh` → timer → `_on_test_regex`
-- `test_text_edit.textChanged` → `_schedule_refresh` → timer → `_on_test_regex`
-- `case_sensitive_check.stateChanged` → `_schedule_refresh` → timer → `_on_test_regex`
-- `pattern_edit.returnPressed` → `_on_test_regex`（直接同步，绕过防抖）
+- `pattern_edit.textChanged` → `_on_test_regex`（同步）
+- `test_text_edit.textChanged` → `_on_test_regex`（同步）
+- `case_sensitive_check.stateChanged` → `_on_test_regex`（同步）
 
 ### 截断与上限逻辑
 
 ```python
-truncated = len(text) > _MAX_TEXT_LEN
-if truncated:
-    text = text[:_MAX_TEXT_LEN]
+if len(text) > _MAX_TEXT_LEN:
+    text = text[:_MAX_TEXT_LEN]  # 静默截断，无提示
 matches = list(compiled.finditer(text))
-total = len(matches)
-shown = matches[:_MAX_DISPLAY_MATCHES]
-# 超限时提示「（仅展示前 1000 处）」+「...还有 N 处未显示」
+for i, m in enumerate(matches[:_MAX_DISPLAY_MATCHES], 1): ...
+if len(matches) > _MAX_DISPLAY_MATCHES:
+    lines.append(f"...仅展示前 {_MAX_DISPLAY_MATCHES} 处，共 {len(matches)} 处")
 ```
 
 ## 测试验证结果
 
 - ruff check：All checks passed
-- ruff format --check：105 files already formatted
-- pyrefly check：0 errors（528 suppressed）
-- pytest：1577 passed（+6 净增），16 deselected，coverage 95.14%
-  - `regex_tester.py`：100% 覆盖率（79 stmt / 0 miss / 22 branch / 0 partial）
+- ruff format --check：通过
+- pyrefly check：0 errors（4 suppressed）
+- pytest：1575 passed（+4 净增），16 deselected，coverage 95.10%
+  - `regex_tester.py`：100% 覆盖率
 
-### 新增测试清单（+6 净增）
+### 新增测试清单（+4 净增）
 
 | 测试方法 | 说明 |
 |---------|------|
-| test_case_sensitive_state_changed_triggers_refresh | Bug 2：stateChanged 触发重测 |
-| test_text_truncated_above_limit | 超长文本截断 + 提示 |
-| test_match_display_cap | 命中数超限展示前 N + 剩余提示 |
-| test_debounce_timer_started_on_text_changed | 防抖定时器启动验证 |
-| test_debounce_timeout_triggers_refresh | 定时器到期触发刷新 |
+| test_case_sensitive_state_changed_triggers_refresh | Bug 2：stateChanged 同步触发重测 |
+| test_text_truncated_silently | 超长文本静默截断，命中数对应截断后文本 |
+| test_match_display_cap | 命中数超限展示前 N + 总数提示 |
 | test_invalid_pattern_does_not_retain_old_compiled | Bug 1：编译失败不残留旧 Pattern |
 
 ### 修复的失败测试（2 个）

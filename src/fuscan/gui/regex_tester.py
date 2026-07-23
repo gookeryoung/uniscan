@@ -13,10 +13,10 @@ import logging
 import re
 
 try:
-    from PySide2.QtCore import QTimer, Slot
+    from PySide2.QtCore import Slot
     from PySide2.QtWidgets import QDialog, QWidget
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QTimer, Slot  # pyrefly: ignore [missing-import]
+    from PySide6.QtCore import Slot  # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QDialog, QWidget  # pyrefly: ignore [missing-import]
 
 from fuscan.gui.regex_tester_ui import Ui_RegexTesterDialog
@@ -25,11 +25,9 @@ __all__ = ["RegexTesterDialog"]
 
 logger = logging.getLogger(__name__)
 
-# 输入触发的刷新防抖间隔（毫秒）：避免大文本+复杂正则时输入卡顿（rule-12 性能规则）
-_DEBOUNCE_MS = 300
-# 测试文本字符上限：超出截断，防止超大文本 + 复杂正则导致 UI 卡顿或内存膨胀
+# 测试文本字符上限：超出静默截断，防止超大文本 + 复杂正则导致 UI 卡顿
 _MAX_TEXT_LEN = 100_000
-# 命中展示条数上限：超出仅展示前 N 处并提示剩余数量，避免命中爆炸时占用 UI 资源
+# 命中展示条数上限：超出仅展示前 N 处并提示总数，避免命中爆炸拖垮结果视图
 _MAX_DISPLAY_MATCHES = 1000
 
 # 正则速查手册内容（Python re 模块常用语法）
@@ -88,9 +86,8 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
     独立工具窗口，提供正则表达式验证能力。匹配语义与扫描引擎
     :func:`fuscan.scanner.matchers._apply_regex` 一致：使用
     ``re.compile(...).finditer(text)`` 收集所有非重叠匹配，显示每个命中的
-    位置、文本与捕获组。本工具为展示全部命中使用 ``list(finditer)`` 物化，
-    与引擎的迭代器+计数实现在内存行为上不同；为防止超大文本或命中爆炸
-    拖垮 UI，对测试文本长度与展示条数设上限。
+    位置、文本与捕获组。为防止超大文本或命中爆炸拖垮 UI，对测试文本长度
+    与展示条数设上限。
 
     参数：
         parent：父窗口，可为 ``None`` 表示独立顶层窗口。
@@ -100,36 +97,13 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
     def __init__(self, parent: QWidget | None = None, initial_pattern: str = "") -> None:
         super().__init__(parent)
         self.setupUi(self)
-
-        # 防抖定时器：textChanged/stateChanged 高频触发，间隔内仅末次生效
-        self._debounce_timer = QTimer(self)
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.setInterval(_DEBOUNCE_MS)
-        self._debounce_timer.timeout.connect(self._on_test_regex)
-
+        self.regex_cheatsheet_view.setPlainText(_REGEX_CHEATSHEET)
+        # 三个输入信号统一触发同步重测：正则测试典型耗时 <10ms，无需防抖
+        self.regex_pattern_edit.textChanged.connect(self._on_test_regex)
+        self.regex_test_text_edit.textChanged.connect(self._on_test_regex)
+        self.regex_case_sensitive_check.stateChanged.connect(self._on_test_regex)
         if initial_pattern:
             self.regex_pattern_edit.setText(initial_pattern)
-
-        self._connect_signals()
-
-        # 预填 pattern 时立即同步执行一次，无需等待防抖
-        if initial_pattern:
-            self._on_test_regex()
-
-    def _connect_signals(self) -> None:
-        """配置 .ui 无法静态表达的动态属性、初始内容与信号槽连接。"""
-        # 输入信号经防抖触发，避免每次按键都重算正则
-        self.regex_pattern_edit.textChanged.connect(self._schedule_refresh)
-        self.regex_test_text_edit.textChanged.connect(self._schedule_refresh)
-        # case_sensitive 状态变化需重新编译（影响 flags），同样走防抖
-        self.regex_case_sensitive_check.stateChanged.connect(self._schedule_refresh)
-        # returnPressed 为用户显式触发（Enter 键），直接同步执行
-        self.regex_pattern_edit.returnPressed.connect(self._on_test_regex)
-        self.regex_cheatsheet_view.setPlainText(_REGEX_CHEATSHEET)
-
-    def _schedule_refresh(self) -> None:
-        """防抖触发：间隔内仅末次输入生效，避免大文本+复杂正则时卡顿。"""
-        self._debounce_timer.start()  # pyrefly: ignore [missing-argument]
 
     @Slot()  # pyrefly: ignore [not-callable]
     def _on_test_regex(self) -> None:
@@ -145,8 +119,7 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
             self.regex_result_view.setPlainText("（请输入正则表达式）")
             return
 
-        case_sensitive = self.regex_case_sensitive_check.isChecked()
-        flags = 0 if case_sensitive else re.IGNORECASE
+        flags = 0 if self.regex_case_sensitive_check.isChecked() else re.IGNORECASE
         try:
             compiled = re.compile(pattern, flags)
         except re.error as exc:
@@ -154,43 +127,23 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
             return
 
         text = self.regex_test_text_edit.toPlainText()
-        # 文本长度上限：防止超大文本 + 复杂正则导致 UI 卡顿
-        truncated = len(text) > _MAX_TEXT_LEN
-        if truncated:
+        if len(text) > _MAX_TEXT_LEN:
             text = text[:_MAX_TEXT_LEN]
 
         matches = list(compiled.finditer(text))
-        total = len(matches)
-
-        lines: list[str] = []
-        if truncated:
-            lines.append(f"（测试文本已截断至 {_MAX_TEXT_LEN} 字符）")
-
         if not matches:
-            lines.append(f"未命中（扫描 {len(text)} 字符）")
-            self.regex_result_view.setPlainText("\n".join(lines))
+            self.regex_result_view.setPlainText(f"未命中（扫描 {len(text)} 字符）")
             return
 
-        lines.append(f"共命中 {total} 处：")
-        lines.append("")
-        # 命中展示上限：防止命中爆炸时占用过多内存与 UI 资源
-        if total > _MAX_DISPLAY_MATCHES:
-            lines.append(f"（仅展示前 {_MAX_DISPLAY_MATCHES} 处）")
+        lines = [f"共命中 {len(matches)} 处：", ""]
+        for i, m in enumerate(matches[:_MAX_DISPLAY_MATCHES], 1):
+            lines.append(f"[{i}] {m.start()}-{m.end()}: {m.group(0)!r}")
+            if m.groups():
+                lines.append(f"    捕获组: {m.groups()}")
+            if m.groupdict():
+                lines.append(f"    命名组: {m.groupdict()}")
+        if len(matches) > _MAX_DISPLAY_MATCHES:
             lines.append("")
-
-        shown = matches[:_MAX_DISPLAY_MATCHES]
-        for i, m in enumerate(shown, 1):
-            start, end = m.span()
-            lines.append(f"[{i}] {start}-{end}: {m.group(0)!r}")
-            groups = m.groups()
-            if groups:
-                lines.append(f"    捕获组: {groups}")
-            named = m.groupdict()
-            if named:
-                lines.append(f"    命名组: {named}")
-
-        if total > _MAX_DISPLAY_MATCHES:
-            lines.append("")
-            lines.append(f"...还有 {total - _MAX_DISPLAY_MATCHES} 处未显示")
+            lines.append(f"...仅展示前 {_MAX_DISPLAY_MATCHES} 处，共 {len(matches)} 处")
 
         self.regex_result_view.setPlainText("\n".join(lines))
