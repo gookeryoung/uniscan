@@ -428,7 +428,9 @@ class Scanner:
                     scanned, matched, errors, matches = self._scan_sequential(entries, results)
 
             # 阶段 3：顺序扫描压缩包内条目（避免 ArchiveScanner 线程安全问题）
-            if self._scan_archives and self._archive_scanner is not None and not self.is_cancelled:
+            # 用 cancelled 而非 self.is_cancelled：collect_entries 已清除 _cancel_event，
+            # walk 被取消时 is_cancelled 为 False，但 cancelled（来自 walk_result）为 True
+            if self._scan_archives and self._archive_scanner is not None and not cancelled:
                 # archive phase 内部直接调 CacheStore，不走 _pending_batch，需先 flush
                 # 避免批量缓冲与 archive scanner 的写入交错
                 self._flush_batch()
@@ -445,8 +447,11 @@ class Scanner:
             # 异常路径（如 MemoryError、walker 未捕获错误）也 flush 已累积批次，
             # 避免最后一批（最多 _BATCH_THRESHOLD 个文件）缓存数据丢失
             self._flush_batch()
-            # 记录取消状态后清除标志，使 Scanner 可在取消/异常后复用（C1 修复）
-            cancelled = self.is_cancelled
+            # 保留 walk 阶段的取消状态：collect_entries 已清除 _cancel_event，
+            # 此处若 cancelled 已为 True（walk 取消）则不能用 is_cancelled（False）覆盖；
+            # 仅当 walk 未取消时才读取 scan/archive 阶段是否被取消
+            if not cancelled:
+                cancelled = self.is_cancelled
             self._cancel_event.clear()
 
         # 强制发送最终进度
