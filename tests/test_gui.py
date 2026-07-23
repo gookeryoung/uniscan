@@ -1204,6 +1204,163 @@ class TestStatsWorker:
         assert report.hits[0].path.name == "secret.txt"
 
 
+class TestStatsWorkerDirect:
+    """直接调用 run()/_on_progress() 的测试。
+
+    coverage 无法跟踪 QThread（C++ 线程）内执行的代码，
+    通过直接调用方法在主线程执行来覆盖 run() 与 _on_progress() 逻辑。
+    """
+
+    def test_run_emits_finished_stats(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 run() 应 emit finished_stats 信号。"""
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "readme.md").write_text("y", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+
+        results: list[Any] = []
+        worker.finished_stats.connect(results.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()
+
+        assert len(results) == 1
+        walk_list = results[0]
+        assert len(walk_list) == 1
+        walk_result = walk_list[0]
+        assert walk_result.root == tmp_path
+        assert walk_result.total == 2
+        assert walk_result.cancelled is False
+
+    def test_run_multi_root_collects_all(self, qapp: QApplication, tmp_path: Path) -> None:
+        """直接调用 run() 多根路径应收集所有 WalkResult。"""
+        dir_a = tmp_path / "dir_a"
+        dir_a.mkdir()
+        (dir_a / "a.txt").write_text("x", encoding="utf-8")
+        dir_b = tmp_path / "dir_b"
+        dir_b.mkdir()
+        (dir_b / "b.txt").write_text("y", encoding="utf-8")
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[dir_a, dir_b])
+
+        results: list[Any] = []
+        worker.finished_stats.connect(results.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()
+
+        assert len(results) == 1
+        walk_list = results[0]
+        assert len(walk_list) == 2
+        assert {wr.root for wr in walk_list} == {dir_a, dir_b}
+        assert all(wr.total == 1 for wr in walk_list)
+
+    def test_run_cancel_requested_emits_cancelled(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_cancel_requested=True 时 run() 应 emit cancelled 信号。"""
+        from fuscan.scanner.scanner import Scanner
+
+        (tmp_path / "secret.txt").write_text("x", encoding="utf-8")
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+        worker._cancel_requested = True
+
+        cancel_called = {"n": 0}
+        original_cancel = Scanner.cancel
+
+        def fake_cancel(self: Scanner) -> None:
+            cancel_called["n"] += 1
+            original_cancel(self)
+
+        monkeypatch.setattr(Scanner, "cancel", fake_cancel)
+
+        cancelled_results: list[Any] = []
+        worker.cancelled.connect(cancelled_results.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()
+
+        assert cancel_called["n"] >= 1
+        assert len(cancelled_results) == 1
+
+    def test_run_emits_failed_on_exception(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Scanner 构造异常时 run() 应 emit failed 信号。"""
+        from fuscan.scanner.scanner import Scanner
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+
+        def boom(self: Scanner, **kw: object) -> None:
+            raise RuntimeError("构造失败")
+
+        monkeypatch.setattr(Scanner, "__init__", boom)
+
+        errors: list[Any] = []
+        worker.failed.connect(errors.append)  # pyrefly: ignore [missing-attribute]
+        worker.run()
+
+        assert len(errors) == 1
+        assert "构造失败" in errors[0]
+
+    def test_on_progress_emits_cumulative(self, qapp: QApplication) -> None:
+        """_on_progress 应累加 _cum_* 字段后 emit。"""
+        from fuscan.scanner.result import ProgressInfo
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[Path("/tmp")])
+        worker._cum_total = 10
+        worker._cum_skipped = 3
+        worker._cum_user_skipped = 1
+        worker._start_time = time.monotonic() - 2.0
+
+        emitted: list[Any] = []
+        worker.progress_info.connect(emitted.append)  # pyrefly: ignore [missing-attribute]
+
+        info = ProgressInfo(
+            current_file="test.txt",
+            scanned=0,
+            total=5,
+            skipped=2,
+            matched=0,
+            errors=0,
+            elapsed=1.0,
+        )
+        worker._on_progress(info)
+
+        assert len(emitted) == 1
+        result = emitted[0]
+        assert result.total == 15  # 5 + 10
+        assert result.skipped == 5  # 2 + 3
+        assert result.user_skipped == 1  # 0 + 1
+        assert result.elapsed >= 2.0
+
+    def test_pause_resume_delegates_to_scanner(self, qapp: QApplication, tmp_path: Path) -> None:
+        """pause/resume 在 scanner 已创建时应委托调用。"""
+        from fuscan.scanner.scanner import Scanner
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+
+        # 直接构造 Scanner 模拟 run() 中途状态
+        worker._scanner = Scanner(ruleset=rs)
+        worker.pause()
+        assert worker._scanner.is_paused
+
+        worker.resume()
+        assert not worker._scanner.is_paused
+
+    def test_cancel_delegates_to_scanner(self, qapp: QApplication, tmp_path: Path) -> None:
+        """cancel 在 scanner 已创建时应委托调用。"""
+        from fuscan.scanner.scanner import Scanner
+
+        rs = _build_ruleset()
+        worker = FileStatsWorker(ruleset=rs, roots=[tmp_path])
+
+        worker._scanner = Scanner(ruleset=rs)
+        worker.cancel()
+        assert worker._cancel_requested
+        assert worker._scanner.is_cancelled
+
+
 class TestScanControlUI:
     """扫描控制 UI 状态测试：开始/暂停/继续/停止。"""
 
@@ -1875,10 +2032,10 @@ class TestWorkflowStage:
 class TestSetupActionBar:
     """配置页操作条（setup_action_bar）结构与样式测试。"""
 
-    def test_scan_btn_height_reduced_to_44(self, qapp: QApplication) -> None:
-        """scan_btn 最小高度应为 44（与扫描中页按钮一致）。"""
+    def test_scan_btn_height_is_40(self, qapp: QApplication) -> None:
+        """scan_btn 最小高度应为 40（与扫描中页按钮一致）。"""
         window = MainWindow()
-        assert window.scan_btn.minimumHeight() == 44
+        assert window.scan_btn.minimumHeight() == 40
         window.close()
 
     def test_scan_btn_minimum_width_180(self, qapp: QApplication) -> None:
@@ -1914,12 +2071,12 @@ class TestSetupActionBar:
         assert "border: 1px solid #40a9ff" in view_results_section[:200]
 
     def test_view_results_btn_same_size_as_scan_btn(self, qapp: QApplication) -> None:
-        """view_results_btn 与 scan_btn 最小尺寸应一致（180x44）。"""
+        """view_results_btn 与 scan_btn 最小尺寸应一致（180x40）。"""
         window = MainWindow()
         assert window.view_results_btn.minimumWidth() == window.scan_btn.minimumWidth()
         assert window.view_results_btn.minimumHeight() == window.scan_btn.minimumHeight()
         assert window.scan_btn.minimumWidth() == 180
-        assert window.scan_btn.minimumHeight() == 44
+        assert window.scan_btn.minimumHeight() == 40
         window.close()
 
     def test_view_results_btn_adjacent_to_scan_btn(self, qapp: QApplication) -> None:
@@ -6522,7 +6679,7 @@ class TestSettingsDialog:
         accepted_called: list[bool] = []
         monkeypatch.setattr(dialog, "accept", lambda: accepted_called.append(True))
 
-        dialog.on_accept()
+        dialog._on_accept()
 
         assert config.max_workers == 16
         assert accepted_called == [True]
