@@ -96,9 +96,8 @@ class RegexTesterDialog(QDialog, Ui_RegexTesterDialog):  # pyrefly: ignore [inva
 
     def _configure_ui(self, initial_pattern: str) -> None:
         """配置 .ui 无法静态表达的动态属性、初始内容与信号槽连接。"""
-        # 信号槽连接
+        # 信号槽连接：测试按钮点击 + 正则输入框回车均触发匹配
         self.regex_test_btn.clicked.connect(self._on_test_regex)
-        # 回车键也触发测试
         self.regex_pattern_edit.returnPressed.connect(self._on_test_regex)
 
         # 初始化速查手册内容

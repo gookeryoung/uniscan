@@ -94,10 +94,19 @@ class Ui_RegexTesterDialog(object):
 
         self.main_layout.addWidget(self.regex_cheatsheet_view)
 
+        self.horizontalLayout = QHBoxLayout()
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer)
+
         self.close_btn = QPushButton(RegexTesterDialog)
         self.close_btn.setObjectName(u"close_btn")
 
-        self.main_layout.addWidget(self.close_btn)
+        self.horizontalLayout.addWidget(self.close_btn)
+
+
+        self.main_layout.addLayout(self.horizontalLayout)
 
 
         self.retranslateUi(RegexTesterDialog)
@@ -134,12 +143,12 @@ class Ui_RegexTesterDialog(object):
 #if QT_CONFIG(tooltip)
         self.regex_result_view.setToolTip(QCoreApplication.translate("RegexTesterDialog", u"\u663e\u793a\u6bcf\u4e2a\u547d\u4e2d\u7684\u4f4d\u7f6e\u3001\u6587\u672c\u4e0e\u6355\u83b7\u7ec4", None))
 #endif // QT_CONFIG(tooltip)
-        self.regex_result_view.setProperty("fontFamily", QCoreApplication.translate("RegexTesterDialog", u"Consolas", None))
         self.regex_result_view.setPlaceholderText(QCoreApplication.translate("RegexTesterDialog", u"\u70b9\u51fb\u300c\u6d4b\u8bd5\u300d\u67e5\u770b\u547d\u4e2d\u7ed3\u679c...", None))
-        self.regex_cheatsheet_label.setText(QCoreApplication.translate("RegexTesterDialog", u"\u901f\u67e5\u624b\u518c\uff08\u5e38\u7528\u8bed\u6cd5\uff09:", None))
+        self.regex_result_view.setProperty("fontFamily", QCoreApplication.translate("RegexTesterDialog", u"Consolas", None))
 #if QT_CONFIG(tooltip)
         self.regex_cheatsheet_label.setToolTip(QCoreApplication.translate("RegexTesterDialog", u"Python re \u6a21\u5757\u652f\u6301\u7684\u5e38\u7528\u6b63\u5219\u8bed\u6cd5", None))
 #endif // QT_CONFIG(tooltip)
+        self.regex_cheatsheet_label.setText(QCoreApplication.translate("RegexTesterDialog", u"\u8bed\u6cd5\u901f\u67e5:", None))
         self.regex_cheatsheet_view.setProperty("fontFamily", QCoreApplication.translate("RegexTesterDialog", u"Consolas", None))
         self.close_btn.setText(QCoreApplication.translate("RegexTesterDialog", u"\u5173\u95ed", None))
     # retranslateUi
