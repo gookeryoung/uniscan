@@ -20,7 +20,6 @@ except ImportError:  # pragma: no cover
     from PySide6.QtCore import Slot  # pyrefly: ignore [missing-import]
     from PySide6.QtWidgets import QDialog, QWidget  # pyrefly: ignore [missing-import]
 
-from fuscan import theme
 from fuscan.gui.regex_tester_ui import Ui_RegexTesterDialog
 
 __all__ = ["RegexTesterDialog"]
@@ -130,7 +129,7 @@ _CHEATSHEET_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
 
 
 def _build_cheatsheet_html() -> str:
-    """构建速查手册 HTML，使用主题令牌着色。
+    """构建速查手册 HTML，使用内联色值着色。
 
     返回适用于 ``QTextEdit.setHtml`` 的 HTML 字符串：节标题用主色背景条，
     语法用等宽字体着色，说明用次级文字色。
@@ -146,9 +145,9 @@ def _build_cheatsheet_html() -> str:
             sections.append("<br>")
         # 节标题：主色背景条（bgcolor 是 Qt 富文本支持的属性）
         sections.append(
-            f'<table width="100%" bgcolor="{theme.COLOR_PRIMARY}" cellspacing="0" cellpadding="4">'
+            f'<table width="100%" bgcolor="#40a9ff" cellspacing="0" cellpadding="4">'
             "<tr><td><b>"
-            f'<font color="{theme.COLOR_TEXT_ON_PRIMARY}">{html.escape(title)}</font>'
+            f'<font color="#ffffff">{html.escape(title)}</font>'
             "</b></td></tr></table>"
         )
         # 条目表：<font color face> 是 Qt 富文本最可靠的着色方式
@@ -157,16 +156,17 @@ def _build_cheatsheet_html() -> str:
             rows.append(
                 "<tr>"
                 f'<td style="padding: 2px 10px 2px 8px;">'
-                f'<b><font color="{theme.COLOR_INFO}" face="Consolas">{html.escape(syntax)}</font></b>'
+                f'<b><font color="#0366d6" face="Consolas">{html.escape(syntax)}</font></b>'
                 "</td>"
                 f'<td style="padding: 2px 4px;">'
-                f'<font color="{theme.COLOR_TEXT_SECONDARY}">{html.escape(desc)}</font>'
+                f'<font color="#586069">{html.escape(desc)}</font>'
                 "</td>"
                 "</tr>"
             )
         sections.append(f'<table cellspacing="0" cellpadding="0">{"".join(rows)}</table>')
     return (
-        f'<div style="font-family: {theme.FONT_FAMILY}; font-size: {theme.FONT_SIZE_BODY};">{"".join(sections)}</div>'
+        f'<div style="font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; '
+        f'font-size: 13px;">{"".join(sections)}</div>'
     )
 
 

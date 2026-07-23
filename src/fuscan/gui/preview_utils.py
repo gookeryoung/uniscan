@@ -2,8 +2,6 @@
 
 ``main_window.py`` 与 ``detail_panel.py`` 共用此模块，避免 5 个函数与 6 个常量
 的重复定义。任何一处修复 bug 即两处生效，符合 DRY 原则。
-
-QSS 与代码颜色统一引用 :mod:`fuscan.theme` 令牌。
 """
 
 from __future__ import annotations

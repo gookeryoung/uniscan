@@ -16,10 +16,10 @@ alwaysApply: true
 
 ## 配置与资源
 
-- 颜色、尺寸在 `theme.py` 定义；其余配置在 `config.py` 定义。QSS 在 QApplication 级别应用，用 `${TOKEN}` 引用，禁止硬编码；语义不同的颜色用独立令牌（`COLOR_SPLITTER` ≠ `COLOR_BORDER`）。
+- 配置在 `config.py` 定义。GUI 采用 Qt 原生样式，不维护 QSS 主题层与设计令牌系统；颜色等视觉属性按需在 `.ui` 或代码中直接设置。
 - 布局用 `QLayout` 管理器，禁止绝对像素坐标，确保高 DPI 与跨平台适配。
 - 同一菜单图标风格一致；窗口图标常量化指向 `assets/icons/`，`QIcon.isNull()` 校验。
-- 10MB 以下图标、图片、字体、QSS 纳入 `.qrc` 资源文件；10MB 以上用 `QResource` 加载，避免占用内存。
+- 10MB 以下图标、图片、字体纳入 `.qrc` 资源文件；10MB 以上用 `QResource` 加载，避免占用内存。
 
 ## 控件与窗口生命周期
 
@@ -34,4 +34,4 @@ alwaysApply: true
 
 ## 详细参考
 
-本规则为硬约束简表，详细设计令牌、四区布局规范、UI 设计规范、实现模式与代码模板见 `gui-pyside` SKILL（含 SKILL.md / UI-DESIGN.md / LAYOUT.md / PATTERNS.md 四文档，调用指引见 `rule-03-触发场景.md`）。
+本规则为硬约束简表，四区布局规范、UI 设计规范、实现模式与代码模板见 `gui-pyside` SKILL（含 SKILL.md / UI-DESIGN.md / LAYOUT.md / PATTERNS.md 四文档，调用指引见 `rule-03-触发场景.md`）。fuscan 不采用 SKILL 中的设计令牌/QSS 主题系统，GUI 使用 Qt 原生样式。

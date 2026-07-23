@@ -2051,25 +2051,6 @@ class TestSetupActionBar:
         assert window.setup_action_bar is not None
         window.close()
 
-    def test_scan_btn_qss_uses_primary_blue(self) -> None:
-        """QSS 中 scan_btn 应使用 PRIMARY 蓝 #40a9ff，不应保留绿色 #2ea44f。"""
-        from fuscan.gui.app import load_stylesheet
-
-        qss = load_stylesheet()
-        scan_btn_section = qss[qss.find("QPushButton#scan_btn") :]
-        assert "#40a9ff" in scan_btn_section
-        assert "#2ea44f" not in qss
-
-    def test_view_results_btn_qss_is_outline(self) -> None:
-        """view_results_btn 应为轮廓样式（白底蓝边），与 scan_btn 主次区分。"""
-        from fuscan.gui.app import load_stylesheet
-
-        qss = load_stylesheet()
-        assert "QPushButton#view_results_btn" in qss
-        view_results_section = qss[qss.find("QPushButton#view_results_btn") :]
-        assert "background: #ffffff" in view_results_section[:200]
-        assert "border: 1px solid #40a9ff" in view_results_section[:200]
-
     def test_view_results_btn_same_size_as_scan_btn(self, qapp: QApplication) -> None:
         """view_results_btn 与 scan_btn 最小尺寸应一致（180x40）。"""
         window = MainWindow()
@@ -2189,66 +2170,6 @@ class TestScanningPageLayout:
         assert window.progress.value() == 50
         assert window.progress.maximum() == 100
         window.close()
-
-
-class TestThemeColorContrast:
-    """主题色选中/未选中对比度测试。"""
-
-    def test_primary_dark_distinct_from_primary(self) -> None:
-        """COLOR_PRIMARY_DARK 应与 COLOR_PRIMARY 有明显色差（非相邻值）。"""
-        from fuscan import theme
-
-        assert theme.COLOR_PRIMARY != theme.COLOR_PRIMARY_DARK
-        assert theme.COLOR_PRIMARY_DARK != theme.COLOR_PRIMARY_DARKER
-        # PRIMARY_DARK 应比 PRIMARY 更深（hex 值更小）
-        assert theme.COLOR_PRIMARY_DARK < theme.COLOR_PRIMARY
-
-    def test_header_tab_checked_has_accent_border(self) -> None:
-        """QSS 中头部 Tab 选中态应有强调色底边。"""
-        from fuscan.gui.app import load_stylesheet
-
-        qss = load_stylesheet()
-        checked_section = qss[qss.find("QFrame#header_bar QPushButton:checked") :]
-        assert "border-bottom" in checked_section[:300]
-        assert "${COLOR_ACCENT}" not in checked_section  # 占位符应已替换
-        assert "#58a6ff" in checked_section  # COLOR_ACCENT 替换后的值
-
-    def test_item_views_have_selection_color_for_inactive_focus(self) -> None:
-        """所有 item view 控件应设置 selection-color/selection-background-color。
-
-        防止 iter-67 修复的"失去焦点选中项变黑"问题回归：QSS ``::item:selected``
-        仅控制有焦点时的样式，失去焦点时 Qt 回退到 QPalette Inactive Highlight
-        （默认灰底黑字）。控件级 ``selection-*`` 属性不论焦点状态都生效。
-        """
-        from fuscan import theme
-        from fuscan.gui.app import load_stylesheet
-
-        qss = load_stylesheet()
-        # 6 处 item view 控件均须显式设置 selection-color 为白色
-        # （QListWidget#sidebar / QTreeWidget#result_tree / QTreeWidget /
-        #  QListWidget / QTableWidget / QComboBox QAbstractItemView）
-        expected_selection_color = theme.COLOR_TEXT_ON_PRIMARY  # #ffffff
-        expected_selection_bg = theme.COLOR_PRIMARY_DARK  # #096dd9
-        # 统计 selection-color 出现次数（应为 6 处控件级 + QLineEdit 1 处 = 7）
-        # QLineEdit 的 selection-* 用于文本选区，不计入 item view 回归保护
-        item_view_selectors = [
-            "QListWidget#sidebar",
-            "QTreeWidget#result_tree",
-            "QTreeWidget {",
-            "QListWidget {",
-            "QTableWidget {",
-            "QComboBox QAbstractItemView",
-        ]
-        for selector in item_view_selectors:
-            block_start = qss.find(selector)
-            assert block_start != -1, f"QSS 缺少选择器: {selector}"
-            # 取该选择器到下一个选择器之间的块（大括号闭合）
-            block_end = qss.find("}", block_start)
-            block = qss[block_start : block_end + 1]
-            assert "selection-background-color" in block, f"{selector} 缺少 selection-background-color"
-            assert "selection-color" in block, f"{selector} 缺少 selection-color"
-            assert expected_selection_bg in block, f"{selector} 选中背景应为 {expected_selection_bg}"
-            assert expected_selection_color in block, f"{selector} 选中文字应为 {expected_selection_color}"
 
 
 class TestSeverityDisplay:
@@ -2438,9 +2359,6 @@ class TestLaunchApp:
             def setApplicationName(self, name: str) -> None:
                 self._app_name = name
 
-            def setStyleSheet(self, sheet: str) -> None:
-                pass
-
             def exec_(self) -> int:
                 return 0
 
@@ -2484,7 +2402,6 @@ class TestLaunchApp:
             {
                 "exec_": lambda self: 0,
                 "setApplicationName": lambda self, n: None,
-                "setStyleSheet": lambda self, s: None,
             },
         )()
         created: list[Any] = []
@@ -2494,9 +2411,6 @@ class TestLaunchApp:
                 created.append(self)
 
             def setApplicationName(self, name: str) -> None:
-                pass
-
-            def setStyleSheet(self, sheet: str) -> None:
                 pass
 
             def exec_(self) -> int:
@@ -2529,48 +2443,6 @@ class TestLaunchApp:
         assert rc == 0
         assert len(created) == 0  # 复用现有实例，不创建新的
         assert len(shown) == 1
-
-    def test_launch_qss_load_error_logged(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """QSS 样式表加载失败时应记录警告但不中断启动。"""
-        from fuscan.gui import app as app_module
-
-        class FakeApp:
-            def __init__(self, args):  # type: ignore[no-untyped-def]
-                pass
-
-            def setApplicationName(self, name: str) -> None:
-                pass
-
-            def setStyleSheet(self, sheet: str) -> None:
-                pass
-
-            def exec_(self) -> int:
-                return 0
-
-            @staticmethod
-            def instance() -> None:
-                return None
-
-            @staticmethod
-            def setAttribute(attr, _on: bool = True) -> None:  # type: ignore[no-untyped-def]
-                pass
-
-        class FakeMainWindow:
-            def __init__(self):  # type: ignore[no-untyped-def]
-                pass
-
-            def show(self) -> None:
-                pass
-
-            def close(self) -> None:
-                pass
-
-        monkeypatch.setattr(app_module, "QApplication", FakeApp)
-        monkeypatch.setattr(app_module, "MainWindow", FakeMainWindow)
-        monkeypatch.setattr(app_module, "_QSS_PATH", Path("/nonexistent/styles.qss"))
-
-        rc = app_module.launch(["test"])
-        assert rc == 0
 
     def test_gui_package_lazy_launch_import(self) -> None:
         """fuscan.gui 包应通过 __getattr__ 惰性导入 launch。"""
@@ -4424,17 +4296,16 @@ class TestRegexTesterDialog:
         dialog.close()
 
     def test_regex_cheatsheet_rendered_as_html(self, qapp: QApplication) -> None:
-        """速查手册应以 HTML 渲染，包含主题色与表格结构。"""
-        from fuscan import theme
+        """速查手册应以 HTML 渲染，包含内联色值与表格结构。"""
         from fuscan.gui.regex_tester import RegexTesterDialog
 
         dialog = RegexTesterDialog()
         html_content = dialog.regex_cheatsheet_view.toHtml()
         # HTML 结构：含表格（Qt 将 div 转为 p，但 table 保留）
         assert "<table" in html_content
-        # 主题令牌着色：主色背景 + 信息色语法
-        assert theme.COLOR_PRIMARY in html_content
-        assert theme.COLOR_INFO in html_content
+        # 内联色值着色：主色背景 + 信息色语法
+        assert "#40a9ff" in html_content
+        assert "#0366d6" in html_content
         # 等宽字体用于语法列
         assert "Consolas" in html_content or "Cascadia" in html_content
         # HTML 转义生效：(?P<name>...) 的尖角括号应被转义
