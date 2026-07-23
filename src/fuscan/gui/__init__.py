@@ -8,6 +8,13 @@
 
 from __future__ import annotations
 
+import sys
+
+# 注册 resources_rc 为顶层模块别名，供 pyside-uic 生成的 _ui.py 裸导入使用
+# _ui.py 文件不可手动修改（重新生成会覆盖），其内部固定使用 `import resources_rc` 裸导入
+import fuscan.gui.resources_rc as _resources_rc
+sys.modules["resources_rc"] = _resources_rc
+
 from fuscan.gui.main_window import MainWindow
 
 __all__ = ["MainWindow", "launch"]

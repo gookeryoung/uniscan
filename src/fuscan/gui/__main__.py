@@ -6,6 +6,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent))
 
 # GUI 标记：供 fspack 识别应用类型为 GUI（多入口模式下按入口脚本 import 推断）
 try:

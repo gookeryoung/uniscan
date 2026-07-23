@@ -372,9 +372,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         """
         self.sidebar.blockSignals(True)
         self.sidebar.clear()
-        self.sidebar.addItem(QListWidgetItem(QIcon(":/icons/folder.svg"), "配置"))  # pyrefly: ignore [missing-argument]
-        self.sidebar.addItem(QListWidgetItem(QIcon(":/icons/scan.svg"), "扫描中"))  # pyrefly: ignore [missing-argument]
-        self.sidebar.addItem(QListWidgetItem(QIcon(":/icons/history.svg"), "结果"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.addItem(QListWidgetItem(QIcon(":/assets/icons/folder.svg"), "配置"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.addItem(QListWidgetItem(QIcon(":/assets/icons/scan.svg"), "扫描中"))  # pyrefly: ignore [missing-argument]
+        self.sidebar.addItem(QListWidgetItem(QIcon(":/assets/icons/history.svg"), "结果"))  # pyrefly: ignore [missing-argument]
         self.sidebar.setCurrentRow(0)  # pyrefly: ignore [missing-argument]
         self.sidebar.blockSignals(False)
 
@@ -391,7 +391,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             combo=self.scan_mode_combo,
             target_stack=self.target_stack,
             drive_buttons_layout=self.drive_buttons_layout,
-            hard_disk_icon=QIcon(":/icons/hard_disk.svg"),
+            hard_disk_icon=QIcon(":/assets/icons/hard_disk.svg"),
             config=self._config,
             parent=self,
         )

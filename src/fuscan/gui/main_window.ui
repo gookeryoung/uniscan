@@ -122,7 +122,7 @@
          </property>
          <property name="icon">
           <iconset>
-           <normaloff>:/icons/settings.svg</normaloff>:/icons/settings.svg</iconset>
+           <normaloff>:/assets/icons/settings.svg</normaloff>:/assets/icons/settings.svg</iconset>
          </property>
         </widget>
        </item>
@@ -133,7 +133,7 @@
          </property>
          <property name="icon">
           <iconset>
-           <normaloff>:/icons/about.svg</normaloff>:/icons/about.svg</iconset>
+           <normaloff>:/assets/icons/about.svg</normaloff>:/assets/icons/about.svg</iconset>
          </property>
         </widget>
        </item>
@@ -632,7 +632,7 @@
                   </property>
                   <property name="icon">
                    <iconset>
-                    <normaloff>:/icons/scan.svg</normaloff>:/icons/scan.svg</iconset>
+                    <normaloff>:/assets/icons/scan.svg</normaloff>:/assets/icons/scan.svg</iconset>
                   </property>
                  </widget>
                 </item>
@@ -729,7 +729,7 @@
                  </property>
                  <property name="icon">
                   <iconset>
-                   <normaloff>:/icons/pause.svg</normaloff>:/icons/pause.svg</iconset>
+                   <normaloff>:/assets/icons/pause.svg</normaloff>:/assets/icons/pause.svg</iconset>
                  </property>
                 </widget>
                </item>
@@ -746,7 +746,7 @@
                  </property>
                  <property name="icon">
                   <iconset>
-                   <normaloff>:/icons/stop.svg</normaloff>:/icons/stop.svg</iconset>
+                   <normaloff>:/assets/icons/stop.svg</normaloff>:/assets/icons/stop.svg</iconset>
                  </property>
                 </widget>
                </item>
@@ -837,7 +837,7 @@
                   </property>
                   <property name="icon">
                    <iconset>
-                    <normaloff>:/icons/rescan.svg</normaloff>:/icons/rescan.svg</iconset>
+                    <normaloff>:/assets/icons/rescan.svg</normaloff>:/assets/icons/rescan.svg</iconset>
                   </property>
                  </widget>
                 </item>
@@ -860,7 +860,7 @@
                   </property>
                   <property name="icon">
                    <iconset>
-                    <normaloff>:/icons/export.svg</normaloff>:/icons/export.svg</iconset>
+                    <normaloff>:/assets/icons/export.svg</normaloff>:/assets/icons/export.svg</iconset>
                   </property>
                  </widget>
                 </item>
@@ -1382,7 +1382,7 @@
                </property>
                <property name="icon">
                 <iconset>
-                 <normaloff>:/icons/load_list.svg</normaloff>:/icons/load_list.svg</iconset>
+                 <normaloff>:/assets/icons/load_list.svg</normaloff>:/assets/icons/load_list.svg</iconset>
                </property>
               </widget>
              </item>
@@ -1402,7 +1402,7 @@
                </property>
                <property name="icon">
                 <iconset>
-                 <normaloff>:/icons/edit.svg</normaloff>:/icons/edit.svg</iconset>
+                 <normaloff>:/assets/icons/edit.svg</normaloff>:/assets/icons/edit.svg</iconset>
                </property>
               </widget>
              </item>
@@ -1559,7 +1559,7 @@
   <action name="load_rules_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/load_list.svg</normaloff>:/icons/load_list.svg</iconset>
+     <normaloff>:/assets/icons/load_list.svg</normaloff>:/assets/icons/load_list.svg</iconset>
    </property>
    <property name="text">
     <string>加载规则...</string>
@@ -1571,7 +1571,7 @@
   <action name="edit_rules_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/edit.svg</normaloff>:/icons/edit.svg</iconset>
+     <normaloff>:/assets/icons/edit.svg</normaloff>:/assets/icons/edit.svg</iconset>
    </property>
    <property name="text">
     <string>编辑规则...</string>
@@ -1583,7 +1583,7 @@
   <action name="export_csv_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/export_csv.svg</normaloff>:/icons/export_csv.svg</iconset>
+     <normaloff>:/assets/icons/export_csv.svg</normaloff>:/assets/icons/export_csv.svg</iconset>
    </property>
    <property name="text">
     <string>导出 CSV...</string>
@@ -1595,7 +1595,7 @@
   <action name="export_json_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/export_json.svg</normaloff>:/icons/export_json.svg</iconset>
+     <normaloff>:/assets/icons/export_json.svg</normaloff>:/assets/icons/export_json.svg</iconset>
    </property>
    <property name="text">
     <string>导出 JSON...</string>
@@ -1615,7 +1615,7 @@
   <action name="select_path_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/search.svg</normaloff>:/icons/search.svg</iconset>
+     <normaloff>:/assets/icons/search.svg</normaloff>:/assets/icons/search.svg</iconset>
    </property>
    <property name="text">
     <string>选择扫描路径...</string>
@@ -1624,7 +1624,7 @@
   <action name="scan_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/scan.svg</normaloff>:/icons/scan.svg</iconset>
+     <normaloff>:/assets/icons/scan.svg</normaloff>:/assets/icons/scan.svg</iconset>
    </property>
    <property name="text">
     <string>开始扫描</string>
@@ -1636,7 +1636,7 @@
   <action name="manual_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/manual.svg</normaloff>:/icons/manual.svg</iconset>
+     <normaloff>:/assets/icons/manual.svg</normaloff>:/assets/icons/manual.svg</iconset>
    </property>
    <property name="text">
     <string>用户手册</string>
@@ -1648,7 +1648,7 @@
   <action name="about_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/about.svg</normaloff>:/icons/about.svg</iconset>
+     <normaloff>:/assets/icons/about.svg</normaloff>:/assets/icons/about.svg</iconset>
    </property>
    <property name="text">
     <string>关于</string>
@@ -1657,7 +1657,7 @@
   <action name="regex_tester_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/search.svg</normaloff>:/icons/search.svg</iconset>
+     <normaloff>:/assets/icons/search.svg</normaloff>:/assets/icons/search.svg</iconset>
    </property>
    <property name="text">
     <string>正则表达式测试工具...</string>
@@ -1669,7 +1669,7 @@
   <action name="settings_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/settings.svg</normaloff>:/icons/settings.svg</iconset>
+     <normaloff>:/assets/icons/settings.svg</normaloff>:/assets/icons/settings.svg</iconset>
    </property>
    <property name="text">
     <string>设置...</string>
@@ -1681,7 +1681,7 @@
   <action name="perf_stats_action">
    <property name="icon">
     <iconset>
-     <normaloff>:/icons/stats.svg</normaloff>:/icons/stats.svg</iconset>
+     <normaloff>:/assets/icons/stats.svg</normaloff>:/assets/icons/stats.svg</iconset>
    </property>
    <property name="text">
     <string>性能统计...</string>
