@@ -79,4 +79,4 @@ packages = ["src/fuscan"]
 fuscan = "src/fuscan/gui/__main__.py"
 
 [dependency-groups]
-dev = ["fuscan[dev,docs]"]
+dev = ["fuscan[dev]"]

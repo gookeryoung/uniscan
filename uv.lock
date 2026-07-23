@@ -1487,7 +1487,7 @@ test = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "fuscan", extra = ["dev", "docs"] },
+    { name = "fuscan", extra = ["dev"] },
 ]
 
 [package.metadata]
@@ -1530,7 +1530,7 @@ requires-dist = [
 provides-extras = ["dev", "docs", "lint", "test"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "fuscan", extras = ["dev", "docs"] }]
+dev = [{ name = "fuscan", extras = ["dev"] }]
 
 [[package]]
 name = "idna"
