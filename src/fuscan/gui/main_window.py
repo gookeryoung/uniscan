@@ -75,10 +75,11 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
-from fuscan import __author__, __description__, __license__, __version__
+
 from fuscan.builtin import load_with_builtin
 from fuscan.config import MANUAL_PDF as _MANUAL_PDF
 from fuscan.config import Config, detect_default_staging_dir, load_config, save_config
+from fuscan.gui.about import AboutDialog
 from fuscan.gui.content_panel import ContentTabPanel
 from fuscan.gui.detail_panel import DetailControls, DetailPanel
 from fuscan.gui.explorer import open_path_in_explorer
@@ -117,12 +118,6 @@ def _apply_severity_to_tree_item(item: QTreeWidgetItem, column: int, severity: S
     item.setBackground(column, SEVERITY_BACKGROUNDS[severity])
 
 
-# 导出格式定义与查找表已移到 ExportController（iter-79 续解耦）
-
-# 扫描模式 ↔ combo index 双向映射已移到 ScanModePanel（iter-79 续解耦）
-
-# 扫描阶段 ↔ current_file_label 前缀文案映射（iter-79 四阶段）：
-# ProgressInfo.phase 取值见 fuscan.scanner.result.ProgressInfo；缺省回退到"文件解析"。
 # 四阶段：准备扫描（_on_scan 设置）→ 解析目录（walk）→ 文件解析（scan）→ 扫描完成（_on_scan_finished）
 _PHASE_LABELS: dict[str, str] = {
     "walk": "解析目录",
@@ -139,46 +134,29 @@ class ScanState(enum.Enum):
     PAUSED = "paused"
 
 
-# WorkflowStage / _STAGE_TO_PAGE_INDEX / _SIDEBAR_ROW_TO_STAGE 已移到
-# StageController（iter-80 UI 控件解耦），main_window 通过 __all__ 重新导出
-
-
 class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheritance]
     """主窗口：扫描器 GUI 入口，基于工作流阶段的三页整页切换布局。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
         with PerfTimer("MainWindow.__init__"):
             with PerfTimer("MainWindow.setupUi"):
                 self.setupUi(self)
 
+            self._about = AboutDialog(self)
             self._config: Config = load_config()
             self._ruleset: RuleSet | None = None
-            # _rules_paths / _use_builtin 由 RulesFilePanel 持有，通过 property 转发访问
             self._last_report: ScanReport | None = None
             self._worker: ScanWorker | None = None
-            # 文件统计线程（stats/scan 职责拆分）：scan 启动前先行 walk 收集清单，
-            # finished_stats 后构造带 precollected 的 ScanWorker 进入 scan 阶段
             self._stats_worker: FileStatsWorker | None = None
             self._scan_state: ScanState = ScanState.IDLE
-            # _workflow_stage 由 StageController 持有，通过 property 转发访问
-            # 取消中标志（iter-79）：用户点击取消后置 True，扫描线程退出前
-            # 进度回调 _on_scan_progress 据此跳过 UI 覆盖，保留"取消中..."文案
-            # 与不确定进度动画；_reset_scan_ui 中重置为 False
             self._cancelling: bool = False
-            # 详情面板控制器：setupUi 已创建详情区 UI 控件，立即构造 DetailPanel，
-            # 使后续 _connect_signals/_setup_shortcuts 可安全引用（非 None）
             self._detail_panel: DetailPanel = self._create_detail_panel()
-            # 扫描路径历史：维护去重 + 最近优先 + 限量的路径列表，同步
-            # path_combo 与 history_list 两个控件（单一数据源避免内容漂移）
             self._path_history: ScanPathHistory = ScanPathHistory(self.path_combo, self.history_list)
             # 扫描结果缓存（启用时惰性创建，关闭窗口时释放）
             self._cache: CacheStore | None = None
-            # 用户跳过路径持久化存储（iter-77）：详情区「标记为跳过」按钮写入，
-            # 下次扫描时通过 skip_paths 参数传入 Scanner 在 walk 阶段跳过
             self._skip_store: SkipStore = SkipStore()
-            # 扫描中列表增量更新器：封装跳过目录与命中文件列表的 0.5 秒节流 + 增量
-            # append 算法，避免每次进度回调全量 clear+重添导致主线程阻塞（点击设置卡滞根因）
             self._list_updater: ScanListUpdater = ScanListUpdater(self.skipped_dirs_list, self.matched_files_list)
 
             with PerfTimer("MainWindow._configure_ui"):
@@ -1137,20 +1115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _on_about(self) -> None:
         """关于对话框。"""
-        QMessageBox.about(
-            self,
-            "关于 fuscan",
-            (
-                f"<h3>fuscan {__version__}</h3>"
-                f"<p>{__description__}</p>"
-                f"<p>基于 YAML 规则对多种格式文件进行内容匹配，"
-                f"快速发现敏感信息、合规风险与代码安全问题；"
-                f"支持压缩文件扫描与缓存加速。</p>"
-                f"<p><b>技术栈</b>: Python + PySide</p>"
-                f"<p><b>作者</b>: {__author__}<br>"
-                f"<b>许可证</b>: {__license__}</p>"
-            ),
-        )
+        self._about.show()
 
     def _on_open_manual(self) -> None:
         """打开用户手册 PDF（随包分发的 assets/docs/fuscan-用户手册.pdf）。
@@ -1469,12 +1434,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             )
             _apply_severity_to_tree_item(item, 1, rule.severity)
             self.rules_tree.addTopLevelItem(item)
-
-    # 规则文件列表相关方法（_refresh_rules_file_list / _on_move_rule_up /
-    # _on_move_rule_down / _on_remove_rule / _on_rules_file_item_changed /
-    # _on_rules_file_list_context_menu）已移到 RulesFilePanel（iter-79 续解耦），
-    # 主窗口通过 self._rules_panel 公共 API 驱动，rules_changed 信号触发
-    # _on_rules_changed 统一处理重载与持久化
 
     def _on_edit_rules(self) -> None:
         """打开规则编辑器对话框。"""

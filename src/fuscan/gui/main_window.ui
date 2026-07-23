@@ -598,8 +598,8 @@
                   </property>
                   <property name="minimumSize">
                    <size>
-                    <width>180</width>
-                    <height>40</height>
+                    <width>200</width>
+                    <height>48</height>
                    </size>
                   </property>
                   <property name="cursor">
@@ -620,8 +620,8 @@
                   </property>
                   <property name="minimumSize">
                    <size>
-                    <width>180</width>
-                    <height>40</height>
+                    <width>200</width>
+                    <height>48</height>
                    </size>
                   </property>
                   <property name="cursor">

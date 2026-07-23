@@ -329,7 +329,7 @@ class Ui_MainWindow(object):
         self.view_results_btn = QPushButton(self.setup_action_bar)
         self.view_results_btn.setObjectName(u"view_results_btn")
         self.view_results_btn.setEnabled(False)
-        self.view_results_btn.setMinimumSize(QSize(180, 40))
+        self.view_results_btn.setMinimumSize(QSize(200, 48))
         self.view_results_btn.setCursor(QCursor(Qt.PointingHandCursor))
 
         self.setup_btn_row.addWidget(self.view_results_btn)
@@ -337,7 +337,7 @@ class Ui_MainWindow(object):
         self.scan_btn = QPushButton(self.setup_action_bar)
         self.scan_btn.setObjectName(u"scan_btn")
         self.scan_btn.setEnabled(False)
-        self.scan_btn.setMinimumSize(QSize(180, 40))
+        self.scan_btn.setMinimumSize(QSize(200, 48))
         self.scan_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.scan_btn.setIcon(icon5)
 
