@@ -193,6 +193,7 @@ _PRIMARY_ICON_TARGETS: tuple[tuple[str, str], ...] = (
     (_ICON_SETTINGS, "settings_action"),
     (_ICON_MANUAL, "manual_action"),
     (_ICON_SEARCH, "select_path_action"),
+    (_ICON_SEARCH, "regex_tester_action"),
     (_ICON_ABOUT, "about_action"),
     (_ICON_STOP, "cancel_btn"),
 )
@@ -655,6 +656,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.scan_action.triggered.connect(self._on_scan)
         self.about_action.triggered.connect(self._on_about)
         self.manual_action.triggered.connect(self._on_open_manual)
+        self.regex_tester_action.triggered.connect(self._on_open_regex_tester)
         self.settings_action.triggered.connect(self._on_settings)
         self.perf_stats_action.triggered.connect(self._on_show_perf_stats)
         self.perf_log_action.toggled.connect(self._on_toggle_perf_log)
@@ -1537,6 +1539,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             return
         dialog = RuleEditorDialog(self._rules_paths, self)
         dialog.rules_saved.connect(self._on_rules_saved)  # pyrefly: ignore [missing-attribute]
+        dialog.exec_()
+
+    def _on_open_regex_tester(self) -> None:
+        """打开正则表达式测试工具对话框。
+
+        作为独立工具入口，无需加载任何规则文件即可使用，便于用户在
+        编写或调试正则表达式时快速验证匹配结果。
+        """
+        # 延迟加载 GUI 子对话框，加速主窗口启动
+        from fuscan.gui.regex_tester import RegexTesterDialog
+
+        dialog = RegexTesterDialog(parent=self)
         dialog.exec_()
 
     def _on_rules_saved(self, _path: str) -> None:

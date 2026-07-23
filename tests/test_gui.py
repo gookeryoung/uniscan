@@ -4129,28 +4129,19 @@ class TestRuleEditor:
         dialog.close()
 
 
-class TestRuleEditorRegexPanel:
-    """规则编辑器正则验证面板测试（需求 req-13 R4）。
+class TestRegexTesterDialog:
+    """正则表达式测试工具对话框测试（需求 req-13 R4，iter-81 抽离为独立工具）。
 
-    覆盖 ``_on_test_regex`` 的各分支：空 pattern、编译失败、无命中、命中多个、
-    捕获组与命名组、大小写敏感性，以及速查手册初始化。
+    覆盖 ``RegexTesterDialog._on_test_regex`` 的各分支：空 pattern、编译失败、
+    无命中、命中多个、捕获组与命名组、大小写敏感性、速查手册初始化，以及
+    ``initial_pattern`` 预填和独立工具入口（主窗口菜单 / 规则编辑器按钮）。
     """
 
-    def _make_rules_file(self, tmp_path: Path, name: str = "rules.yaml") -> Path:
-        """创建测试规则文件。"""
-        path = tmp_path / name
-        path.write_text(
-            'version: "1.0"\nrules:\n  - name: 测试规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: secret\n',
-            encoding="utf-8",
-        )
-        return path
-
-    def test_regex_cheatsheet_initialized(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_regex_cheatsheet_initialized(self, qapp: QApplication) -> None:
         """初始化后速查手册应包含常用语法说明。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         cheatsheet = dialog.regex_cheatsheet_view.toPlainText()
         # 检查关键章节标题
         assert "字符类" in cheatsheet
@@ -4164,24 +4155,38 @@ class TestRuleEditorRegexPanel:
         assert "中国手机号" in cheatsheet
         dialog.close()
 
-    def test_test_regex_empty_pattern_shows_hint(self, qapp: QApplication, tmp_path: Path) -> None:
-        """空 pattern 应在结果区显示提示。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+    def test_initial_pattern_prefilled(self, qapp: QApplication) -> None:
+        """通过 initial_pattern 应预填待测正则表达式。"""
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog(initial_pattern=r"\d{4}-\d{2}-\d{2}")
+        assert dialog.regex_pattern_edit.text() == r"\d{4}-\d{2}-\d{2}"
+        dialog.close()
+
+    def test_initial_pattern_empty_by_default(self, qapp: QApplication) -> None:
+        """默认不传 initial_pattern 时输入框应为空。"""
+        from fuscan.gui.regex_tester import RegexTesterDialog
+
+        dialog = RegexTesterDialog()
+        assert dialog.regex_pattern_edit.text() == ""
+        dialog.close()
+
+    def test_test_regex_empty_pattern_shows_hint(self, qapp: QApplication) -> None:
+        """空 pattern 应在结果区显示提示。"""
+        from fuscan.gui.regex_tester import RegexTesterDialog
+
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText("   ")
         dialog._on_test_regex()
         result = dialog.regex_result_view.toPlainText()
         assert "请输入正则表达式" in result
         dialog.close()
 
-    def test_test_regex_invalid_pattern_shows_error(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_invalid_pattern_shows_error(self, qapp: QApplication) -> None:
         """非法正则应在结果区显示编译失败信息。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         # 未闭合的括号
         dialog.regex_pattern_edit.setText("(unclosed")
         dialog._on_test_regex()
@@ -4189,12 +4194,11 @@ class TestRuleEditorRegexPanel:
         assert "正则编译失败" in result
         dialog.close()
 
-    def test_test_regex_no_match(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_no_match(self, qapp: QApplication) -> None:
         """无命中时应显示字符数统计。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"\d+")
         dialog.regex_test_text_edit.setPlainText("no digits here")
         dialog._on_test_regex()
@@ -4203,12 +4207,11 @@ class TestRuleEditorRegexPanel:
         assert "14" in result  # len("no digits here") == 14
         dialog.close()
 
-    def test_test_regex_single_match(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_single_match(self, qapp: QApplication) -> None:
         """单个命中应显示位置与文本。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"password")
         dialog.regex_test_text_edit.setPlainText("my password is secret")
         dialog._on_test_regex()
@@ -4219,12 +4222,11 @@ class TestRuleEditorRegexPanel:
         assert "3-11" in result
         dialog.close()
 
-    def test_test_regex_multiple_matches(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_multiple_matches(self, qapp: QApplication) -> None:
         """多个命中应全部列出。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"\d+")
         dialog.regex_test_text_edit.setPlainText("abc 123 def 456 ghi 789")
         dialog._on_test_regex()
@@ -4235,12 +4237,11 @@ class TestRuleEditorRegexPanel:
         assert "789" in result
         dialog.close()
 
-    def test_test_regex_capture_groups(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_capture_groups(self, qapp: QApplication) -> None:
         """捕获组应显示在结果中。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"(\d{4})-(\d{2})-(\d{2})")
         dialog.regex_test_text_edit.setPlainText("date: 2024-01-15")
         dialog._on_test_regex()
@@ -4252,12 +4253,11 @@ class TestRuleEditorRegexPanel:
         assert "'15'" in result
         dialog.close()
 
-    def test_test_regex_named_groups(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_named_groups(self, qapp: QApplication) -> None:
         """命名捕获组应显示在结果中。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"(?P<year>\d{4})-(?P<month>\d{2})")
         dialog.regex_test_text_edit.setPlainText("2024-06")
         dialog._on_test_regex()
@@ -4270,12 +4270,11 @@ class TestRuleEditorRegexPanel:
         assert "'06'" in result
         dialog.close()
 
-    def test_test_regex_case_insensitive_default(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_case_insensitive_default(self, qapp: QApplication) -> None:
         """默认不区分大小写，应匹配不同大小写。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         # 默认 regex_case_sensitive_check 未勾选
         assert not dialog.regex_case_sensitive_check.isChecked()
         dialog.regex_pattern_edit.setText(r"password")
@@ -4286,12 +4285,11 @@ class TestRuleEditorRegexPanel:
         assert "PASSWORD" in result
         dialog.close()
 
-    def test_test_regex_case_sensitive_checked(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_case_sensitive_checked(self, qapp: QApplication) -> None:
         """勾选区分大小写后，不同大小写不应匹配。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_case_sensitive_check.setChecked(True)
         assert dialog.regex_case_sensitive_check.isChecked()
         dialog.regex_pattern_edit.setText(r"password")
@@ -4301,12 +4299,11 @@ class TestRuleEditorRegexPanel:
         assert "未命中" in result
         dialog.close()
 
-    def test_test_regex_unicode_pattern(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_unicode_pattern(self, qapp: QApplication) -> None:
         """Unicode 字符（中文）应正确匹配。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"密码")
         dialog.regex_test_text_edit.setPlainText("用户密码是 secret")
         dialog._on_test_regex()
@@ -4315,12 +4312,11 @@ class TestRuleEditorRegexPanel:
         assert "密码" in result
         dialog.close()
 
-    def test_test_regex_empty_text(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_empty_text(self, qapp: QApplication) -> None:
         """空文本时应有 0 字符统计。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"abc")
         dialog.regex_test_text_edit.setPlainText("")
         dialog._on_test_regex()
@@ -4329,16 +4325,15 @@ class TestRuleEditorRegexPanel:
         assert "0" in result  # len("") == 0
         dialog.close()
 
-    def test_test_regex_overlapping_no_match(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_test_regex_overlapping_no_match(self, qapp: QApplication) -> None:
         """finditer 不匹配重叠，第二个位置应跳过。
 
         ``aaa`` 对 pattern ``aa`` 只会匹配到 ``[0-2]`` 和 ``[2-4]`` 两个
         位置（不重叠，从上次结束位置继续）。
         """
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         dialog.regex_pattern_edit.setText(r"aa")
         dialog.regex_test_text_edit.setPlainText("aaa")
         dialog._on_test_regex()
@@ -4349,12 +4344,11 @@ class TestRuleEditorRegexPanel:
         assert "共命中 1 处" in result
         dialog.close()
 
-    def test_regex_test_btn_signal_connected(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_regex_test_btn_signal_connected(self, qapp: QApplication) -> None:
         """regex_test_btn 点击应触发 _on_test_regex。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         # 通过点击按钮验证信号槽连接（不抛异常即说明已连接）
         dialog.regex_pattern_edit.setText(r"abc")
         dialog.regex_test_text_edit.setPlainText("xabcy")
@@ -4364,12 +4358,11 @@ class TestRuleEditorRegexPanel:
         assert "共命中 1 处" in result
         dialog.close()
 
-    def test_regex_pattern_return_pressed(self, qapp: QApplication, tmp_path: Path) -> None:
+    def test_regex_pattern_return_pressed(self, qapp: QApplication) -> None:
         """regex_pattern_edit 的 returnPressed 信号应连接到 _on_test_regex。"""
-        from fuscan.gui.rule_editor import RuleEditorDialog
+        from fuscan.gui.regex_tester import RegexTesterDialog
 
-        rules_path = self._make_rules_file(tmp_path)
-        dialog = RuleEditorDialog([rules_path])
+        dialog = RegexTesterDialog()
         # 验证信号已连接（不抛异常）
         dialog.regex_pattern_edit.setText(r"\d+")
         dialog.regex_test_text_edit.setPlainText("abc 123")
@@ -4378,6 +4371,113 @@ class TestRuleEditorRegexPanel:
         result = dialog.regex_result_view.toPlainText()
         assert "共命中 1 处" in result
         dialog.close()
+
+
+class TestRuleEditorRegexTesterButton:
+    """规则编辑器「正则测试工具」按钮入口测试（iter-81 抽离为独立工具）。"""
+
+    def _make_rules_file(self, tmp_path: Path, name: str = "rules.yaml") -> Path:
+        """创建测试规则文件。"""
+        path = tmp_path / name
+        path.write_text(
+            'version: "1.0"\nrules:\n  - name: 测试规则\n    severity: warning\n    match:\n      type: filename\n      mode: contains\n      pattern: secret\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_regex_tester_btn_exists(self, qapp: QApplication, tmp_path: Path) -> None:
+        """RuleEditorDialog 应包含 regex_tester_btn 按钮。"""
+        from fuscan.gui.rule_editor import RuleEditorDialog
+
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        # 按钮存在且可见
+        assert dialog.regex_tester_btn is not None
+        assert "正则测试工具" in dialog.regex_tester_btn.text()
+        dialog.close()
+
+    def test_regex_tester_btn_click_opens_dialog(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """点击 regex_tester_btn 应弹出 RegexTesterDialog 模态窗口。"""
+        from fuscan.gui import rule_editor as rule_editor_module
+        from fuscan.gui.rule_editor import RuleEditorDialog
+
+        captured: dict[str, object] = {}
+
+        class FakeDialog:
+            """模拟 RegexTesterDialog，记录构造参数与 exec_ 调用。"""
+
+            def __init__(self, parent=None, initial_pattern: str = "") -> None:
+                captured["parent"] = parent
+                captured["initial_pattern"] = initial_pattern
+
+            def exec_(self) -> int:
+                captured["exec_called"] = True
+                return 0
+
+        monkeypatch.setattr(rule_editor_module, "RegexTesterDialog", FakeDialog)
+        rules_path = self._make_rules_file(tmp_path)
+        dialog = RuleEditorDialog([rules_path])
+        dialog._on_open_regex_tester()
+        assert captured["exec_called"] is True
+        assert captured["parent"] is dialog
+        dialog.close()
+
+
+class TestMainWindowRegexTesterAction:
+    """主窗口「工具 → 正则表达式测试工具」菜单入口测试（iter-81）。"""
+
+    def test_regex_tester_action_exists(self, qapp: QApplication) -> None:
+        """主窗口应包含 regex_tester_action 与 tools_menu。"""
+        window = MainWindow()
+        try:
+            assert window.regex_tester_action is not None
+            assert "正则表达式测试工具" in window.regex_tester_action.text()
+            assert window.tools_menu is not None
+            assert "工具" in window.tools_menu.title()
+        finally:
+            window.close()
+
+    def test_regex_tester_action_shortcut(self, qapp: QApplication) -> None:
+        """regex_tester_action 应配置 Ctrl+R 快捷键。"""
+        window = MainWindow()
+        try:
+            assert window.regex_tester_action.shortcut().toString() == "Ctrl+R"
+        finally:
+            window.close()
+
+    def test_on_open_regex_tester_opens_dialog(
+        self,
+        qapp: QApplication,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """_on_open_regex_tester 应弹出 RegexTesterDialog 模态窗口。"""
+        import fuscan.gui.regex_tester as regex_tester_module
+
+        window = MainWindow()
+        captured: dict[str, object] = {}
+
+        class FakeDialog:
+            """模拟 RegexTesterDialog，记录构造参数与 exec_ 调用。"""
+
+            def __init__(self, parent=None, initial_pattern: str = "") -> None:
+                captured["parent"] = parent
+                captured["initial_pattern"] = initial_pattern
+
+            def exec_(self) -> int:
+                captured["exec_called"] = True
+                return 0
+
+        # _on_open_regex_tester 内部通过 `from fuscan.gui.regex_tester import RegexTesterDialog`
+        # 延迟导入，故 mock regex_tester_module.RegexTesterDialog 即可生效
+        monkeypatch.setattr(regex_tester_module, "RegexTesterDialog", FakeDialog)
+        try:
+            window._on_open_regex_tester()
+            assert captured["exec_called"] is True
+            assert captured["parent"] is window
+        finally:
+            window.close()
 
 
 class TestMainWindowHelpers:

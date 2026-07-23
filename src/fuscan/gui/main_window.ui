@@ -1499,6 +1499,12 @@
     <addaction name="perf_stats_action"/>
     <addaction name="perf_log_action"/>
    </widget>
+   <widget class="QMenu" name="tools_menu">
+    <property name="title">
+     <string>工具(&amp;T)</string>
+    </property>
+    <addaction name="regex_tester_action"/>
+   </widget>
    <widget class="QMenu" name="help_menu">
     <property name="title">
      <string>帮助(&amp;H)</string>
@@ -1508,6 +1514,7 @@
    </widget>
    <addaction name="file_menu"/>
    <addaction name="scan_menu"/>
+   <addaction name="tools_menu"/>
    <addaction name="help_menu"/>
   </widget>
   <action name="load_rules_action">
@@ -1574,6 +1581,14 @@
   <action name="about_action">
    <property name="text">
     <string>关于</string>
+   </property>
+  </action>
+  <action name="regex_tester_action">
+   <property name="text">
+    <string>正则表达式测试工具...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
    </property>
   </action>
   <action name="settings_action">
