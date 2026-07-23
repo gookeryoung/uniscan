@@ -53,7 +53,6 @@ class FileStatsWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         max_depth: int | None = None,
         scan_archives: bool = False,
         ignore_dirs: tuple[str, ...] = (),
-        ignore_extensions: tuple[str, ...] = (),
         progress_interval: float = 0.3,
         scan_extensions: tuple[str, ...] | None = None,
         skip_paths: frozenset[str] | None = None,
@@ -65,12 +64,11 @@ class FileStatsWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
             ``scan_extensions`` 过滤，不参与内容匹配）
         :param roots: 待统计的根路径列表（如全盘扫描时为多个盘符）
         :param max_depth: 最大遍历深度，None 表示不限制
-        :param scan_archives: 是否扫描压缩包（影响 ``_archive_extensions`` 判定，
-            使 archive 文件即使不在 ``scan_extensions`` 中也收集）
+        :param scan_archives: 是否扫描压缩包（构造 ArchiveScanner 进入压缩包扫描阶段）
         :param ignore_dirs: 忽略的目录名（如 ``.git``、``__pycache__``）
-        :param ignore_extensions: 忽略的扩展名（如 ``pyc``）
         :param progress_interval: 进度回调最小间隔（秒）
-        :param scan_extensions: 全局后缀白名单，None 或空表示扫描所有文件
+        :param scan_extensions: 全局后缀白名单（iter-87 起统一白名单制），
+            None 表示扫描所有文件；非空 tuple 按白名单过滤；空 tuple 不扫描任何文件
         :param skip_paths: 用户标记跳过的路径集合
         :param parent: 父 QObject
         """
@@ -80,7 +78,6 @@ class FileStatsWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._max_depth = max_depth
         self._scan_archives = scan_archives
         self._ignore_dirs = ignore_dirs
-        self._ignore_extensions = ignore_extensions
         self._progress_interval: float = progress_interval
         self._scan_extensions: tuple[str, ...] | None = scan_extensions
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
@@ -145,7 +142,6 @@ class FileStatsWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                 # 传 None 走默认值，cache=None 避免初始化 SQLite
                 on_progress=self._on_progress,
                 ignore_dirs=self._ignore_dirs,
-                ignore_extensions=self._ignore_extensions,
                 progress_interval=self._progress_interval,
                 scan_extensions=self._scan_extensions,
                 skip_paths=self._skip_paths,

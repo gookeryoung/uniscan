@@ -56,7 +56,6 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         max_workers: int | None = None,
         max_file_size: int | None = None,
         ignore_dirs: tuple[str, ...] = (),
-        ignore_extensions: tuple[str, ...] = (),
         cache: CacheStore | None = None,
         source_files: Mapping[Path, str] | None = None,
         progress_interval: float = 0.3,
@@ -73,12 +72,11 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._max_workers = max_workers
         self._max_file_size = max_file_size
         self._ignore_dirs = ignore_dirs
-        self._ignore_extensions = ignore_extensions
         self._cache: CacheStore | None = cache
         self._source_files: Mapping[Path, str] | None = source_files
         self._progress_interval: float = progress_interval
-        # 全局后缀过滤（iter-71）：None 或空表示扫描所有文件，非空表示只扫描指定后缀。
-        # 替代原规则级 Rule.file_extensions 并集，由 Config.scan_extensions 注入。
+        # 全局后缀白名单（iter-87 起统一白名单制）：None 表示扫描所有文件；
+        # 非空 tuple 按白名单过滤；空 tuple 不扫描任何文件（用户全部取消勾选的边界）
         self._scan_extensions: tuple[str, ...] | None = scan_extensions
         # 用户标记跳过的路径集合（iter-77）：传给 Scanner 在 walk 阶段跳过
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
@@ -155,7 +153,6 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
                 max_file_size=self._max_file_size,
                 on_progress=self._on_progress,
                 ignore_dirs=self._ignore_dirs,
-                ignore_extensions=self._ignore_extensions,
                 cache=self._cache,
                 source_files=self._source_files,
                 progress_interval=self._progress_interval,

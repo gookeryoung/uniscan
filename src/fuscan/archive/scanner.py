@@ -46,10 +46,17 @@ class ArchiveScanner:
         password: str | None = None,
         max_entry_size: int = 100 * 1024 * 1024,
         cache: CacheStore | None = None,
+        scan_extensions: frozenset[str] | None = None,
     ) -> None:
         self._ruleset = ruleset
         self._password = password
         self._max_entry_size = max_entry_size
+        # 压缩包内部条目同样按白名单过滤（iter-87）：
+        #   - None：用户全选，扫所有内部条目（向后兼容全选快速路径）
+        #   - 空 frozenset：用户全部取消勾选，不扫任何内部条目
+        #   - 非空 frozenset：仅扫扩展名在白名单中的条目
+        # 压缩包内嵌套压缩包（如 a.zip 内 b.zip）由 walk 阶段不会收集到，本处不递归。
+        self._scan_extensions: frozenset[str] | None = scan_extensions
         self._compiled: list[tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
         # 缓存模式：由父 Scanner 调 register_ruleset 登记规则，此处仅读取规则哈希
         self._cache: CacheStore | None = cache
@@ -99,6 +106,12 @@ class ArchiveScanner:
         for entry in entries:
             if entry.is_dir:
                 continue
+            # iter-87：按白名单过滤压缩包内部条目。
+            # None 表示全选快速路径（扫所有条目）；非空 frozenset 表示仅扫扩展名在
+            # 白名单中的条目（用户勾选压缩包但未勾选文本类型时，压缩包内 .txt 被跳过）。
+            # 空 frozenset 表示用户全部取消勾选，跳过所有条目。
+            if self._scan_extensions is not None and entry.extension not in self._scan_extensions:
+                continue
             result = self._scan_entry(archive_path, entry, reader)
             results.append(result)
 
@@ -142,8 +155,8 @@ class ArchiveScanner:
         hits: list[RuleHit] = []
         rule_errors = 0
 
-        # iter-71：全局 scan_extensions 已在 Scanner._should_scan 阶段统一过滤，
-        # 压缩包内条目不再按 rule.file_extensions 二次过滤——所有规则对全部条目均适用
+        # iter-87：压缩包内条目已在 scan_archive 中按白名单过滤，
+        # 此处对所有传入条目应用全部规则（无二次过滤）
         for rule, matcher in self._compiled:
             try:
                 result = matcher.matches(context)
@@ -210,8 +223,8 @@ class ArchiveScanner:
 
         context = MatchContext(file_entry, content_provider=content_provider)
 
-        # iter-71：全局 scan_extensions 已在 Scanner._should_scan 阶段统一过滤，
-        # 压缩包内条目不再按 rule.file_extensions 二次过滤
+        # iter-87：压缩包内条目已在 scan_archive 中按白名单过滤，
+        # 此处对所有传入条目应用全部规则（无二次过滤）
         applicable: list[tuple[Rule, Matcher, str]] = list(self._compiled_with_hash)
         rule_hashes = [rh for _, _, rh in applicable]
         cached: dict[str, RuleHit | None] = self._cache.get_cached_hits(file_hash, rule_hashes) if rule_hashes else {}

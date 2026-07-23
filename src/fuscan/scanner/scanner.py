@@ -149,7 +149,6 @@ class Scanner:
         on_progress: Callable[[ProgressInfo], None] | None = None,
         progress_interval: float = 0.15,
         ignore_dirs: tuple[str, ...] = (),
-        ignore_extensions: tuple[str, ...] = (),
         cache: CacheStore | None = None,
         source_files: Mapping[Path, str] | None = None,
         max_file_size: int | None = None,
@@ -161,34 +160,23 @@ class Scanner:
         # 大文件跳过阈值：None 或 0 表示不限制，否则超过此大小的文件不读取内容
         self._max_file_size: int = self._normalize_max_file_size(max_file_size)
         self._compiled: list[tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
-        # 全局后缀过滤（iter-71）：None 或空表示扫描所有文件；
-        # 非空 frozenset 表示只扫描指定后缀。替代原规则级 file_extensions 并集。
-        self._scan_extensions: frozenset[str] | None = (
-            frozenset(e.lower().lstrip(".") for e in scan_extensions) if scan_extensions else None
-        )
+        # 全局后缀白名单（iter-87 统一白名单制）：
+        #   - None：扫描所有文件（全选快速路径）
+        #   - 空 frozenset：不扫描任何文件（用户全部取消勾选的防御性边界）
+        #   - 非空 frozenset：只扫描指定后缀（已规范化为小写、无点，含压缩包扩展名）
+        # 替代 iter-71 的 archive 特例：压缩包扩展名与其他扩展名统一走白名单，
+        # walker 收集到压缩包文件后由 ArchiveScanner 按同一白名单过滤内部条目。
+        if scan_extensions is None:
+            self._scan_extensions: frozenset[str] | None = None
+        else:
+            self._scan_extensions = frozenset(e.lower().lstrip(".") for e in scan_extensions)
         # 用户标记跳过的路径集合（iter-77）：walk 阶段命中即跳过并计入 user_skipped，
         # 与按扩展名/目录过滤的 skipped 区分。键为 str(Path)，与 SkipStore 存储格式一致。
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
         self._skipped_dirs: deque[str] = deque(maxlen=_PROGRESS_LIST_MAX)
         self._matched_files: deque[tuple[str, str]] = deque(maxlen=_PROGRESS_LIST_MAX)
-        # scan_archives=True 时从 ignore_extensions 中剔除已注册的 archive 扩展名
-        # （zip/rar/7z）：默认 ignore_extensions 含这些扩展名会阻止压缩包进入扫描队列，
-        # 导致 ArchiveScanner 永远收不到压缩包（需求 req-13 R3 修复）
-        # 同时保存 archive_exts 供 _should_scan 使用：scan_extensions 过滤时
-        # archive 文件即使不在 scan_extensions 中也应收集（iter-71）
-        effective_ignore_extensions = ignore_extensions
-        self._archive_extensions: frozenset[str] = frozenset()
-        if scan_archives:
-            from fuscan.archive import default_factory as _archive_factory
-
-            archive_exts = _archive_factory.registered_extensions
-            self._archive_extensions = archive_exts
-            effective_ignore_extensions = tuple(
-                e for e in ignore_extensions if e.lower().lstrip(".") not in archive_exts
-            )
         self._walker = FileWalker(
             ignore_dirs=ignore_dirs,
-            ignore_extensions=effective_ignore_extensions,
             ignore_paths=ruleset.ignore_paths,
             max_depth=max_depth,
             follow_symlinks=follow_symlinks,
@@ -221,6 +209,9 @@ class Scanner:
                 password=archive_password,
                 cache=cache,
                 max_entry_size=self._max_file_size,
+                # 压缩包内条目同样按白名单过滤（iter-87）：None 表示全选快速路径，
+                # 非 frozenset 表示按白名单过滤内部条目（如压缩包内 .txt 在白名单不含 txt 时跳过）
+                scan_extensions=self._scan_extensions,
             )
         self._on_progress = on_progress
         self._progress_interval = progress_interval
@@ -324,7 +315,8 @@ class Scanner:
 
         - ``skip_paths``：用户标记跳过的文件计入 ``user_skipped``，不进入清单
         - ``scan_extensions``：不在白名单的文件计入 ``skipped``，不进入清单
-        - ``ignore_dirs``/``ignore_extensions``：在 ``FileWalker`` 内部过滤，
+          （iter-87 起统一白名单制：None 全选，空集合都不扫，非空按白名单过滤）
+        - ``ignore_dirs``：在 ``FileWalker`` 内部过滤，
           跳过的目录收集到 ``skipped_dirs`` 供 UI 展示
 
         :param root: 待遍历的根路径
@@ -775,23 +767,23 @@ class Scanner:
         return self._archive_scanner.scan_archive(path)
 
     def _should_scan(self, entry: FileEntry) -> bool:
-        """根据全局 scan_extensions 过滤决定是否扫描该文件。
+        """根据全局白名单 ``scan_extensions`` 判断是否扫描该文件。
 
-        ``scan_extensions`` 为 None 或空表示扫描所有文件；
-        非空表示只扫描指定后缀（已规范化为小写、无点）。
+        iter-87 起统一为白名单制，三种语义：
 
-        特例：``scan_archives=True`` 时，archive 文件（zip/rar/7z）即使不在
-        ``scan_extensions`` 中也收集——压缩包内条目不再按 ``scan_extensions``
-        二次过滤，由 ArchiveScanner 统一扫描全部条目（iter-71）。
+        - ``None``：用户全选，扫描所有文件（快速路径，不进入扩展名检查）
+        - 空 frozenset：用户全部取消勾选，不扫描任何文件（防御性边界）
+        - 非空 frozenset：仅扫描扩展名在白名单中的文件
+
+        压缩包扩展名（zip/rar/7z）由 :meth:`ExtractorTreeModel.enabled_extensions`
+        在用户勾选压缩包分类时加入白名单，与其他扩展名统一过滤，不再有 archive 特例。
+        压缩包内部条目同样由 :class:`ArchiveScanner` 按此白名单过滤。
         """
         if entry.is_dir:
             return False
-        if not self._scan_extensions:
+        if self._scan_extensions is None:
             return True
-        if entry.extension in self._scan_extensions:
-            return True
-        # scan_archives=True 时 archive 文件即使不在 scan_extensions 中也收集
-        return bool(self._archive_extensions) and entry.extension in self._archive_extensions
+        return entry.extension in self._scan_extensions
 
     def _scan_entry(self, entry: FileEntry) -> ScanResult:
         """对单个文件应用所有规则，返回扫描结果。
@@ -819,8 +811,8 @@ class Scanner:
         hits: list[RuleHit] = []
         rule_errors = 0
 
-        # iter-71：全局 scan_extensions 已在 _should_scan 阶段统一过滤，
-        # 此处无需再按 rule.file_extensions 二次过滤
+        # iter-87：全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
+        # 此处对进入扫描队列的文件应用全部规则（无二次过滤）
         for rule, matcher in self._compiled:
             try:
                 with self._perf.measure("match"):
@@ -909,9 +901,8 @@ class Scanner:
            传给 :class:`MatchContext`，避免改 MatchContext 接口
         """
         assert self._cache is not None  # 仅类型收窄，调用方已保证非 None
-        # iter-71：全局 scan_extensions 已在 _should_scan 阶段统一过滤，
-        # 此处无需再按 rule.file_extensions 二次过滤——所有规则对进入扫描队列的
-        # 文件均适用
+        # iter-87：全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
+        # 此处对进入扫描队列的文件应用全部规则（无二次过滤）
         has_content_rule = any(rule.name in self._content_rule_names for rule, _, _ in self._compiled_with_hash)
         if not has_content_rule:
             # 无内容规则：跳过文件 I/O，直接走匹配器（filename/path 不需读文件）

@@ -238,7 +238,6 @@ def _cmd_scan(args: argparse.Namespace) -> int:
                 max_depth=args.max_depth,
                 max_file_size=max_file_size,
                 ignore_dirs=ignore_dirs,
-                ignore_extensions=tuple(config.ignore_extensions),
                 cache=cache,
                 source_files=source_files,
             )
@@ -251,7 +250,6 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             max_depth=args.max_depth,
             max_file_size=max_file_size,
             ignore_dirs=ignore_dirs,
-            ignore_extensions=tuple(config.ignore_extensions),
         )
         report = _run_scan(scanner, scan_path, args)
 
@@ -356,7 +354,6 @@ def _cmd_tray(args: argparse.Namespace) -> int:
         watch_paths=watch_paths,
         state_file=state_file,
         ignore_dirs=config.ignore_dirs,
-        ignore_extensions=config.ignore_extensions,
         cache=cache,
     )
     return tray.start(show_window=False)

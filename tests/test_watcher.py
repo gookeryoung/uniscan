@@ -117,24 +117,6 @@ class TestFileMonitor:
         assert any(p.name == "normal.txt" for p in paths)
         assert not any("ignored" in str(p) for p in paths)
 
-    def test_monitor_ignores_extensions(self, tmp_path: Path) -> None:
-        config = MonitorConfig(
-            watch_paths=[tmp_path],
-            ignore_extensions=["pyc", "log"],
-        )
-        monitor = FileMonitor(config)
-        events: list[FileEvent] = []
-        monitor.start(events.append)
-
-        (tmp_path / "a.pyc").write_text("x", encoding="utf-8")
-        (tmp_path / "a.txt").write_text("x", encoding="utf-8")
-        time.sleep(0.5)
-
-        monitor.stop()
-        names = [e.path.name for e in events]
-        assert "a.txt" in names
-        assert "a.pyc" not in names
-
     def test_monitor_start_twice_raises(self, tmp_path: Path) -> None:
         config = MonitorConfig(watch_paths=[tmp_path])
         monitor = FileMonitor(config)
@@ -243,7 +225,6 @@ class TestFileMonitorEdgeCases:
         handler = _EventHandler(
             callback=events.append,
             ignore_dirs=set(),
-            ignore_extensions=set(),
             dedup_interval=0.0,
         )
         # 构造一个未知事件类型
@@ -265,7 +246,6 @@ class TestFileMonitorEdgeCases:
         handler = _EventHandler(
             callback=faulty_callback,
             ignore_dirs=set(),
-            ignore_extensions=set(),
             dedup_interval=0.0,
         )
         event = FileSystemEvent("created")

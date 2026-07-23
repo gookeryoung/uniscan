@@ -294,24 +294,6 @@ class Ui_MainWindow(object):
         self.ignore_dirs_tab_layout.addWidget(self.ignore_dirs_edit)
 
         self.content_tab_widget.addTab(self.ignore_dirs_tab, "")
-        self.ignore_extensions_tab = QWidget()
-        self.ignore_extensions_tab.setObjectName(u"ignore_extensions_tab")
-        self.ignore_extensions_tab_layout = QVBoxLayout(self.ignore_extensions_tab)
-        self.ignore_extensions_tab_layout.setSpacing(4)
-        self.ignore_extensions_tab_layout.setObjectName(u"ignore_extensions_tab_layout")
-        self.ignore_extensions_tab_layout.setContentsMargins(4, 4, 4, 4)
-        self.ignore_extensions_hint_label = QLabel(self.ignore_extensions_tab)
-        self.ignore_extensions_hint_label.setObjectName(u"ignore_extensions_hint_label")
-        self.ignore_extensions_hint_label.setWordWrap(True)
-
-        self.ignore_extensions_tab_layout.addWidget(self.ignore_extensions_hint_label)
-
-        self.ignore_extensions_edit = QPlainTextEdit(self.ignore_extensions_tab)
-        self.ignore_extensions_edit.setObjectName(u"ignore_extensions_edit")
-
-        self.ignore_extensions_tab_layout.addWidget(self.ignore_extensions_edit)
-
-        self.content_tab_widget.addTab(self.ignore_extensions_tab, "")
 
         self.horizontalLayout_3.addWidget(self.content_tab_widget)
 
@@ -906,15 +888,6 @@ class Ui_MainWindow(object):
 "    node_modules\n"
 "    Program Files", None))
         self.content_tab_widget.setTabText(self.content_tab_widget.indexOf(self.ignore_dirs_tab), QCoreApplication.translate("MainWindow", u"\u5ffd\u7565\u76ee\u5f55", None))
-        self.ignore_extensions_hint_label.setText(QCoreApplication.translate("MainWindow", u"\u4e0d\u542b\u70b9\uff0c\u5927\u5c0f\u5199\u4e0d\u654f\u611f\uff0c\u547d\u4e2d\u5373\u8df3\u8fc7\u8be5\u7c7b\u6587\u4ef6", None))
-#if QT_CONFIG(tooltip)
-        self.ignore_extensions_edit.setToolTip(QCoreApplication.translate("MainWindow", u"\u4e00\u884c\u4e00\u4e2a\u6269\u5c55\u540d\uff08\u4e0d\u542b\u70b9\uff09", None))
-#endif // QT_CONFIG(tooltip)
-        self.ignore_extensions_edit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"\u4e00\u884c\u4e00\u4e2a\u6269\u5c55\u540d\uff08\u4e0d\u542b\u70b9\uff09\n"
-"\u5982\uff1apyc\n"
-"    exe\n"
-"    dll", None))
-        self.content_tab_widget.setTabText(self.content_tab_widget.indexOf(self.ignore_extensions_tab), QCoreApplication.translate("MainWindow", u"\u5ffd\u7565\u6269\u5c55\u540d", None))
 #if QT_CONFIG(tooltip)
         self.view_results_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u67e5\u770b\u4e0a\u6b21\u626b\u63cf\u7ed3\u679c", None))
 #endif // QT_CONFIG(tooltip)

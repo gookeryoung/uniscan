@@ -50,14 +50,6 @@ class TestConfig:
         # 默认列表应足够全面（iter-76 由 21 项扩充至 50+ 项）
         assert len(config.ignore_dirs) >= 50
 
-    def test_default_ignore_extensions(self) -> None:
-        """默认 ignore_extensions 应包含常见二进制/临时文件扩展名。"""
-        config = Config()
-        assert "pyc" in config.ignore_extensions
-        assert "exe" in config.ignore_extensions
-        assert "zip" in config.ignore_extensions
-        assert len(config.ignore_extensions) >= 25
-
     def test_default_cache_fields(self) -> None:
         """默认启用缓存，路径为 None 表示使用默认路径。"""
         config = Config()
@@ -187,7 +179,6 @@ class TestSaveConfig:
             rules_paths=["/rules/r1.yaml", "/rules/r2.yaml"],
             use_builtin=False,
             ignore_dirs=["custom_dir", ".git"],
-            ignore_extensions=["pyc", "custom_ext"],
         )
         save_config(original, config_file)
         assert config_file.exists()
@@ -200,7 +191,6 @@ class TestSaveConfig:
         assert loaded.rules_paths == ["/rules/r1.yaml", "/rules/r2.yaml"]
         assert loaded.use_builtin is False
         assert loaded.ignore_dirs == ["custom_dir", ".git"]
-        assert loaded.ignore_extensions == ["pyc", "custom_ext"]
 
     def test_save_creates_parent_dir(self, tmp_path: Path) -> None:
         """保存时自动创建父目录。"""

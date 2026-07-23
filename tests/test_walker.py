@@ -41,21 +41,6 @@ class TestFileWalker:
         assert "lib.js" not in names
         assert "app.py" in names
 
-    def test_walk_ignore_extensions(self, tmp_path: Path) -> None:
-        _create_tree(tmp_path)
-        walker = FileWalker(ignore_extensions=("pyc",))
-        entries = list(walker.walk(tmp_path))
-        names = {e.name for e in entries}
-        assert "app.pyc" not in names
-        assert "app.py" in names
-
-    def test_walk_ignore_extensions_with_dot(self, tmp_path: Path) -> None:
-        _create_tree(tmp_path)
-        walker = FileWalker(ignore_extensions=(".pyc",))
-        entries = list(walker.walk(tmp_path))
-        names = {e.name for e in entries}
-        assert "app.pyc" not in names
-
     def test_walk_max_depth(self, tmp_path: Path) -> None:
         _create_tree(tmp_path)
         walker = FileWalker(max_depth=0)
@@ -95,15 +80,6 @@ class TestFileWalker:
         assert "out.txt" not in names
         assert "main.py" in names
 
-    def test_walk_ignore_extensions_case_insensitive(self, tmp_path: Path) -> None:
-        (tmp_path / "log.LOG").write_text("", encoding="utf-8")
-        (tmp_path / "data.txt").write_text("", encoding="utf-8")
-        walker = FileWalker(ignore_extensions=("log",))
-        entries = list(walker.walk(tmp_path))
-        names = {e.name for e in entries}
-        assert "log.LOG" not in names
-        assert "data.txt" in names
-
     def test_on_skip_dir_called_for_ignored_dirs(self, tmp_path: Path) -> None:
         """ignore_dirs 跳过目录时应调用 on_skip_dir 回调，参数为目录绝对路径字符串。"""
         _create_tree(tmp_path)
@@ -126,14 +102,6 @@ class TestFileWalker:
         list(walker.walk(tmp_path))
         assert len(skipped) == 1
         assert "vendor" in skipped[0]
-
-    def test_on_skip_dir_not_called_for_ignored_files(self, tmp_path: Path) -> None:
-        """文件扩展名跳过不应触发 on_skip_dir（仅目录跳过才上报）。"""
-        _create_tree(tmp_path)
-        skipped: list[str] = []
-        walker = FileWalker(ignore_extensions=("pyc",), on_skip_dir=skipped.append)
-        list(walker.walk(tmp_path))
-        assert skipped == []
 
     def test_on_skip_dir_none_default(self, tmp_path: Path) -> None:
         """on_skip_dir 默认 None 时不报错，正常遍历。"""

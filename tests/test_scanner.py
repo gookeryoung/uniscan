@@ -84,14 +84,30 @@ class TestScannerBasic:
         assert report.stats.total_files == 1  # .git 内被忽略
         assert report.stats.matched_files == 1
 
-    def test_scan_respects_ignore_extensions(self, tmp_path: Path) -> None:
+    def test_scan_respects_scan_extensions_whitelist(self, tmp_path: Path) -> None:
+        """iter-87 白名单制：仅扫描 scan_extensions 指定后缀的文件。"""
         (tmp_path / "password.pyc").write_text("", encoding="utf-8")
         (tmp_path / "password.txt").write_text("", encoding="utf-8")
         rs = _build_ruleset(_filename_rule("r", "password"))
-        scanner = Scanner(rs, ignore_extensions=("pyc",))
+        scanner = Scanner(rs, scan_extensions=("txt",))
         report = scanner.scan(tmp_path)
-        assert report.stats.total_files == 1  # pyc 被忽略
+        # 两个文件均被 walker 发现
+        assert report.stats.total_files == 2
+        # pyc 不在白名单中被跳过，仅 txt 被扫描
+        assert report.stats.scanned_files == 1
+        assert report.stats.skipped_files == 1
         assert report.stats.matched_files == 1
+
+    def test_scan_extensions_empty_whitelist_scans_nothing(self, tmp_path: Path) -> None:
+        """iter-87：空白名单（用户全部取消勾选）时不扫描任何文件。"""
+        (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+        (tmp_path / "b.py").write_text("x", encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("r", "a"))
+        scanner = Scanner(rs, scan_extensions=())
+        report = scanner.scan(tmp_path)
+        assert report.stats.total_files == 2
+        assert report.stats.scanned_files == 0
+        assert report.stats.skipped_files == 2
 
     def test_scan_respects_skip_paths(self, tmp_path: Path) -> None:
         """skip_paths 标记的文件不计入扫描队列，单独统计为 user_skipped（iter-77）。"""

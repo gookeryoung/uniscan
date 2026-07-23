@@ -448,10 +448,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         )
 
     def _setup_file_types(self) -> None:
-        """构造内容 TAB 面板控制器（文件类型树 + 忽略目录 + 忽略扩展名）。
+        """构造内容 TAB 面板控制器（文件类型树 + 忽略目录）。
 
         委托 :class:`ContentTabPanel` 封装 ``ExtractorTreeModel`` 勾选管理、
-        忽略项编辑器节流保存、计数标签同步等逻辑（iter-79 内聚重构）。
+        忽略目录编辑器节流保存、计数标签同步等逻辑（iter-79 内聚重构；
+        iter-87 移除「忽略扩展名」TAB 改为白名单制）。
         主窗口通过公共 API（``enabled_extensions`` / ``archives_enabled`` /
         ``apply_config`` / ``flush_pending_save``）驱动，不直接操作底层控件。
         """
@@ -459,7 +460,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             view=self.file_types_view,
             count_label=self.file_types_count_label,
             dirs_edit=self.ignore_dirs_edit,
-            exts_edit=self.ignore_extensions_edit,
             config=self._config,
             parent=self,
         )
@@ -900,7 +900,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             scan_archives=self._config.scan_archives,
             max_depth=self._config.max_depth,
             ignore_dirs=tuple(self._config.ignore_dirs),
-            ignore_extensions=tuple(self._config.ignore_extensions),
             scan_extensions=self._content_panel.enabled_extensions(),
             skip_paths=self._skip_store.paths(),
         )
@@ -929,7 +928,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             max_depth=self._config.max_depth,
             max_file_size=self._config.max_file_size,
             ignore_dirs=tuple(self._config.ignore_dirs),
-            ignore_extensions=tuple(self._config.ignore_extensions),
             cache=cache,
             source_files=source_files,
             scan_extensions=self._content_panel.enabled_extensions(),

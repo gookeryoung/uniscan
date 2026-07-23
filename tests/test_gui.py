@@ -6739,22 +6739,19 @@ class TestMainWindowIgnore:
     """主窗口配置页忽略项控件测试（iter-79：从设置对话框迁移到配置页）。"""
 
     def test_ignore_widgets_exist_with_placeholders(self, qapp: QApplication) -> None:
-        """主窗口应包含忽略目录与忽略扩展名编辑控件，并设置占位提示。"""
+        """主窗口应包含忽略目录编辑控件，并设置占位提示。"""
         window = MainWindow()
         assert window.ignore_dirs_edit is not None
-        assert window.ignore_extensions_edit is not None
         assert "目录名" in window.ignore_dirs_edit.placeholderText()
-        assert "扩展名" in window.ignore_extensions_edit.placeholderText()
         window.close()
 
-    def test_content_tab_widget_has_three_tabs(self, qapp: QApplication) -> None:
-        """iter-79：文件类型与忽略项通过 QTabWidget 切换，文件类型为第一个 Tab。"""
+    def test_content_tab_widget_has_two_tabs(self, qapp: QApplication) -> None:
+        """iter-87：文件类型与忽略目录通过 QTabWidget 切换，文件类型为第一个 Tab。"""
         window = MainWindow()
         assert window.content_tab_widget is not None
-        assert window.content_tab_widget.count() == 3
+        assert window.content_tab_widget.count() == 2
         assert window.content_tab_widget.tabText(0) == "文件类型"
         assert window.content_tab_widget.tabText(1) == "忽略目录"
-        assert window.content_tab_widget.tabText(2) == "忽略扩展名"
         window.close()
 
     def test_default_ignore_dirs_loaded(self, qapp: QApplication) -> None:
@@ -6764,15 +6761,6 @@ class TestMainWindowIgnore:
         assert ".git" in lines
         assert "node_modules" in lines
         assert "__pycache__" in lines
-        window.close()
-
-    def test_default_ignore_extensions_loaded(self, qapp: QApplication) -> None:
-        """默认 Config 的 ignore_extensions 应加载到编辑器。"""
-        window = MainWindow()
-        lines = window.ignore_extensions_edit.toPlainText().splitlines()
-        assert "pyc" in lines
-        assert "exe" in lines
-        assert "zip" in lines
         window.close()
 
     def test_custom_ignore_dirs_loaded(self, qapp: QApplication) -> None:
@@ -6790,14 +6778,6 @@ class TestMainWindowIgnore:
         window.ignore_dirs_edit.setPlainText("new_dir\n.git\n\n  \n")
         window._content_panel._save_ignore_to_config()
         assert window._config.ignore_dirs == ["new_dir", ".git"]
-        window.close()
-
-    def test_save_ignore_to_config_writes_extensions(self, qapp: QApplication) -> None:
-        """_save_ignore_to_config 应将扩展名编辑器文本按行写入 config.ignore_extensions。"""
-        window = MainWindow()
-        window.ignore_extensions_edit.setPlainText("pyc\nexe\n\n")
-        window._content_panel._save_ignore_to_config()
-        assert window._config.ignore_extensions == ["pyc", "exe"]
         window.close()
 
     def test_save_ignore_to_config_strips_whitespace(self, qapp: QApplication) -> None:

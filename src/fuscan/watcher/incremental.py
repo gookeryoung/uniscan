@@ -41,7 +41,6 @@ class IncrementalScanner:
         max_depth: int | None = None,
         scan_archives: bool = False,
         ignore_dirs: tuple[str, ...] = (),
-        ignore_extensions: tuple[str, ...] = (),
         cache: CacheStore | None = None,
         scan_extensions: tuple[str, ...] | None = None,
     ) -> None:
@@ -51,7 +50,6 @@ class IncrementalScanner:
             max_depth=max_depth,
             scan_archives=scan_archives,
             ignore_dirs=ignore_dirs,
-            ignore_extensions=ignore_extensions,
             cache=cache,
             scan_extensions=scan_extensions,
         )

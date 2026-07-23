@@ -62,7 +62,6 @@ class MonitorConfig:
 
     watch_paths: list[Path] = field(default_factory=list)
     ignore_dirs: list[str] = field(default_factory=list)
-    ignore_extensions: list[str] = field(default_factory=list)
     dedup_interval_seconds: float = 1.0
     recursive: bool = True
 
@@ -74,12 +73,10 @@ class _EventHandler(FileSystemEventHandler):
         self,
         callback: Callable[[FileEvent], None],
         ignore_dirs: set[str],
-        ignore_extensions: set[str],
         dedup_interval: float,
     ) -> None:
         self._callback = callback
         self._ignore_dirs = ignore_dirs
-        self._ignore_extensions = ignore_extensions
         self._dedup_interval = dedup_interval
         self._last_events: dict[Path, float] = {}
         self._lock = threading.Lock()
@@ -92,12 +89,6 @@ class _EventHandler(FileSystemEventHandler):
         # 跳过忽略目录
         if self._is_in_ignored_dir(path):
             return
-
-        # 跳过忽略扩展名
-        if not event.is_directory:
-            ext = path.suffix.lower().lstrip(".")
-            if ext in self._ignore_extensions:
-                return
 
         # 事件类型映射
         event_type = self._map_event_type(event.event_type)
@@ -168,9 +159,7 @@ class FileMonitor:
         self._lock = threading.Lock()
 
         ignore_dirs = {d.lower() for d in config.ignore_dirs}
-        ignore_exts = {e.lower().lstrip(".") for e in config.ignore_extensions}
         self._ignore_dirs = ignore_dirs
-        self._ignore_extensions = ignore_exts
 
     @property
     def is_running(self) -> bool:
@@ -198,7 +187,6 @@ class FileMonitor:
             self._handler = _EventHandler(
                 callback=callback,
                 ignore_dirs=self._ignore_dirs,
-                ignore_extensions=self._ignore_extensions,
                 dedup_interval=self._config.dedup_interval_seconds,
             )
             self._observer = Observer()

@@ -84,22 +84,24 @@ class FileWalker:
 
     - 按目录名匹配忽略目录（如 ``.git``、``__pycache__``）
     - 按相对路径 glob 通配符匹配忽略目录（如 ``*/vendor/*``）
-    - 按扩展名匹配忽略文件（如 ``pyc``）
     - 可选最大深度限制
     - 默认不跟随符号链接，避免环
+
+    .. note::
+       iter-87 起，扩展名过滤改由白名单制（``Scanner._should_scan`` 按
+       ``scan_extensions`` 判断）统一管理，``FileWalker`` 不再持有扩展名黑名单。
+       待扫描文件由 walk 阶段收集后，Scanner 在 ``collect_entries`` 中按白名单过滤。
     """
 
     def __init__(
         self,
         ignore_dirs: tuple[str, ...] = (),
-        ignore_extensions: tuple[str, ...] = (),
         ignore_paths: tuple[str, ...] = (),
         max_depth: int | None = None,
         follow_symlinks: bool = False,
         on_skip_dir: Callable[[str], None] | None = None,
     ) -> None:
         self._ignore_dirs: set[str] = {d.lower() for d in ignore_dirs}
-        self._ignore_extensions: set[str] = {e.lower().lstrip(".") for e in ignore_extensions}
         self._ignore_paths: list[str] = [p.lower() for p in ignore_paths]
         self._max_depth = max_depth
         self._follow_symlinks = follow_symlinks
@@ -153,8 +155,6 @@ class FileWalker:
                     continue
                 yield from self._walk_dir(dir_path, depth + 1)
             else:
-                if self._is_ignored_file(name):
-                    continue
                 # 用 DirEntry 构造，复用 scandir 已缓存的 stat，避免 Path.stat() 重复系统调用
                 yield FileEntry.from_direntry(entry)
 
@@ -198,10 +198,3 @@ class FileWalker:
             if fnmatch.fnmatch(rel_str + "/x", pattern):
                 return True
         return False
-
-    def _is_ignored_file(self, name: str) -> bool:
-        dot = name.rfind(".")
-        if dot < 0:
-            return False
-        suffix = name[dot + 1 :].lower()
-        return suffix in self._ignore_extensions

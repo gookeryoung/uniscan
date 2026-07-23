@@ -162,42 +162,6 @@ class Config:
             ".fuscan-cache",
         ]
     )
-    # 忽略扩展名（不含点，大小写不敏感）
-    ignore_extensions: list[str] = field(
-        default_factory=lambda: [
-            "pyc",
-            "pyo",
-            "pyd",
-            "so",
-            "dll",
-            "exe",
-            "bin",
-            "obj",
-            "o",
-            "a",
-            "lib",
-            "class",
-            "jar",
-            "war",
-            "png",
-            "jpg",
-            "jpeg",
-            "gif",
-            "bmp",
-            "ico",
-            "svg",
-            "mp3",
-            "mp4",
-            "avi",
-            "mov",
-            "zip",
-            "rar",
-            "7z",
-            "tar",
-            "gz",
-            "bz2",
-        ]
-    )
 
 
 def detect_default_staging_dir() -> Path:

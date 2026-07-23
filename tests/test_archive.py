@@ -1523,22 +1523,37 @@ class TestArchiveScanner7z:
         hit_paths = [str(r.path) for r in report.hits]
         assert any("secret.txt" in p for p in hit_paths)
 
-    def test_scan_archives_7z_not_in_ignore_extensions(self, tmp_path: Path) -> None:
-        """scan_archives=True 时 7z 应从 ignore_extensions 剔除，能进入扫描队列。
+    def test_scan_archives_7z_in_whitelist(self, tmp_path: Path) -> None:
+        """iter-87 白名单制：7z 在白名单中时应被扫描。
 
-        需求 req-13 R3 修复：默认 ignore_extensions 含 7z，开启 scan_archives 后
-        Scanner.__init__ 应剔除已注册的 archive 扩展名，避免压缩包被 walker 过滤。
+        替代旧 ignore_extensions 黑名单测试：压缩包扩展名与其他扩展名统一走
+        ``scan_extensions`` 白名单，7z 在白名单中时 walker 收集、Scanner 扫描。
         """
         sevenz_path = _make_7z(tmp_path / "a.7z", {"secret.txt": "x"})
         rs = _build_ruleset(_filename_rule("r", "secret"))
-        # 默认 ignore_extensions 含 7z；scan_archives=True 应剔除
-        scanner = Scanner(rs, scan_archives=True, ignore_extensions=("7z", "zip", "rar"))
+        scanner = Scanner(rs, scan_archives=True, scan_extensions=("7z", "txt"))
         report = scanner.scan(tmp_path)
-        # 7z 应被扫描而非被 walker 过滤
+        # 7z 应被扫描而非被白名单过滤
         hit_paths = [str(r.path) for r in report.hits]
         assert any("secret.txt" in p for p in hit_paths)
-        # sevenz_path 用于触发文件创建，scan 通过 tmp_path 索引文件
         assert sevenz_path.exists()
+
+    def test_archive_internal_entries_filtered_by_whitelist(self, tmp_path: Path) -> None:
+        """iter-87：压缩包内部条目同样按白名单过滤。
+
+        压缩包扩展名（zip）在白名单中时压缩包被扫描，但内部条目仅扫描
+        扩展名在白名单中的文件。本测试创建含 txt 和 pyc 的 zip，
+        白名单仅含 zip+txt，验证 pyc 条目被跳过。
+        """
+        _make_zip(tmp_path / "a.zip", {"secret.txt": "x", "data.pyc": "y"})
+        rs = _build_ruleset(_filename_rule("r", "secret"))
+        scanner = Scanner(rs, scan_archives=True, scan_extensions=("zip", "txt"))
+        report = scanner.scan(tmp_path)
+        hit_paths = [str(r.path) for r in report.hits]
+        # txt 在白名单中，应命中
+        assert any("secret.txt" in p for p in hit_paths)
+        # pyc 不在白名单中，不应出现在任何结果路径中
+        assert not any("data.pyc" in p for p in hit_paths)
 
 
 # ----------------------------- ArchiveScanner 异常路径 -----------------------------

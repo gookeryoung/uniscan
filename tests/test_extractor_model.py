@@ -397,8 +397,18 @@ class TestExtractorTreeModelDisabled:
         """set_disabled_extractors 批量更新勾选状态。"""
         model.set_disabled_extractors(["PdfExtractor", "XlsxExtractor"])
         assert model.disabled_extractors() == ["PdfExtractor", "XlsxExtractor"]
-        # 仅纯文本启用，扩展名为 txt/md/py/log/csv/json
-        assert model.enabled_extensions() == ("csv", "json", "log", "md", "py", "txt")
+        # 仅纯文本与压缩包启用：txt/md/py/log/csv/json + 7z/rar/zip
+        assert model.enabled_extensions() == (
+            "7z",
+            "csv",
+            "json",
+            "log",
+            "md",
+            "py",
+            "rar",
+            "txt",
+            "zip",
+        )
 
     def test_set_disabled_extractors_updates_category_state(self, model: ExtractorTreeModel) -> None:
         """set_disabled_extractors 后分类节点状态正确联动。"""
@@ -440,11 +450,11 @@ class TestExtractorTreeModelEnabledExtensions:
 
     def test_partial_enabled_returns_union(self, model: ExtractorTreeModel) -> None:
         """部分取消时返回启用扩展名的并集（小写、去重、排序）。"""
-        # 取消 PDF 勾选：剩余 Word 类无 + 纯文本（txt/md/py/log/csv/json）+ Excel（xlsx）
+        # 取消 PDF 勾选：纯文本（txt/md/py/log/csv/json）+ Excel（xlsx）+ 压缩包（7z/rar/zip）
         model.setData(_child_index(model, 0, 0), Qt.Unchecked, Qt.CheckStateRole)
         result = model.enabled_extensions()
         assert result is not None
-        assert result == ("csv", "json", "log", "md", "py", "txt", "xlsx")
+        assert result == ("7z", "csv", "json", "log", "md", "py", "rar", "txt", "xlsx", "zip")
 
     def test_all_disabled_returns_empty_tuple(self, model: ExtractorTreeModel) -> None:
         """全部禁用时返回空元组。"""
@@ -455,6 +465,7 @@ class TestExtractorTreeModelEnabledExtensions:
         """通过分类节点批量取消所有子项后 enabled_extensions 为空元组。"""
         model.setData(_cat_index(model, 0), Qt.Unchecked, Qt.CheckStateRole)
         model.setData(_cat_index(model, 1), Qt.Unchecked, Qt.CheckStateRole)
+        model.setData(_cat_index(model, 4), Qt.Unchecked, Qt.CheckStateRole)
         assert model.enabled_extensions() == ()
 
     def test_archives_enabled_default_true(self, model: ExtractorTreeModel) -> None:
@@ -466,15 +477,22 @@ class TestExtractorTreeModelEnabledExtensions:
         model.setData(_child_index(model, 4, 0), Qt.Unchecked, Qt.CheckStateRole)
         assert model.archives_enabled() is False
 
-    def test_enabled_extensions_excludes_archive(self, model: ExtractorTreeModel) -> None:
-        """取消压缩包勾选不影响 enabled_extensions：始终排除 zip/rar/7z。
+    def test_enabled_extensions_includes_archive(self, model: ExtractorTreeModel) -> None:
+        """iter-87：压缩包扩展名纳入白名单，取消压缩包勾选后从白名单剔除。
 
-        压缩包扩展名由 ``Config.scan_archives`` 单独控制，不参与
-        ``scan_extensions`` 过滤，因此取消后 enabled_extensions 仍返回 None
-        （其余非压缩包分类全部勾选走快速路径）。
+        统一白名单制后，压缩包扩展名（7z/rar/zip）与其他扩展名统一进入
+        ``scan_extensions`` 白名单。取消压缩包勾选后，其余分类全部勾选
+        不再走 None 快速路径，而是返回不含压缩包扩展名的并集。
         """
         model.setData(_child_index(model, 4, 0), Qt.Unchecked, Qt.CheckStateRole)
-        assert model.enabled_extensions() is None
+        result = model.enabled_extensions()
+        assert result is not None
+        # 压缩包扩展名不在结果中
+        assert "7z" not in result
+        assert "rar" not in result
+        assert "zip" not in result
+        # 其余扩展名全部在结果中
+        assert result == ("csv", "json", "log", "md", "pdf", "py", "txt", "xlsx")
 
 
 # ----------------------------- checked_count / total_count -----------------------------

@@ -511,51 +511,6 @@
                     </item>
                    </layout>
                   </widget>
-                  <widget class="QWidget" name="ignore_extensions_tab">
-                   <attribute name="title">
-                    <string>忽略扩展名</string>
-                   </attribute>
-                   <layout class="QVBoxLayout" name="ignore_extensions_tab_layout">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <property name="leftMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="topMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="rightMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="bottomMargin">
-                     <number>4</number>
-                    </property>
-                    <item>
-                     <widget class="QLabel" name="ignore_extensions_hint_label">
-                      <property name="text">
-                       <string>不含点，大小写不敏感，命中即跳过该类文件</string>
-                      </property>
-                      <property name="wordWrap">
-                       <bool>true</bool>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QPlainTextEdit" name="ignore_extensions_edit">
-                      <property name="toolTip">
-                       <string>一行一个扩展名（不含点）</string>
-                      </property>
-                      <property name="placeholderText">
-                       <string>一行一个扩展名（不含点）
-如：pyc
-    exe
-    dll</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </widget>
                  </widget>
                 </item>
                </layout>

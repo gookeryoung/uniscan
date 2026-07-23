@@ -363,26 +363,28 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
         self.extractors_changed.emit()  # pyrefly: ignore [missing-attribute]
 
     def enabled_extensions(self) -> tuple[str, ...] | None:
-        """根据勾选状态计算启用的扩展名集合（不含压缩包扩展名）。
+        """根据勾选状态计算启用的扩展名白名单（含压缩包扩展名）。
 
-        压缩包分类的扩展名（zip/rar/7z）不参与 ``scan_extensions`` 过滤，
-        而是由 ``Config.scan_archives`` 单独控制。因此本方法仅考虑非压缩包
-        分类：非压缩包分类全部勾选时返回 ``None``（Scanner 走快速路径），
-        部分取消时返回启用扩展名并集。
+        iter-87 起统一为白名单制：压缩包扩展名（zip/rar/7z）与其他扩展名
+        统一进入白名单，不再由 ``Config.scan_archives`` 单独控制 walk 阶段过滤。
+        ``scan_archives`` 字段保留作为 ArchiveScanner 构造开关，由勾选区
+        ``archives_enabled`` 同步推导。
 
-        :returns: 全部（非压缩包）启用时返回 ``None``；部分取消时返回
-                  启用扩展名并集（小写、去重、排序后元组）
+        三种返回值语义：
+
+        - ``None``：所有分类全部勾选（含压缩包），Scanner 走快速路径扫所有文件
+        - 空 tuple ``()``：用户全部取消勾选，Scanner 不扫任何文件（防御性边界）
+        - 非空 tuple：部分勾选时返回启用扩展名并集
+          （小写、去重、排序后元组，含压缩包扩展名）
+
+        :returns: 全部勾选时返回 ``None``；部分/全部取消时返回扩展名并集元组
         """
-        # 仅检查非压缩包分类是否全部勾选
-        non_archive_all_checked = all(
-            all(flags) for cat_name, _items, flags in self._categories if cat_name != _ARCHIVE_CATEGORY
-        )
-        if non_archive_all_checked:
+        # 所有分类（含压缩包）全部勾选时走快速路径
+        all_checked = all(all(flags) for _cat_name, _items, flags in self._categories)
+        if all_checked:
             return None
         enabled: set[str] = set()
-        for cat_name, items, flags in self._categories:
-            if cat_name == _ARCHIVE_CATEGORY:
-                continue
+        for _cat_name, items, flags in self._categories:
             for item, enabled_flag in zip(items, flags):
                 if enabled_flag:
                     enabled.update(item.extensions)
