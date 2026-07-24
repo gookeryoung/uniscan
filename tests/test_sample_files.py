@@ -84,6 +84,7 @@ class TestSampleFileScan:
         assert result.has_hit, f"格式 {ext} 未被扫描命中 password"
         assert any(hit.rule_name == "明文密码" for hit in result.hits)
 
+    @pytest.mark.slow
     def test_scan_mixed_format_directory(self, tmp_path: Path, rng: random.Random) -> None:
         """扫描混合格式目录应命中所有含 password 的文件。"""
         from benchmarks.sample_files import generate_files
@@ -115,6 +116,7 @@ class TestSampleFileGeneration:
             assert p.exists()
             assert p.stat().st_size > 0
 
+    @pytest.mark.slow
     def test_generate_files_reproducible(self, tmp_path: Path) -> None:
         """相同种子应生成相同文件名序列。"""
         from benchmarks.sample_files import generate_files

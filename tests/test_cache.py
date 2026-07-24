@@ -973,6 +973,7 @@ class TestCacheStoreConcurrency:
         assert stats.scan_results == 20
         store.close()
 
+    @pytest.mark.slow
     def test_concurrent_read_write(self, tmp_path: Path) -> None:
         """读+写并发：读不阻塞写，且读到的是一致状态。"""
         store = CacheStore(tmp_path / "cache.db")
@@ -2035,8 +2036,11 @@ class TestComputeSourceFiles:
         sources = compute_source_files([missing], use_builtin=False)
         assert sources == {}
 
-    def test_builtin_path_missing_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_builtin_path_missing_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """内置规则文件不存在时静默跳过（``use_builtin=True`` 也不报错）。"""
         monkeypatch.setattr("fuscan.config.BUILTIN_RULES_PATH", tmp_path / "absent.yaml")
         sources = compute_source_files([], use_builtin=True)
         assert sources == {}
+

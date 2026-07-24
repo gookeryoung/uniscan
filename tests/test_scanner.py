@@ -1195,6 +1195,7 @@ class TestScannerConcurrency:
         assert report.stats.total_files == 0
         assert report.stats.matched_files == 0
 
+    @pytest.mark.slow
     def test_concurrent_large_fileset_two_phase(self, tmp_path: Path) -> None:
         """两阶段架构（iter-71）：600 文件先收集再并发扫描，结果与单线程一致。
 
@@ -1223,6 +1224,7 @@ class TestScannerConcurrency:
         con_paths = sorted(str(r.path) for r in con_report.hits)
         assert seq_paths == con_paths
 
+    @pytest.mark.slow
     def test_concurrent_scan_entry_error_handling(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """两阶段架构并发扫描阶段 _scan_entry 抛异常应计 error 并继续（iter-71）。
 
@@ -1384,6 +1386,7 @@ class TestScannerProgress:
         # app.py 命中应收集到 matched_files
         assert any(path.endswith("app.py") for path, _ in last.matched_files)
 
+    @pytest.mark.slow
     def test_pipelined_drain_collects_matched_files_with_callback(self, tmp_path: Path) -> None:
         """流水线 drain 阶段有 on_progress 时应收集 matched_files（覆盖 drain guard True 分支）。
 

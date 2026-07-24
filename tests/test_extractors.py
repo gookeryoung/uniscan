@@ -1552,6 +1552,7 @@ class TestLargeFileStreaming:
         assert "password" in content
         assert called is False
 
+    @pytest.mark.slow
     def test_large_bytes_unknown_encoding_fallback_to_charset_normalizer(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """大 bytes 文件头无法确定编码时回退到 charset-normalizer。"""
         # 构造 >10MB 的非 UTF-8/GBK 字节（0x80 不是任何 BOM/UTF-8/GBK 引导字节）
