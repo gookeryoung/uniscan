@@ -22,6 +22,7 @@ from fuscan.rules.model import Rule, RuleSet
 from fuscan.scanner.context import FileEntry, MatchContext
 from fuscan.scanner.matchers import Matcher, build_matcher
 from fuscan.scanner.result import RuleHit, ScanResult
+from fuscan.scanner.scanner import _empty_content_provider, _spec_needs_content
 
 if TYPE_CHECKING:
     from fuscan.cache import CacheStore
@@ -58,6 +59,8 @@ class ArchiveScanner:
         # 压缩包内嵌套压缩包（如 a.zip 内 b.zip）由 walk 阶段不会收集到，本处不递归。
         self._scan_extensions: frozenset[str] | None = scan_extensions
         self._compiled: list[tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
+        # 预计算规则集是否含 CONTENT 规则；为空时跳过所有条目内容读取
+        self._has_content_rule: bool = any(_spec_needs_content(rule.match) for rule in ruleset.rules)
         # 缓存模式：由父 Scanner 调 register_ruleset 登记规则，此处仅读取规则哈希
         self._cache: CacheStore | None = cache
         self._compiled_with_hash: list[tuple[Rule, Matcher, str]] = []
@@ -138,7 +141,10 @@ class ArchiveScanner:
         entry: ArchiveEntry,
         reader: ArchiveReader,
     ) -> ScanResult:
-        """对压缩包内单个条目应用规则（无缓存）。"""
+        """对压缩包内单个条目应用规则（无缓存）。
+
+        规则集不含 CONTENT 规则时跳过条目内容解压，FILENAME/PATH 规则仍可命中。
+        """
         file_entry = FileEntry(
             path=Path(entry.display_path),
             name=entry.name,
@@ -148,8 +154,12 @@ class ArchiveScanner:
             is_dir=False,
         )
 
-        def content_provider(_fe: FileEntry) -> str:
-            return self._read_entry_content(archive_path, entry, reader)
+        if self._has_content_rule:
+
+            def content_provider(_fe: FileEntry) -> str:
+                return self._read_entry_content(archive_path, entry, reader)
+        else:
+            content_provider = _empty_content_provider
 
         context = MatchContext(file_entry, content_provider=content_provider)
         hits: list[RuleHit] = []

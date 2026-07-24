@@ -21,7 +21,8 @@ from fuscan.rules.model import (
     RuleSet,
     Severity,
 )
-from fuscan.scanner import Scanner, ScanReport, ScanResult
+from fuscan.scanner import Scanner, ScanReport, ScanResult, default_extract_content
+from fuscan.scanner.context import FileEntry
 from fuscan.scanner.result import ProgressInfo, ScanStats, WalkResult
 
 
@@ -1081,8 +1082,6 @@ class TestScanResultFileInfoHtml:
 class TestScannerErrorHandling:
     def test_scan_continues_on_content_error(self, tmp_path: Path) -> None:
         """当内容提供器抛异常时，扫描器应记录错误并继续。"""
-        from fuscan.scanner.context import FileEntry
-
         (tmp_path / "good.txt").write_text("password", encoding="utf-8")
         (tmp_path / "bad.txt").write_text("password", encoding="utf-8")
 
@@ -1153,8 +1152,6 @@ class TestScannerConcurrency:
 
     def test_concurrent_error_handling(self, tmp_path: Path) -> None:
         """多线程模式下错误处理应正常工作。"""
-        from fuscan.scanner.context import FileEntry
-
         for i in range(10):
             (tmp_path / f"file_{i}.txt").write_text("password", encoding="utf-8")
 
@@ -2424,6 +2421,44 @@ class TestScannerMaxFileSize:
         report = scanner.scan(tmp_path)
         # filename 规则不依赖内容，应命中
         assert report.stats.matched_files == 1
+
+    def test_scan_skips_content_io_when_no_content_rules(self, tmp_path: Path) -> None:
+        """规则集不含 CONTENT 规则时，扫描器跳过所有文件内容读取。
+
+        FILENAME/PATH 规则仍可命中，但 content_provider 不应被调用。
+        """
+        (tmp_path / "secret.txt").write_text("password 123456", encoding="utf-8")
+        rs = _build_ruleset(_filename_rule("敏感名", "secret"))
+        call_count = 0
+
+        def counting_provider(entry: FileEntry) -> str:
+            nonlocal call_count
+            call_count += 1
+            return default_extract_content(entry)
+
+        scanner = Scanner(rs, content_provider=counting_provider)
+        report = scanner.scan(tmp_path)
+        # filename 规则命中
+        assert report.stats.matched_files == 1
+        # content_provider 未被调用（无 CONTENT 规则）
+        assert call_count == 0
+
+    def test_scan_reads_content_io_when_content_rules_exist(self, tmp_path: Path) -> None:
+        """规则集含 CONTENT 规则时，content_provider 被调用来读取文件内容。"""
+        (tmp_path / "data.txt").write_text("password 123456", encoding="utf-8")
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        call_count = 0
+
+        def counting_provider(entry: FileEntry) -> str:
+            nonlocal call_count
+            call_count += 1
+            return default_extract_content(entry)
+
+        scanner = Scanner(rs, content_provider=counting_provider)
+        report = scanner.scan(tmp_path)
+        assert report.stats.matched_files == 1
+        # content_provider 被调用（有 CONTENT 规则）
+        assert call_count > 0
 
     def test_scan_max_file_size_zero_scans_all_content(self, tmp_path: Path) -> None:
         """``max_file_size=0`` 不限制，大文件内容仍被扫描。"""

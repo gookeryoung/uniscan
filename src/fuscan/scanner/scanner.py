@@ -63,6 +63,15 @@ def default_extract_content(entry: FileEntry) -> str:
     return extract_content_with_fallback(entry.path)
 
 
+def _empty_content_provider(_fe: FileEntry) -> str:
+    """空内容提供器：返回空字符串，跳过所有文件 I/O。
+
+    用于规则集不含 CONTENT 规则或文件超过大小上限的场景，
+    使 FILENAME/PATH 规则仍可命中而无需读取文件内容。
+    """
+    return ""
+
+
 def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
     """带哈希的内容提供器：读字节算 BLAKE2b，再从同一份字节提取内容。
 
@@ -100,7 +109,7 @@ def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
 def _spec_needs_content(spec: MatchSpec) -> bool:
     """递归检查 MatchSpec 是否包含 CONTENT 目标。
 
-    用于缓存模式：若所有适用规则均不需要内容，可跳过文件 I/O。
+    若所有规则均不需要内容，扫描器可跳过文件 I/O（缓存与无缓存模式均适用）。
     """
     from fuscan.rules.model import AndMatch, LeafMatch, NotMatch, OrMatch
 
@@ -795,15 +804,13 @@ class Scanner:
     def _scan_entry_uncached(self, entry: FileEntry) -> ScanResult:
         """对单个文件应用所有规则（无缓存）。
 
-        超过 ``max_file_size`` 的文件跳过内容提取（与 :meth:`_extract_with_cache`
-        行为对齐）：filename/path 规则仍可命中，CONTENT 规则因内容为空不命中。
-        """
-        if self._max_file_size > 0 and entry.size > self._max_file_size:
-            # 大文件跳过内容读取，避免一次性读入内存导致卡死（需求 req-13 R2）
-            def _skipped_provider(_fe: FileEntry) -> str:
-                return ""
+        以下两种情况跳过内容提取（使用空内容提供器），FILENAME/PATH 规则仍可命中：
 
-            context = MatchContext(entry, content_provider=_skipped_provider)
+        - 规则集不含任何 CONTENT 规则（``_content_rule_names`` 为空）——所有文件均跳过 I/O
+        - 文件超过 ``max_file_size`` ——大文件跳过避免一次性读入内存导致卡死
+        """
+        if not self._content_rule_names or (self._max_file_size > 0 and entry.size > self._max_file_size):
+            context = MatchContext(entry, content_provider=_empty_content_provider)
         else:
             context = MatchContext(entry, content_provider=self._content_provider)
         hits: list[RuleHit] = []
