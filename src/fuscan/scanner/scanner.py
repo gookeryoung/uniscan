@@ -43,9 +43,9 @@ logger = logging.getLogger(__name__)
 _BATCH_THRESHOLD: int = 50
 
 # 默认大文件跳过阈值（字节）：超过此值的文件不读取内容、不计哈希。
-# 100MB 来自需求 req-13，避免大文件一次性读入内存导致卡死；
+# iter-91：100MB → 50MB，避免大文件独占 GIL 数秒冻结界面。
 # 可通过 Config.max_file_size 与 Scanner(max_file_size=...) 覆盖，0 表示不限制。
-_DEFAULT_MAX_FILE_SIZE: int = 100 * 1024 * 1024
+_DEFAULT_MAX_FILE_SIZE: int = 50 * 1024 * 1024
 
 # 进度收集列表上限：_skipped_dirs 与 _matched_files 使用 deque(maxlen=) 防止
 # 大规模扫描（如全盘跳过 node_modules）时列表无界增长导致内存膨胀。
@@ -75,7 +75,7 @@ def default_extract_content_with_hash(entry: FileEntry) -> tuple[str, str]:
     ``digest_size=32``，64 字符 hex）。算法变更需递增
     :data:`fuscan.cache.schema.CACHE_COMPAT_VERSION` 触发旧缓存失效。
 
-    超过 :data:`_DEFAULT_MAX_FILE_SIZE`（100MB）的文件跳过读取，
+    超过 :data:`_DEFAULT_MAX_FILE_SIZE`（50MB）的文件跳过读取，
     返回空内容与空字节哈希；``Scanner`` 在缓存模式下走自己的
     :meth:`Scanner._extract_with_cache`，使用可配置的 ``max_file_size``。
 

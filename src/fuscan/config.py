@@ -66,12 +66,14 @@ class Config:
     include_network_drives: bool = False
     # 是否扫描压缩包
     scan_archives: bool = True
-    # 最大工作线程数
-    max_workers: int = 8
+    # 最大工作线程数（iter-91：8 → 3，减少 GIL 争用方数，避免 CPU 密集型
+    # 提取饿死主线程导致界面卡死；CPU 密集型提取在 CPython GIL 下本无真并行）
+    max_workers: int = 3
     # 最大扫描深度（None 表示无限制）
     max_depth: int | None = None
     # 跳过大于此大小的文件（字节），避免大文件读取导致卡死；0 表示不限制
-    max_file_size: int = 100 * 1024 * 1024
+    # iter-91：100MB → 50MB，避免单个大文件独占 GIL 数秒冻结界面
+    max_file_size: int = 50 * 1024 * 1024
     # 是否启用扫描结果缓存（基于内容哈希跳过未变化文件，提升二次扫描速度）
     cache_enabled: bool = True
     # 是否启用性能详细日志（PerfTimer，iter-69 起持久化）

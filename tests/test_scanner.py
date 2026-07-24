@@ -2357,11 +2357,11 @@ class TestScannerMaxFileSize:
     """
 
     def test_normalize_max_file_size_none_returns_default(self) -> None:
-        """``None`` 退化为默认值 100MB。"""
+        """``None`` 退化为默认值 50MB。"""
         from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
 
         assert Scanner._normalize_max_file_size(None) == _DEFAULT_MAX_FILE_SIZE
-        assert Scanner._normalize_max_file_size(None) == 100 * 1024 * 1024
+        assert Scanner._normalize_max_file_size(None) == 50 * 1024 * 1024
 
     def test_normalize_max_file_size_negative_returns_default(self) -> None:
         """负数退化为默认值。"""
@@ -2380,7 +2380,7 @@ class TestScannerMaxFileSize:
         assert Scanner._normalize_max_file_size(50 * 1024 * 1024) == 50 * 1024 * 1024
 
     def test_scanner_default_max_file_size(self) -> None:
-        """未传入 ``max_file_size`` 时使用默认值 100MB。"""
+        """未传入 ``max_file_size`` 时使用默认值 50MB。"""
         from fuscan.scanner.scanner import _DEFAULT_MAX_FILE_SIZE
 
         scanner = Scanner(_build_ruleset(_filename_rule("r", "x")))
