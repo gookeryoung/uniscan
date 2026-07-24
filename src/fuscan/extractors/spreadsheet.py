@@ -2,7 +2,7 @@
 
 XLSX/XLSM 使用 calamine（Rust + PyO3）提取所有工作表单元格文本，相比
 openpyxl 的纯 Python 逐单元格遍历有 5-10 倍提速，且 Rust 侧执行期间释放
-GIL，避免阻塞 Qt 主线程。ODS 因 calamine 0.3.1 对 odfpy 生成的标准 ODS
+GIL，避免阻塞 Qt 主线程。ODS 因 calamine 0.3.x 对 odfpy 生成的标准 ODS
 解析不完整（0.4+ 已修复但要求 Python 3.9+），暂保留 odfpy 实现。
 """
 
@@ -32,7 +32,7 @@ def _extract_calamine_workbook(
 ) -> str:
     """使用 calamine (Rust + PyO3) 提取工作簿所有工作表文本。
 
-    支持 XLSX/XLSM/XLSB/XLS 等 Excel 格式（calamine 0.3.1 对 ODS 解析不
+    支持 XLSX/XLSM/XLSB/XLS 等 Excel 格式（calamine 0.3.x 对 ODS 解析不
     完整，OdsExtractor 仍走 odfpy 后端）。calamine 在 Rust 侧完成全部解析
     与单元格遍历，PyO3 边界仅一次性返回二维列表，避免 Python 层逐单元格
     调用带来的 GIL 长期占用。
@@ -59,7 +59,7 @@ def _extract_calamine_workbook(
     parts: list[str] = []
     for sheet_idx, sheet_name in enumerate(workbook.sheet_names):
         sheet = workbook.get_sheet_by_index(sheet_idx)
-        # calamine 0.3.1 的 iter_rows() 在空 sheet 上会 panic，改用 to_python()
+        # calamine 0.3.x 的 iter_rows() 在空 sheet 上会 panic，改用 to_python()
         rows = sheet.to_python()
         sheet_texts: list[str] = []
         for row_count, row in enumerate(rows, 1):
@@ -135,7 +135,7 @@ class XlsxExtractor(Extractor):
 class OdsExtractor(Extractor):
     """ODS 电子表格文本提取器（OpenDocument Spreadsheet）。
 
-    使用 odfpy 解析 ODS 表格。calamine 0.3.1 对 odfpy 生成的标准 ODS 单元格
+    使用 odfpy 解析 ODS 表格。calamine 0.3.x 对 odfpy 生成的标准 ODS 单元格
     解析不完整（0.4+ 已修复但要求 Python 3.9+，fuscan 仍支持 Python 3.8），
     故 ODS 暂保留 odfpy 实现，speed_tier 维持 T4 慢速。
     """
