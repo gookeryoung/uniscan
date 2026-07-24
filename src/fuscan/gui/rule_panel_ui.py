@@ -14,14 +14,14 @@ from PySide2.QtWidgets import *
 
 import resources_rc
 
-class Ui_Form(object):
-    def setupUi(self, Form):
-        if not Form.objectName():
-            Form.setObjectName(u"Form")
-        Form.resize(722, 458)
-        self.horizontalLayout = QHBoxLayout(Form)
+class Ui_rule_panel(object):
+    def setupUi(self, rule_panel):
+        if not rule_panel.objectName():
+            rule_panel.setObjectName(u"rule_panel")
+        rule_panel.resize(722, 458)
+        self.horizontalLayout = QHBoxLayout(rule_panel)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
-        self.rules_group = QGroupBox(Form)
+        self.rules_group = QGroupBox(rule_panel)
         self.rules_group.setObjectName(u"rules_group")
         self.rules_group_layout = QVBoxLayout(self.rules_group)
         self.rules_group_layout.setSpacing(6)
@@ -76,26 +76,26 @@ class Ui_Form(object):
         self.horizontalLayout.addWidget(self.rules_group)
 
 
-        self.retranslateUi(Form)
+        self.retranslateUi(rule_panel)
 
-        QMetaObject.connectSlotsByName(Form)
+        QMetaObject.connectSlotsByName(rule_panel)
     # setupUi
 
-    def retranslateUi(self, Form):
-        Form.setWindowTitle(QCoreApplication.translate("Form", u"Form", None))
-        self.rules_group.setTitle(QCoreApplication.translate("Form", u"\u89c4\u5219\u914d\u7f6e", None))
-        self.load_rules_btn.setText(QCoreApplication.translate("Form", u"\u52a0\u8f7d\u89c4\u5219...", None))
+    def retranslateUi(self, rule_panel):
+        rule_panel.setWindowTitle(QCoreApplication.translate("rule_panel", u"Form", None))
+        self.rules_group.setTitle(QCoreApplication.translate("rule_panel", u"\u89c4\u5219\u914d\u7f6e", None))
+        self.load_rules_btn.setText(QCoreApplication.translate("rule_panel", u"\u52a0\u8f7d\u89c4\u5219...", None))
 #if QT_CONFIG(tooltip)
-        self.edit_rule_btn.setToolTip(QCoreApplication.translate("Form", u"\u7f16\u8f91\u9009\u4e2d\u7684\u89c4\u5219\u6587\u4ef6", None))
+        self.edit_rule_btn.setToolTip(QCoreApplication.translate("rule_panel", u"\u7f16\u8f91\u9009\u4e2d\u7684\u89c4\u5219\u6587\u4ef6", None))
 #endif // QT_CONFIG(tooltip)
-        self.edit_rule_btn.setText(QCoreApplication.translate("Form", u"\u7f16\u8f91", None))
-        self.rules_file_label.setText(QCoreApplication.translate("Form", u"\u89c4\u5219\u6587\u4ef6\uff08\u987a\u5e8f\u4ece\u4e0a\u5230\u4e0b\uff0c\u540e\u8005\u8986\u76d6\u524d\u8005\uff09", None))
+        self.edit_rule_btn.setText(QCoreApplication.translate("rule_panel", u"\u7f16\u8f91", None))
+        self.rules_file_label.setText(QCoreApplication.translate("rule_panel", u"\u89c4\u5219\u6587\u4ef6\uff08\u987a\u5e8f\u4ece\u4e0a\u5230\u4e0b\uff0c\u540e\u8005\u8986\u76d6\u524d\u8005\uff09", None))
 #if QT_CONFIG(tooltip)
-        self.rules_file_list.setToolTip(QCoreApplication.translate("Form", u"\u5df2\u52a0\u8f7d\u7684\u89c4\u5219\u6587\u4ef6\uff0c\u5217\u8868\u987a\u5e8f\u4ee3\u8868\u4f18\u5148\u7ea7\uff08\u4ece\u4f4e\u5230\u9ad8\uff09", None))
+        self.rules_file_list.setToolTip(QCoreApplication.translate("rule_panel", u"\u5df2\u52a0\u8f7d\u7684\u89c4\u5219\u6587\u4ef6\uff0c\u5217\u8868\u987a\u5e8f\u4ee3\u8868\u4f18\u5148\u7ea7\uff08\u4ece\u4f4e\u5230\u9ad8\uff09", None))
 #endif // QT_CONFIG(tooltip)
         ___qtreewidgetitem = self.rules_tree.headerItem()
-        ___qtreewidgetitem.setText(2, QCoreApplication.translate("Form", u"\u6269\u5c55\u540d", None));
-        ___qtreewidgetitem.setText(1, QCoreApplication.translate("Form", u"\u4e25\u91cd\u7b49\u7ea7", None));
-        ___qtreewidgetitem.setText(0, QCoreApplication.translate("Form", u"\u89c4\u5219\u540d", None));
+        ___qtreewidgetitem.setText(2, QCoreApplication.translate("rule_panel", u"\u6269\u5c55\u540d", None));
+        ___qtreewidgetitem.setText(1, QCoreApplication.translate("rule_panel", u"\u4e25\u91cd\u7b49\u7ea7", None));
+        ___qtreewidgetitem.setText(0, QCoreApplication.translate("rule_panel", u"\u89c4\u5219\u540d", None));
     # retranslateUi
 

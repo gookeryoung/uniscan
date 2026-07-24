@@ -13,14 +13,14 @@ from PySide2.QtGui import *
 from PySide2.QtWidgets import *
 
 
-class Ui_Form(object):
-    def setupUi(self, Form):
-        if not Form.objectName():
-            Form.setObjectName(u"Form")
-        Form.resize(781, 112)
-        self.horizontalLayout = QHBoxLayout(Form)
+class Ui_scan_target(object):
+    def setupUi(self, scan_target):
+        if not scan_target.objectName():
+            scan_target.setObjectName(u"scan_target")
+        scan_target.resize(781, 112)
+        self.horizontalLayout = QHBoxLayout(scan_target)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
-        self.target_group = QGroupBox(Form)
+        self.target_group = QGroupBox(scan_target)
         self.target_group.setObjectName(u"target_group")
         self.target_group_layout = QVBoxLayout(self.target_group)
         self.target_group_layout.setSpacing(8)
@@ -99,28 +99,28 @@ class Ui_Form(object):
         self.horizontalLayout.addWidget(self.target_group)
 
 
-        self.retranslateUi(Form)
+        self.retranslateUi(scan_target)
 
         self.target_stack.setCurrentIndex(2)
 
 
-        QMetaObject.connectSlotsByName(Form)
+        QMetaObject.connectSlotsByName(scan_target)
     # setupUi
 
-    def retranslateUi(self, Form):
-        Form.setWindowTitle(QCoreApplication.translate("Form", u"Form", None))
-        self.target_group.setTitle(QCoreApplication.translate("Form", u"\u626b\u63cf\u76ee\u6807", None))
-        self.scan_mode_combo.setItemText(0, QCoreApplication.translate("Form", u"\u5168\u76d8\u626b\u63cf", None))
-        self.scan_mode_combo.setItemText(1, QCoreApplication.translate("Form", u"\u9009\u62e9\u76d8\u7b26", None))
-        self.scan_mode_combo.setItemText(2, QCoreApplication.translate("Form", u"\u9009\u62e9\u6587\u4ef6\u5939", None))
+    def retranslateUi(self, scan_target):
+        scan_target.setWindowTitle(QCoreApplication.translate("scan_target", u"Form", None))
+        self.target_group.setTitle(QCoreApplication.translate("scan_target", u"\u626b\u63cf\u76ee\u6807", None))
+        self.scan_mode_combo.setItemText(0, QCoreApplication.translate("scan_target", u"\u5168\u76d8\u626b\u63cf", None))
+        self.scan_mode_combo.setItemText(1, QCoreApplication.translate("scan_target", u"\u9009\u62e9\u76d8\u7b26", None))
+        self.scan_mode_combo.setItemText(2, QCoreApplication.translate("scan_target", u"\u9009\u62e9\u6587\u4ef6\u5939", None))
 
 #if QT_CONFIG(tooltip)
-        self.scan_mode_combo.setToolTip(QCoreApplication.translate("Form", u"\u9009\u62e9\u626b\u63cf\u6a21\u5f0f", None))
+        self.scan_mode_combo.setToolTip(QCoreApplication.translate("scan_target", u"\u9009\u62e9\u626b\u63cf\u6a21\u5f0f", None))
 #endif // QT_CONFIG(tooltip)
-        self.full_scan_label.setText(QCoreApplication.translate("Form", u"\u5c06\u626b\u63cf\u6240\u6709\u76d8\u7b26", None))
+        self.full_scan_label.setText(QCoreApplication.translate("scan_target", u"\u5c06\u626b\u63cf\u6240\u6709\u76d8\u7b26", None))
 #if QT_CONFIG(tooltip)
-        self.path_combo.setToolTip(QCoreApplication.translate("Form", u"\u626b\u63cf\u8def\u5f84\uff08\u53ef\u4ece\u5386\u53f2\u8bb0\u5f55\u4e2d\u9009\u62e9\uff09", None))
+        self.path_combo.setToolTip(QCoreApplication.translate("scan_target", u"\u626b\u63cf\u8def\u5f84\uff08\u53ef\u4ece\u5386\u53f2\u8bb0\u5f55\u4e2d\u9009\u62e9\uff09", None))
 #endif // QT_CONFIG(tooltip)
-        self.select_path_btn.setText(QCoreApplication.translate("Form", u"\u9009\u62e9...", None))
+        self.select_path_btn.setText(QCoreApplication.translate("scan_target", u"\u9009\u62e9...", None))
     # retranslateUi
 
