@@ -28,7 +28,10 @@ dependencies = [
     "striprtf>=0.0.26",
     "olefile>=0.46",
     "extract-msg>=0.48.0,<0.56",
-    "py7zr>=0.20.0",
+    # py7zr 1.x 移除了 readall()/read() API（改用 extract 写入磁盘）且要求 Python>=3.10，
+    # 与 fuscan 的 requires-python>=3.8 冲突；SevenZReader 依赖 readall() 一次性预读字节到内存缓存，
+    # 故锁定 0.x 直到迁移到 extract+临时目录方案。
+    "py7zr>=0.20.0,<1.0.0",
     "reportlab>=3.6.13,<4.0; python_version < '3.9'",
     "reportlab>=4.0.0; python_version >= '3.9'",
     "pyzstd==0.15.0",
