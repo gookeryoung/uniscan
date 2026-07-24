@@ -1,12 +1,17 @@
-"""扫描目标面板控制器。
+"""扫描目标面板。
 
-封装 ``target_group`` 中 ``path_combo`` 与 ``select_path_btn`` 的信号交互，
-将 path_combo 切换逻辑内聚到面板内部，``select_path_btn`` 点击通过信号
-通知主窗口弹出 ``QFileDialog``（iter-93）。
+加载 ``scan_target.ui`` 生成 ``target_group`` 的全部子控件（scan_mode_combo /
+target_stack / path_combo / select_path_btn 等），并封装 ``path_combo`` 切换
+与 ``select_path_btn`` 点击的信号交互（iter-94）。
+
+主窗口将本面板实例放入 ``scan_target_container`` 容器，通过公共属性访问子控件
+（``scan_mode_combo`` / ``target_stack`` / ``drive_buttons_layout`` /
+``path_combo`` / ``select_path_btn``）传给 :class:`ScanModePanel` 与
+:class:`ScanPathHistory`，再调 :meth:`bind` 连接信号。主窗口通过
+``select_path_requested`` 信号感知用户点击「选择...」按钮。
 
 ``ScanModePanel`` 仍独立管理模式 combo / 盘符按钮组 / folder 路径状态，
-本面板仅接管 path_combo / select_path_btn 的信号连接，避免主窗口散落地
-直接操作 ``target_group`` 内的底层控件。
+本面板仅接管 path_combo / select_path_btn 的信号连接。
 """
 
 from __future__ import annotations
@@ -16,11 +21,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 try:
-    from PySide2.QtCore import QObject, Signal
-    from PySide2.QtWidgets import QComboBox, QPushButton
+    from PySide2.QtCore import Signal
+    from PySide2.QtWidgets import QWidget
 except ImportError:  # pragma: no cover
-    from PySide6.QtCore import QObject, Signal  # pyrefly: ignore [missing-import]
-    from PySide6.QtWidgets import QComboBox, QPushButton  # pyrefly: ignore [missing-import]
+    from PySide6.QtCore import Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtWidgets import QWidget  # pyrefly: ignore [missing-import]
+
+from fuscan.gui.scan_target_ui import Ui_scan_target
 
 if TYPE_CHECKING:
     from fuscan.gui.scan_mode_panel import ScanModePanel
@@ -30,44 +37,46 @@ __all__ = ["ScanTargetPanel"]
 logger = logging.getLogger(__name__)
 
 
-class ScanTargetPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
-    """扫描目标面板控制器：封装 path_combo / select_path_btn 的信号交互。
+class ScanTargetPanel(QWidget, Ui_scan_target):  # pyrefly: ignore [invalid-inheritance]
+    """扫描目标面板：加载 ``scan_target.ui`` 并封装 path_combo / select_path_btn 信号交互。
 
-    职责内聚：
+    使用方式：
 
-    - 连接 ``path_combo.currentIndexChanged`` → 内部处理 path → ``ScanModePanel.set_folder_root``
-    - 连接 ``select_path_btn.clicked`` → 发 ``select_path_requested`` 信号给主窗口
+    1. 主窗口创建本面板实例（构造时调 ``setupUi`` 生成全部子控件）
+    2. 通过公共属性 ``scan_mode_combo`` / ``target_stack`` /
+       ``drive_buttons_layout`` / ``path_combo`` / ``select_path_btn``
+       将控件引用传给 :class:`ScanModePanel` 与 :class:`ScanPathHistory`
+    3. 调 :meth:`bind` 绑定 :class:`ScanModePanel` 并连接信号
+    4. 连接 ``select_path_requested`` 信号到主窗口槽
 
-    主窗口通过 ``select_path_requested`` 信号感知用户点击「选择...」按钮，
-    弹出 ``QFileDialog`` 选择目录后回写 ``ScanModePanel.set_folder_root`` 与
-    ``ScanPathHistory.add``。path_combo 切换由本面板内部处理，主窗口不再
-    直接连接 ``path_combo.currentIndexChanged``。
-
-    :param scan_mode_panel: 扫描模式面板控制器（提供 ``set_folder_root`` 等 API）
-    :param path_combo: 扫描路径下拉选择控件
-    :param select_path_btn: 「选择...」按钮
-    :param parent: 父 QObject
+    :param parent: 父 QWidget
     """
 
     # 用户点击「选择...」按钮（主窗口弹出 QFileDialog 选择目录）
     select_path_requested = Signal()
 
-    def __init__(
-        self,
-        scan_mode_panel: ScanModePanel,
-        path_combo: QComboBox,
-        select_path_btn: QPushButton,
-        parent: QObject | None = None,
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._scan_mode_panel = scan_mode_panel
-        self._path_combo = path_combo
+        self.setupUi(self)
+        self._scan_mode_panel: ScanModePanel | None = None
+        # target_group_layout 只有一项（scan_mode_layout），不伸展
+        # 布局设置内聚到面板中，主窗口不再操作 target_group_layout
+        self.target_group_layout.setStretch(0, 0)
 
+    def bind(self, scan_mode_panel: ScanModePanel) -> None:
+        """绑定 :class:`ScanModePanel` 并连接 path_combo / select_path_btn 信号。
+
+        必须在 :class:`ScanModePanel` 创建后调用——path_combo 切换时需要调用
+        ``scan_mode_panel.set_folder_root`` 更新 folder 路径状态。
+
+        :param scan_mode_panel: 扫描模式面板控制器
+        """
+        self._scan_mode_panel = scan_mode_panel
         # path_combo 切换：内部处理 path → set_folder_root
         # set_folder_root 内部 emit mode_changed，触发主窗口 _update_scan_button
-        path_combo.currentIndexChanged.connect(self._on_path_selected)
+        self.path_combo.currentIndexChanged.connect(self._on_path_selected)
         # select_path_btn 点击：发信号给主窗口（QFileDialog 交互由主窗口处理）
-        select_path_btn.clicked.connect(self.select_path_requested)
+        self.select_path_btn.clicked.connect(self.select_path_requested)
 
     def _on_path_selected(self, index: int) -> None:
         """path_combo 切换：更新 folder 路径状态。
@@ -79,10 +88,11 @@ class ScanTargetPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
 
         :param index: path_combo 当前项索引（-1 表示无选中项）
         """
+        assert self._scan_mode_panel is not None
         if index < 0:
             self._scan_mode_panel.set_folder_root(None)
             return
-        path_str = self._path_combo.itemText(index)
+        path_str = self.path_combo.itemText(index)
         if not path_str:
             self._scan_mode_panel.set_folder_root(None)
             return

@@ -882,9 +882,9 @@ class TestConfigPersistence:
         _save_impl(config, tmp_path / "config.yaml")
 
         window = MainWindow()
-        assert window.path_combo.count() == 2
-        assert window.path_combo.itemText(0) == str(tmp_path / "dir_a")
-        assert window.path_combo.itemText(1) == str(tmp_path / "dir_b")
+        assert window._scan_target_panel.path_combo.count() == 2
+        assert window._scan_target_panel.path_combo.itemText(0) == str(tmp_path / "dir_a")
+        assert window._scan_target_panel.path_combo.itemText(1) == str(tmp_path / "dir_b")
         window.close()
 
     def test_close_event_saves_config(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -931,8 +931,8 @@ class TestConfigPersistence:
         """从下拉选择路径应设置 scan_root。"""
         (tmp_path / "target").mkdir()
         window = MainWindow()
-        window.path_combo.addItem(str(tmp_path / "target"))  # pyrefly: ignore [missing-argument]
-        window.path_combo.setCurrentIndex(0)
+        window._scan_target_panel.path_combo.addItem(str(tmp_path / "target"))  # pyrefly: ignore [missing-argument]
+        window._scan_target_panel.path_combo.setCurrentIndex(0)
         assert window._scan_mode_panel.folder_root == tmp_path / "target"
         window.close()
 
@@ -942,7 +942,7 @@ class TestConfigPersistence:
         window = MainWindow()
         window._add_scan_path_history(path_str)
         window._add_scan_path_history(path_str)
-        assert window.path_combo.count() == 1
+        assert window._scan_target_panel.path_combo.count() == 1
         window.close()
 
     def test_path_history_limit(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -952,9 +952,9 @@ class TestConfigPersistence:
         window = MainWindow()
         for i in range(MAX_HISTORY + 5):
             window._add_scan_path_history(f"/path/{i}")
-        assert window.path_combo.count() == MAX_HISTORY
+        assert window._scan_target_panel.path_combo.count() == MAX_HISTORY
         # 最近添加的应在最前
-        assert window.path_combo.itemText(0) == f"/path/{MAX_HISTORY + 4}"
+        assert window._scan_target_panel.path_combo.itemText(0) == f"/path/{MAX_HISTORY + 4}"
         window.close()
 
     def test_window_geometry_restored(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3239,7 +3239,7 @@ class TestScanMode:
         """启动时默认扫描模式为 folder。"""
         window = MainWindow()
         assert window._scan_mode_panel._scan_mode == "folder"
-        assert window.scan_mode_combo.currentIndex() == 2
+        assert window._scan_target_panel.scan_mode_combo.currentIndex() == 2
         window.close()
 
     def test_folder_mode_shows_path_row(self, qapp: QApplication) -> None:
@@ -3247,8 +3247,8 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        assert window.target_stack.currentIndex() == 2
-        assert window.path_combo.isVisible()
+        assert window._scan_target_panel.target_stack.currentIndex() == 2
+        assert window._scan_target_panel.path_combo.isVisible()
         window.close()
 
     def test_full_mode_hides_target_selectors(self, qapp: QApplication) -> None:
@@ -3256,9 +3256,9 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window.scan_mode_combo.setCurrentIndex(0)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(0)
         assert window._scan_mode_panel._scan_mode == "full"
-        assert window.target_stack.currentIndex() == 0
+        assert window._scan_target_panel.target_stack.currentIndex() == 0
         window.close()
 
     def test_drive_mode_shows_drive_buttons(self, qapp: QApplication) -> None:
@@ -3266,9 +3266,9 @@ class TestScanMode:
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        window.scan_mode_combo.setCurrentIndex(1)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(1)
         assert window._scan_mode_panel._scan_mode == "drive"
-        assert window.target_stack.currentIndex() == 1
+        assert window._scan_target_panel.target_stack.currentIndex() == 1
         window.close()
 
     def test_full_mode_enables_scan_without_path(self, qapp: QApplication) -> None:
@@ -3278,14 +3278,14 @@ class TestScanMode:
         # folder 模式下未选路径，按钮禁用
         assert not window.scan_btn.isEnabled()
         # 切换到 full 模式
-        window.scan_mode_combo.setCurrentIndex(0)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(0)
         assert window.scan_btn.isEnabled()
         window.close()
 
     def test_drive_mode_enables_scan_with_drive(self, qapp: QApplication) -> None:
         """drive 模式下选中盘符即可扫描。"""
         window = MainWindow()
-        window.scan_mode_combo.setCurrentIndex(1)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(1)
         # 盘符按钮在测试环境（Windows）通常有盘符
         if len(window._scan_mode_panel._drive_buttons) > 0:
             window._scan_mode_panel._drive_buttons[0].setChecked(True)
@@ -3301,7 +3301,7 @@ class TestScanMode:
         monkeypatch.setattr(smp_mod, "list_drives", lambda include_network=False: fake_drives)
 
         window = MainWindow()
-        window.scan_mode_combo.setCurrentIndex(0)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(0)
         roots = window._scan_mode_panel.build_scan_roots()
         assert roots == fake_drives
         window.close()
@@ -3309,7 +3309,7 @@ class TestScanMode:
     def test_build_scan_roots_drive_mode(self, qapp: QApplication) -> None:
         """drive 模式应返回选中的单个盘符。"""
         window = MainWindow()
-        window.scan_mode_combo.setCurrentIndex(1)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(1)
         if len(window._scan_mode_panel._drive_buttons) > 0:
             window._scan_mode_panel._drive_buttons[0].setChecked(True)
             window._scan_mode_panel._on_drive_selected(window._scan_mode_panel._drive_buttons[0])
@@ -3347,7 +3347,7 @@ class TestScanModePersistence:
 
         window = MainWindow()
         assert window._scan_mode_panel._scan_mode == "full"
-        assert window.scan_mode_combo.currentIndex() == 0
+        assert window._scan_target_panel.scan_mode_combo.currentIndex() == 0
         window.close()
 
     def test_drive_mode_restored_on_startup(self, qapp: QApplication, tmp_path: Path) -> None:
@@ -3360,13 +3360,13 @@ class TestScanModePersistence:
 
         window = MainWindow()
         assert window._scan_mode_panel._scan_mode == "drive"
-        assert window.scan_mode_combo.currentIndex() == 1
+        assert window._scan_target_panel.scan_mode_combo.currentIndex() == 1
         window.close()
 
     def test_close_saves_scan_mode(self, qapp: QApplication, tmp_path: Path) -> None:
         """关闭时扫描模式应被保存。"""
         window = MainWindow()
-        window.scan_mode_combo.setCurrentIndex(0)
+        window._scan_target_panel.scan_mode_combo.setCurrentIndex(0)
         window.close()
 
         from fuscan.config import load_config as _load_impl
@@ -8246,7 +8246,7 @@ class TestOnPathSelectedEdgeCases:
         """index >= 0 但路径文本为空：清空 folder_root。"""
         window = MainWindow()
         # path_combo 是空的，itemText(0) 返回空字符串
-        window.path_combo.clear()
+        window._scan_target_panel.path_combo.clear()
         window._scan_target_panel._on_path_selected(0)
         assert window._scan_mode_panel.folder_root is None
         window.close()

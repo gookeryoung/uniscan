@@ -4,60 +4,70 @@
 
 - [x] 为 `scan_target.ui` 设计对应的 `scan_target.py` 控制器
 - [x] 采取信号槽与 main_window 交互，提高内聚性
+- [x] `main_window.ui` 中的 `target_group` 替换为 `scan_target.ui` 加载的 `ScanTargetPanel`
 
 ## 迭代目标
 
-将 `target_group` 中 `path_combo` 与 `select_path_btn` 的信号交互从主窗口抽离到独立的 `ScanTargetPanel` 控制器，通过信号槽与主窗口通信，减少主窗口散落的信号连接。
+将 `target_group` 从 `main_window.ui` 中移除，改为通过 `ScanTargetPanel`（继承 QWidget + `Ui_scan_target`）加载 `scan_target.ui` 生成全部子控件，放入 `main_window.ui` 中的 `scan_target_container` 容器。`ScanTargetPanel` 通过信号槽与主窗口交互，`target_group` 的布局设置与信号连接内聚到面板内部。
 
 ## 改动文件清单
 
 | 文件 | 变更类型 | 说明 |
 |------|---------|------|
-| `src/fuscan/gui/scan_target.py` | 新增 | `ScanTargetPanel` 控制器：接管 path_combo 切换与 select_path_btn 点击信号 |
-| `src/fuscan/gui/main_window.py` | 修改 | 集成 `ScanTargetPanel`；移除 `_on_path_selected`（逻辑移入面板）；`_on_select_path` 改由 `select_path_requested` 信号触发；`_connect_signals` 移除 path_combo/select_path_btn 直接连接 |
-| `tests/test_gui.py` | 修改 | `TestOnPathSelectedEdgeCases` 调用路径从 `window._on_path_selected` 改为 `window._scan_target_panel._on_path_selected` |
+| `src/fuscan/gui/scan_target.py` | 重写 | `ScanTargetPanel` 继承 QWidget + `Ui_scan_target`，构造时调 `setupUi(self)` 加载 `scan_target.ui`；`bind(scan_mode_panel)` 连接信号 |
+| `src/fuscan/gui/main_window.ui` | 修改 | `target_group` QGroupBox 替换为空 QWidget `scan_target_container`（含 QHBoxLayout） |
+| `src/fuscan/gui/main_window_ui.py` | 重新生成 | `pyside2-uic` 编译，不再含 `target_group` / `scan_mode_combo` / `path_combo` 等控件 |
+| `src/fuscan/gui/main_window.py` | 修改 | `__init__` 中创建 `ScanTargetPanel` 并放入容器；`ScanPathHistory` 引用改为 `self._scan_target_panel.path_combo`；`_setup_scan_mode_panel` 控件引用改为 `self._scan_target_panel.xxx`；移除 `_setup_layouts` 中 `target_group_layout.setStretch`（已内聚到面板） |
+| `tests/test_gui.py` | 修改 | `window.path_combo` / `window.scan_mode_combo` / `window.target_stack` 等改为 `window._scan_target_panel.xxx` |
 
 ## 关键决策与依据
 
-### 1. ScanTargetPanel 与 ScanModePanel 分工
+### 1. ScanTargetPanel 继承 QWidget + Ui_scan_target
 
-`ScanModePanel` 仍独立管理模式 combo / 盘符按钮组 / folder 路径状态（含 `apply_config` / `save_config` / `can_start_scan` / `build_scan_roots` 等公共 API）。`ScanTargetPanel` 仅接管 `path_combo.currentIndexChanged` 与 `select_path_btn.clicked` 的信号连接，不重复 `ScanModePanel` 的状态管理。依据：`ScanModePanel` 已有完整测试覆盖，拆分两个面板避免破坏现有测试（46 处 `window._scan_mode_panel` 引用无需改动）。
+`ScanTargetPanel` 继承 QWidget + `Ui_scan_target`（由 `scan_target.ui` 编译生成），构造时调 `self.setupUi(self)` 生成全部子控件。主窗口在 `__init__` 中创建面板实例并放入 `scan_target_container_layout`。依据：这是 PySide2 UI 组件复用的标准模式（与 `QMainWindow, Ui_MainWindow` 一致），`.ui` 文件作为 UI 源被真正加载，不再在 `main_window.ui` 中重复定义。
 
-### 2. path_combo 切换内聚到面板内部
+### 2. bind 延迟连接信号
 
-`_on_path_selected` 逻辑（path_combo 切换 → set_folder_root）移入 `ScanTargetPanel._on_path_selected`，主窗口不再直接连接 `path_combo.currentIndexChanged`。`set_folder_root` 内部 emit `mode_changed`，触发主窗口 `_update_scan_button`，信号链路无需经过 `ScanTargetPanel` 转发。
+`ScanTargetPanel.__init__` 只调 `setupUi`，不连接信号——因为 path_combo 切换需要 `ScanModePanel.set_folder_root`，而 `ScanModePanel` 创建需要 `ScanTargetPanel` 的控件引用（`scan_mode_combo` / `target_stack` / `drive_buttons_layout`）。创建顺序：`ScanTargetPanel` → `ScanModePanel`（接收控件引用）→ `ScanTargetPanel.bind(scan_mode_panel)` 连接信号。
 
-### 3. select_path_btn 通过信号通知主窗口
+### 3. target_group_layout 布局内聚
 
-`select_path_btn.clicked` 由 `ScanTargetPanel` 内部连接，发 `select_path_requested` 信号给主窗口。主窗口收到后弹出 `QFileDialog` 选择目录，回写 `set_folder_root` 与 `ScanPathHistory.add`。QFileDialog 交互保留在主窗口（依赖 `folder_root` 作为起始目录与 `_add_scan_path_history` 持久化）。
+`target_group_layout.setStretch(0, 0)` 从主窗口 `_setup_layouts` 移入 `ScanTargetPanel.__init__`，布局设置与 UI 定义内聚到同一面板，主窗口不再操作 `target_group_layout`。
+
+### 4. ScanModePanel 与 ScanTargetPanel 分工不变
+
+`ScanModePanel` 仍独立管理模式 combo / 盘符按钮组 / folder 路径状态（46 处 `window._scan_mode_panel` 测试引用无需改动）。`ScanTargetPanel` 负责 UI 加载 + path_combo / select_path_btn 信号连接。
 
 ## 代码实现情况
 
 ### ScanTargetPanel (`src/fuscan/gui/scan_target.py`)
 
-- 信号：`select_path_requested`（select_path_btn 点击）
+- 继承 QWidget + `Ui_scan_target`，构造时调 `setupUi(self)` 生成 `target_group` 全部子控件
+- `target_group_layout.setStretch(0, 0)` 在构造时设置（内聚布局）
+- `bind(scan_mode_panel)`：连接 `path_combo.currentIndexChanged` → `_on_path_selected`；`select_path_btn.clicked` → `select_path_requested` 信号
+- 信号：`select_path_requested`（主窗口弹出 QFileDialog）
 - 内部槽：`_on_path_selected(index)`（path_combo 切换 → set_folder_root）
-- 构造函数接收 `ScanModePanel` 引用 + `path_combo` + `select_path_btn`
 
 ### 主窗口集成
 
-- `_setup_scan_mode_panel` 中创建 `ScanTargetPanel`（`self._scan_target_panel`）
-- `_connect_signals` 中 `select_path_requested` → `_on_select_path`
-- 移除 `_on_path_selected` 方法
-- `_on_select_path` docstring 更新为响应 `select_path_requested` 信号
+- `__init__`：创建 `ScanTargetPanel` 并 `scan_target_container_layout.addWidget`
+- `ScanPathHistory` 引用 `self._scan_target_panel.path_combo`
+- `_setup_scan_mode_panel`：控件引用从 `self.scan_mode_combo` 改为 `self._scan_target_panel.scan_mode_combo`；调 `bind` 连接信号
+- `_setup_layouts`：移除 `target_group_layout.setStretch`
+- `_apply_config`：`path_combo` 引用改为 `self._scan_target_panel.path_combo`
 
 ## 测试验证结果
 
 ```
 uv run ruff check src tests          # All checks passed
-uv run ruff format --check src tests # 106 files already formatted
+uv run ruff format --check src tests # All files already formatted
 uv run pyrefly check                 # 0 errors
 uv run pytest -m "not slow" --cov=fuscan --cov-fail-under=95
 # 1685 passed, 43 deselected
-# Required test coverage of 95% reached. Total coverage: 95.05%
+# Required test coverage of 95% reached. Total coverage: 95.89%
 ```
 
-`scan_target.py` 覆盖率 100%（27 stmts / 4 branches，0 miss / 0 brpart）。
+覆盖率从 95.05% 提升至 95.89%（`main_window_ui.py` 不再含 `target_group` 重复定义，未覆盖语句数减少）。
 
 ## 遗留事项
 

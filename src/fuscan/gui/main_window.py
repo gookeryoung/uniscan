@@ -151,6 +151,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             with PerfTimer("MainWindow.setupUi"):
                 self.setupUi(self)
 
+            # scan_target.ui 的控件（scan_mode_combo / path_combo 等）由
+            # ScanTargetPanel 加载，放入 main_window.ui 中的 scan_target_container
+            self._scan_target_panel: ScanTargetPanel = ScanTargetPanel(parent=self)
+            self.scan_target_container_layout.addWidget(self._scan_target_panel)  # pyrefly: ignore [missing-argument]
+
             self._about_dialog = AboutDialog(self)
             self._config: Config = load_config()
             self._ruleset: RuleSet | None = None
@@ -160,7 +165,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._scan_state: ScanState = ScanState.IDLE
             self._cancelling: bool = False
             self._detail_panel: DetailPanel = self._create_detail_panel()
-            self._path_history: ScanPathHistory = ScanPathHistory(self.path_combo, self.history_list)
+            self._path_history: ScanPathHistory = ScanPathHistory(self._scan_target_panel.path_combo, self.history_list)
             # 扫描结果缓存（启用时惰性创建，关闭窗口时释放）
             self._cache: CacheStore | None = None
             self._skip_store: SkipStore = SkipStore()
@@ -274,12 +279,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _setup_layouts(self) -> None:
         """设置各 layout 伸缩因子（.ui 不支持 stretch vector）。"""
-        # 配置页：target_group 自然尺寸 + config_splitter 伸展填充 + setup_action_bar 固定底部
+        # 配置页：scan_target_container 自然尺寸 + config_splitter 伸展填充 + setup_action_bar 固定底部
+        # target_group_layout 的 stretch 已内聚到 ScanTargetPanel.__init__
         self.setup_layout.setStretch(0, 0)
         self.setup_layout.setStretch(1, 1)
         self.setup_layout.setStretch(2, 0)
-        # target_group 内：scan_mode_layout（history 已移至 history_tab）
-        self.target_group_layout.setStretch(0, 0)
         # rules_group 内：rules_btn_row / rules_file_label / rules_file_list / rules_tree
         self.rules_group_layout.setStretch(0, 0)
         self.rules_group_layout.setStretch(1, 0)
@@ -370,31 +374,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.sidebar.blockSignals(False)
 
     def _setup_scan_mode_panel(self) -> None:
-        """构造扫描目标面板控制器（模式 combo + 盘符按钮组 + folder 路径 + path_combo）。
+        """构造扫描模式面板控制器并绑定 ScanTargetPanel 信号。
 
         委托 :class:`ScanModePanel` 封装 ``scan_mode_combo`` 切换、盘符按钮组
-        创建/刷新/选择、folder 路径状态管理（iter-79 续内聚重构）；
-        :class:`ScanTargetPanel` 封装 ``path_combo`` 切换与 ``select_path_btn``
-        信号交互（iter-93），将 path_combo 切换逻辑内聚到面板内部，
-        ``select_path_btn`` 点击通过 ``select_path_requested`` 信号通知主窗口。
+        创建/刷新/选择、folder 路径状态管理（iter-79 续内聚重构）。
+        :class:`ScanTargetPanel` 在 ``__init__`` 中已创建并加载 ``scan_target.ui``，
+        本方法创建 :class:`ScanModePanel` 后调 :meth:`ScanTargetPanel.bind`
+        连接 path_combo / select_path_btn 信号（iter-94）。
         主窗口通过公共 API（``apply_config`` / ``save_config`` /
         ``can_start_scan`` / ``build_scan_roots`` / ``set_folder_root`` 等）驱动，
         不直接操作底层控件。``mode_changed`` 信号触发 ``_update_scan_button``。
         """
         self._scan_mode_panel = ScanModePanel(
-            combo=self.scan_mode_combo,
-            target_stack=self.target_stack,
-            drive_buttons_layout=self.drive_buttons_layout,
+            combo=self._scan_target_panel.scan_mode_combo,
+            target_stack=self._scan_target_panel.target_stack,
+            drive_buttons_layout=self._scan_target_panel.drive_buttons_layout,
             hard_disk_icon=QIcon(":/assets/icons/hard_disk.svg"),
             config=self._config,
             parent=self,
         )
-        self._scan_target_panel = ScanTargetPanel(
-            scan_mode_panel=self._scan_mode_panel,
-            path_combo=self.path_combo,
-            select_path_btn=self.select_path_btn,
-            parent=self,
-        )
+        self._scan_target_panel.bind(self._scan_mode_panel)
 
     def _setup_export_controller(self) -> None:
         """构造扫描结果导出控制器（格式选择 + 文件保存 + 后台导出）。
@@ -691,8 +690,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._path_history.load_from_config(self._config.scan_paths)
 
         # 恢复首个有效路径作为 folder 模式根路径（委托 ScanModePanel.set_folder_root）
-        if self.path_combo.count() > 0:
-            first_path = Path(self.path_combo.itemText(0))
+        path_combo = self._scan_target_panel.path_combo
+        if path_combo.count() > 0:
+            first_path = Path(path_combo.itemText(0))
             self._scan_mode_panel.set_folder_root(first_path if first_path.exists() else None)
         self._update_scan_button()
 
