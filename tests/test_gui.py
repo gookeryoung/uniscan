@@ -1765,7 +1765,7 @@ class TestWorkflowStage:
         window._on_cancel_scan()
         assert window._cancelling is True
         assert window.stats_label.text() == "取消中..."
-        assert window.current_file_label.text() == "正在取消扫描..."
+        assert window.scan_file_label.text() == "正在取消扫描..."
         # 进度条应为不确定模式（minimum=0, maximum=0）
         assert window.progress.minimum() == 0
         assert window.progress.maximum() == 0
@@ -1779,7 +1779,7 @@ class TestWorkflowStage:
         window = MainWindow()
         window._cancelling = True
         window.stats_label.setText("取消中...")
-        window.current_file_label.setText("正在取消扫描...")
+        window.scan_file_label.setText("正在取消扫描...")
         # 模拟扫描线程退出前的最终进度回调
         info = ProgressInfo(
             current_file="/some/file.txt",
@@ -1791,7 +1791,7 @@ class TestWorkflowStage:
         window._on_scan_progress(info)
         # 文案不应被覆盖
         assert window.stats_label.text() == "取消中..."
-        assert window.current_file_label.text() == "正在取消扫描..."
+        assert window.scan_file_label.text() == "正在取消扫描..."
         window.close()
 
     def test_reset_scan_ui_clears_cancelling_flag(self, qapp: QApplication) -> None:
@@ -2137,16 +2137,19 @@ class TestScanningPageLayout:
         assert not window.progress.isVisible()
         window.close()
 
-    def test_current_file_label_in_status_bar(self, qapp: QApplication) -> None:
-        """当前文件标签应挂载到状态栏，且初始不可见。"""
+    def test_current_file_label_in_scanning_page(self, qapp: QApplication) -> None:
+        """当前文件标签应挂载到扫描页 scan_file_label，且初始不可见。
+
+        iter-91：从状态栏移到扫描页 scan_stats_label 上方，非扫描阶段因扫描页未展示而不可见。
+        """
         window = MainWindow()
         window.show()
         qapp.processEvents()
-        assert not window.current_file_label.isVisible()
+        assert not window.scan_file_label.isVisible()
         # 进入扫描中阶段后应可见
         window._stage_controller.switch_stage(WorkflowStage.SCANNING)
         qapp.processEvents()
-        assert window.current_file_label.isVisible()
+        assert window.scan_file_label.isVisible()
         assert window.progress.isVisible()
         window.close()
 
@@ -2158,11 +2161,11 @@ class TestScanningPageLayout:
         window._stage_controller.switch_stage(WorkflowStage.SETUP)
         qapp.processEvents()
         assert not window.progress.isVisible()
-        assert not window.current_file_label.isVisible()
+        assert not window.scan_file_label.isVisible()
         window._stage_controller.switch_stage(WorkflowStage.RESULTS)
         qapp.processEvents()
         assert not window.progress.isVisible()
-        assert not window.current_file_label.isVisible()
+        assert not window.scan_file_label.isVisible()
         window.close()
 
     def test_progress_updates_value_in_status_bar(self, qapp: QApplication) -> None:
@@ -5588,7 +5591,7 @@ class TestScanCallbacks:
         long_path = "/" + "a" * 200 + ".txt"
         info = ProgressInfo(total=10, scanned=1, skipped=0, matched=0, errors=0, current_file=long_path, elapsed=0.1)
         window._on_scan_progress(info)
-        label_text = window.current_file_label.text()
+        label_text = window.scan_file_label.text()
         assert "..." in label_text
         window.close()
 

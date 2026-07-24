@@ -552,10 +552,10 @@ QProgressBar::chunk {
 
 /* ========== 标签（QLabel） ========== */
 
-QLabel#current_file_label {
+QLabel#scan_file_label {
     font-size: ${FONT_SIZE_SMALL};
     color: ${COLOR_TEXT_SECONDARY};
-    padding: 2px 4px;
+    padding: 2px 8px;
 }
 
 QLabel#stats_label {

@@ -213,15 +213,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._stage_controller.switch_stage(WorkflowStage.SETUP)
 
     def _setup_status_bar(self) -> None:
-        """创建状态栏组件：左侧汇总文本，右侧进度条 + 当前文件（仅扫描中可见）。"""
+        """创建状态栏组件：左侧汇总文本，右侧进度条。
+
+        当前解析文件名显示在扫描页的 ``scan_file_label``（scan_stats_label 上方），
+        不再放入状态栏以避免臃肿（iter-91）。
+        """
         self.stats_label = QLabel("就绪")
         self.stats_label.setObjectName("stats_label")
         self.statusBar().addWidget(self.stats_label, 1)
-        self.current_file_label = QLabel("")
-        self.current_file_label.setObjectName("current_file_label")
-        self.current_file_label.setMaximumWidth(400)
-        self.current_file_label.setVisible(False)
-        self.statusBar().addPermanentWidget(self.current_file_label)
         self.progress = QProgressBar()
         self.progress.setObjectName("progress")
         self.progress.setFixedWidth(200)
@@ -426,7 +425,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             scan_btn=self.scan_btn,
             view_results_btn=self.view_results_btn,
             progress=self.progress,
-            current_file_label=self.current_file_label,
+            current_file_label=self.scan_file_label,
             pause_resume_btn=self.pause_resume_btn,
             cancel_btn=self.cancel_btn,
             rescan_btn=self.rescan_btn,
@@ -647,7 +646,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 进度条切换为不确定模式（转圈动画），给用户"正在取消"的视觉反馈
         self.progress.setRange(0, 0)
         self.stats_label.setText("取消中...")
-        self.current_file_label.setText("正在取消扫描...")
+        self.scan_file_label.setText("正在取消扫描...")
         if self._stats_worker is not None:
             self._stats_worker.cancel()
         if self._worker is not None:
@@ -885,7 +884,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self._detail_panel.clear()
         self._scan_state = ScanState.RUNNING
         self.progress.setRange(0, 0)
-        self.current_file_label.setText("准备统计...")
+        self.scan_file_label.setText("准备统计...")
         self.stats_label.setText("准备统计...")
         # 重置扫描中页列表与增量更新状态：避免上次扫描数据残留、快照干扰本次增量对比
         self._list_updater.reset()
@@ -1023,7 +1022,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # 重置进度条为确定模式（0/100），避免下次进入扫描页时残留 indeterminate 动画
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
-        self.current_file_label.setText("")
+        self.scan_file_label.setText("")
         self._cleanup_worker()
 
     def _cleanup_worker(self) -> None:
@@ -1074,7 +1073,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             if len(path_text) > 100:
                 path_text = "..." + path_text[-97:]
             prefix = _PHASE_LABELS.get(info.phase, "正在解析")
-            self.current_file_label.setText(f"{prefix}: {path_text}")
+            self.scan_file_label.setText(f"{prefix}: {path_text}")
 
         # 状态栏汇总文本（按 phase 切换文案，速度计算下沉到 ProgressInfo.summary）
         self.stats_label.setText(info.summary())
