@@ -75,10 +75,10 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._cache: CacheStore | None = cache
         self._source_files: Mapping[Path, str] | None = source_files
         self._progress_interval: float = progress_interval
-        # 全局后缀白名单（iter-87 起统一白名单制）：None 表示扫描所有文件；
+        # 全局后缀白名单：None 表示扫描所有文件；
         # 非空 tuple 按白名单过滤；空 tuple 不扫描任何文件（用户全部取消勾选的边界）
         self._scan_extensions: tuple[str, ...] | None = scan_extensions
-        # 用户标记跳过的路径集合（iter-77）：传给 Scanner 在 walk 阶段跳过
+        # 用户标记跳过的路径集合：传给 Scanner 在 walk 阶段跳过
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
         # 预收集的 walk 产物（stats/scan worker 分离）：非 None 时 run() 跳过 walk，
         # 直接调 Scanner.scan_entries。由 FileStatsWorker.finished_stats 提供，
@@ -86,7 +86,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._precollected: list[WalkResult] | None = precollected
         self._scanner: Scanner | None = None
         self._cancel_requested: bool = False
-        # 多根路径累计性能统计（iter-66）：每次 scan() 后合并 perf_summary
+        # 多根路径累计性能统计：每次 scan() 后合并 perf_summary
         self._perf: PerfStats = PerfStats()
         # 多根路径累计统计
         self._cum_scanned = 0
@@ -95,7 +95,7 @@ class ScanWorker(QThread):  # pyrefly: ignore [invalid-inheritance]
         self._cum_matched = 0
         self._cum_errors = 0
         self._cum_matches = 0
-        # 多根路径累计用户跳过数（iter-77）
+        # 多根路径累计用户跳过数
         self._cum_user_skipped = 0
         self._start_time: float = 0.0
 

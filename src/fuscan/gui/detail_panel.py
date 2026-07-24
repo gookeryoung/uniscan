@@ -93,7 +93,6 @@ class DetailControls:
     info_label: QLabel
     hits_table: QTableWidget
     preview: QTextEdit
-    # iter-77：原 note_edit（备注/批注/导出说明）替换为操作按钮行
     move_to_staging_btn: QPushButton
     toggle_skip_btn: QPushButton
 
@@ -113,9 +112,9 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
     path_copy_requested = Signal(str)
     # 请求主窗口在文件管理器中定位文件（携带 Path）
     open_location_requested = Signal(object)
-    # 请求主窗口将当前文件移动到暂存区（携带 ScanResult，iter-77）
+    # 请求主窗口将当前文件移动到暂存区（携带 ScanResult）
     move_to_staging_requested = Signal(object)
-    # 请求主窗口切换当前文件的跳过标记（携带 ScanResult，iter-77）
+    # 请求主窗口切换当前文件的跳过标记（携带 ScanResult）
     toggle_skip_requested = Signal(object)
 
     def __init__(self, controls: DetailControls, parent: QObject | None = None) -> None:
@@ -169,7 +168,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         self._c.preview.clear()
         self._c.hits_table.setRowCount(0)
         self._c.info_label.setText("")
-        # iter-77：重置跳过按钮状态（空态下不可见，但保持一致避免下次显示残留）
+        # 重置跳过按钮状态（空态下不可见，但保持一致避免下次显示残留）
         self.set_skip_state(False)
 
     def prev_hit(self) -> None:
@@ -258,7 +257,6 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         self._c.next_btn.clicked.connect(self.next_hit)
         self._c.hits_table.cellClicked.connect(self._on_hits_row_clicked)
         self._c.open_location_btn.clicked.connect(self.open_location)
-        # iter-77：操作按钮行
         self._c.move_to_staging_btn.clicked.connect(self.move_to_staging)
         # toggled 信号在 setChecked 时触发（包括 blockSignals(False) 后的用户点击），
         # 用 clicked 避免与 set_skip_state 内的 setChecked 冲突；clicked 携带 checked 状态

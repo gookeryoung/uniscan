@@ -99,9 +99,9 @@ class ProgressInfo:
     skipped_dirs: tuple[str, ...] = ()
     # 命中的 (文件路径, 规则名) 列表（最近 500 条）
     matched_files: tuple[tuple[str, str], ...] = ()
-    # 当前扫描阶段（iter-75）：walk/scan/archive
+    # 当前扫描阶段：walk/scan/archive
     phase: str = "scan"
-    # 用户标记跳过的文件数（iter-77）：区别于按扩展名/目录过滤的 skipped，
+    # 用户标记跳过的文件数：区别于按扩展名/目录过滤的 skipped，
     # 此为用户在结果详情区主动「标记为跳过」后在本次扫描中跳过的文件数
     user_skipped: int = 0
 
@@ -176,9 +176,9 @@ class ScanResult:
     size: int
     hits: tuple[RuleHit, ...] = field(default_factory=tuple)
     errors: int = 0
-    # 用户标记跳过标识（iter-77）：True 表示用户已对该文件标记跳过
+    # 用户标记跳过标识：True 表示用户已对该文件标记跳过
     user_skipped: bool = False
-    # 压缩包根路径（iter-89）：非 None 时标识本结果为压缩包内部条目
+    # 压缩包根路径：非 None 时标识本结果为压缩包内部条目
     archive_path: Path | None = None
 
     @property
@@ -297,10 +297,10 @@ class ScanStats:
     duration_seconds: float = 0.0
     # 所有命中规则的匹配文本条数总和（区别于 matched_files 的命中文件数）
     total_matches: int = 0
-    # 用户标记跳过的文件数（iter-77）：扫描器在遍历阶段跳过用户已标记的路径，
+    # 用户标记跳过的文件数：扫描器在遍历阶段跳过用户已标记的路径，
     # 单独统计以区别于按扩展名/目录过滤的 skipped_files
     user_skipped: int = 0
-    # 各阶段性能统计（iter-66 起 PerfStats 始终启用）：
+    # 各阶段性能统计（PerfStats 始终启用）：
     # {stage_name: {"total_ms": float, "count": int, "max_ms": float}}
     # None 表示未采集（如测试构造的 ScanStats）；空 dict 表示扫描无数据
     perf_summary: dict[str, dict[str, float]] | None = None
@@ -489,7 +489,7 @@ class ScanReport:
         """将扫描报告转换为 CSV 字符串（每行一条规则命中）。"""
         buf = io.StringIO()
         writer = csv.writer(buf)
-        # iter-89：新增 archive_path/inner_path 列，标识压缩包内部条目
+        # archive_path/inner_path 列标识压缩包内部条目
         writer.writerow(
             ["path", "archive_path", "inner_path", "size", "severity", "rule", "description", "match_count", "detail"]
         )
@@ -527,7 +527,7 @@ class ScanReport:
                 rel = result.path.relative_to(self.root)
             except ValueError:
                 rel = result.path
-            # iter-89：压缩包内部条目附加压缩包路径标注
+            # 压缩包内部条目附加压缩包路径标注
             if result.archive_path is not None:
                 lines.append(
                     f"  {rel} [压缩包: {result.archive_path} » {result.inner_path}] "

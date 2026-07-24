@@ -54,7 +54,7 @@ def _display_name(sr: ScanResult) -> str:
 
 
 # 结果树表头（4 列：文件名/规则/严重等级/详情）
-# iter-86：移除"命中数/条数"列——这两列信息已包含在"详情"列（sr.summary() 返回"N 条规则 / M 处匹配"）
+# "命中数/条数"列已移除——信息已包含在"详情"列（sr.summary() 返回"N 条规则 / M 处匹配"）
 # 与右侧详情区 file_info_html 中，保留会重复且浪费横向空间
 _HEADERS: list[str] = ["文件名", "规则", "严重等级", "详情"]
 
@@ -120,7 +120,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
         self.setModel(self._result_model)
         # 当前暂存的扫描报告（populate 设置，clear_results 重置为 None）
         self._last_report: ScanReport | None = None
-        # 列宽 resize 模式（iter-86）：
+        # 列宽 resize 模式：
         #   - 文件名/规则/详情：Interactive（用户可拖动调整，初始宽度见下）
         #   - 严重等级：ResizeToContents（按内容自动收缩到最小所需宽度）
         #   最后一列（详情）由 header 自动 stretch 填充剩余空间
@@ -186,7 +186,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
     def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in report.hits:
-            # iter-89：压缩包内部条目第 0 列显示 "archive.zip » dir/file.txt" 格式，
+            # 压缩包内部条目第 0 列显示 "archive.zip » dir/file.txt" 格式，
             # 普通文件仅显示文件名；tooltip 均显示完整路径
             display_name = _display_name(sr)
             file_row = _make_result_row([display_name, "", "", sr.summary()])

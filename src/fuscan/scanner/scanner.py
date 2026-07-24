@@ -42,17 +42,16 @@ logger = logging.getLogger(__name__)
 # 单次事务约 200 行写入，相比逐条 commit（200 次 fsync）减少 99% 提交开销。
 _BATCH_THRESHOLD: int = 50
 
-# 默认大文件跳过阈值（字节）：超过此值的文件不读取内容、不计哈希。
-# iter-91：100MB → 50MB，避免大文件独占 GIL 数秒冻结界面。
+# 默认大文件跳过阈值（字节）：超过此值的文件不读取内容、不计哈希，
+# 避免大文件独占 GIL 数秒冻结界面。
 # 可通过 Config.max_file_size 与 Scanner(max_file_size=...) 覆盖，0 表示不限制。
 _DEFAULT_MAX_FILE_SIZE: int = 50 * 1024 * 1024
 
 # 进度收集列表上限：_skipped_dirs 与 _matched_files 使用 deque(maxlen=) 防止
 # 大规模扫描（如全盘跳过 node_modules）时列表无界增长导致内存膨胀。
 # _emit_progress 取该上限条 recent 条目，足够 GUI 展示近期跳过/命中情况。
-# iter-59 由 200 下调到 50：每次进度回调需将 deque 转为 tuple 跨线程信号传递，
-# 200 项 × 2 列表 = 400 元组拷贝，大规模扫描下高频回调会让主线程信号槽分发
-# 占用可观时间片导致 UI 卡滞；50 项已足够用户感知"近期"上下文（最新命中/跳过）。
+# 50 项已足够用户感知"近期"上下文，更大的值会导致高频进度回调时
+# tuple 拷贝与信号槽分发占用主线程时间片引起 UI 卡滞。
 _PROGRESS_LIST_MAX: int = 50
 
 
@@ -160,17 +159,17 @@ class Scanner:
         # 大文件跳过阈值：None 或 0 表示不限制，否则超过此大小的文件不读取内容
         self._max_file_size: int = self._normalize_max_file_size(max_file_size)
         self._compiled: list[tuple[Rule, Matcher]] = [(rule, build_matcher(rule.match)) for rule in ruleset.rules]
-        # 全局后缀白名单（iter-87 统一白名单制）：
+        # 全局后缀白名单：
         #   - None：扫描所有文件（全选快速路径）
         #   - 空 frozenset：不扫描任何文件（用户全部取消勾选的防御性边界）
         #   - 非空 frozenset：只扫描指定后缀（已规范化为小写、无点，含压缩包扩展名）
-        # 替代 iter-71 的 archive 特例：压缩包扩展名与其他扩展名统一走白名单，
+        # 压缩包扩展名与其他扩展名统一走白名单，
         # walker 收集到压缩包文件后由 ArchiveScanner 按同一白名单过滤内部条目。
         if scan_extensions is None:
             self._scan_extensions: frozenset[str] | None = None
         else:
             self._scan_extensions = frozenset(e.lower().lstrip(".") for e in scan_extensions)
-        # 用户标记跳过的路径集合（iter-77）：walk 阶段命中即跳过并计入 user_skipped，
+        # 用户标记跳过的路径集合：walk 阶段命中即跳过并计入 user_skipped，
         # 与按扩展名/目录过滤的 skipped 区分。键为 str(Path)，与 SkipStore 存储格式一致。
         self._skip_paths: frozenset[str] = skip_paths or frozenset()
         self._skipped_dirs: deque[str] = deque(maxlen=_PROGRESS_LIST_MAX)
@@ -209,7 +208,7 @@ class Scanner:
                 password=archive_password,
                 cache=cache,
                 max_entry_size=self._max_file_size,
-                # 压缩包内条目同样按白名单过滤（iter-87）：None 表示全选快速路径，
+                # 压缩包内条目同样按白名单过滤：None 表示全选快速路径，
                 # 非 frozenset 表示按白名单过滤内部条目（如压缩包内 .txt 在白名单不含 txt 时跳过）
                 scan_extensions=self._scan_extensions,
             )
@@ -223,18 +222,17 @@ class Scanner:
         self._progress_start: float = 0.0
         self._progress_total: int = 0
         self._progress_skipped: int = 0
-        # walk 阶段累计的用户跳过数（iter-77），scan/archive 阶段复用此值上报
+        # walk 阶段累计的用户跳过数，scan/archive 阶段复用此值上报
         self._progress_user_skipped: int = 0
         self._base_scanned: int = 0
         self._base_matched: int = 0
         self._base_errors: int = 0
         self._base_matches: int = 0
-        # 批量写入缓冲（iter-39 P2）：累积 BatchWriteItem，达到阈值后单次事务 flush。
+        # 批量写入缓冲：累积 BatchWriteItem，达到阈值后单次事务 flush。
         # _batch_lock 保护 _pending_batch 跨 worker 线程的并发累积与 flush。
         self._pending_batch: list[BatchWriteItem] = []
         self._batch_lock = threading.Lock()
-        # 性能聚合统计（iter-65）：FUSCAN_PERF=1 时累计各阶段耗时，扫描末尾输出汇总。
-        # PerfStats 始终启用（iter-66 起），仅做聚合统计无日志开销，不影响生产性能。
+        # 性能聚合统计：PerfStats 始终启用，仅做聚合统计无日志开销，不影响生产性能。
         self._perf: PerfStats = PerfStats()
 
     @staticmethod
@@ -344,7 +342,7 @@ class Scanner:
                     if self._check_control():
                         break
                     total += 1
-                    # iter-77：用户标记跳过的文件计入 user_skipped（区别于
+                    # 用户标记跳过的文件计入 user_skipped（区别于
                     # 按扩展名/目录过滤的 skipped），不进入扫描队列
                     if str(entry.path) in self._skip_paths:
                         user_skipped += 1
@@ -460,9 +458,9 @@ class Scanner:
             errors=errors,
             duration_seconds=duration,
             total_matches=matches,
-            # iter-77：用户标记跳过的文件数，与 skipped_files 区分
+            # 用户标记跳过的文件数，与 skipped_files 区分
             user_skipped=user_skipped,
-            # iter-66：PerfStats 始终启用，导出各阶段统计供 GUI/CLI 展示与持久化
+            # PerfStats 始终启用，导出各阶段统计供 GUI/CLI 展示与持久化
             perf_summary=self._perf.to_dict(),
         )
         return ScanReport(root=root, results=tuple(results), stats=stats, cancelled=cancelled)
@@ -811,7 +809,7 @@ class Scanner:
         hits: list[RuleHit] = []
         rule_errors = 0
 
-        # iter-87：全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
+        # 全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
         # 此处对进入扫描队列的文件应用全部规则（无二次过滤）
         for rule, matcher in self._compiled:
             try:
@@ -901,7 +899,7 @@ class Scanner:
            传给 :class:`MatchContext`，避免改 MatchContext 接口
         """
         assert self._cache is not None  # 仅类型收窄，调用方已保证非 None
-        # iter-87：全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
+        # 全局 scan_extensions 已在 _should_scan 阶段按白名单统一过滤，
         # 此处对进入扫描队列的文件应用全部规则（无二次过滤）
         has_content_rule = any(rule.name in self._content_rule_names for rule, _, _ in self._compiled_with_hash)
         if not has_content_rule:

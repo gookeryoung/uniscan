@@ -139,7 +139,7 @@ CONTROL_HEIGHT = "32px"
 #
 # 高度语义：BTN_HEIGHT_* 表示 QSS ``min-height``（内容区最小高度），实际控件总高度
 # = padding-top + max(content, min-height) + padding-bottom。调整 padding 时须同步
-# 评估实际总高度是否仍与 .ui ``minimumSize`` 匹配（iter-85 修正：原先 padding 过大
+# 评估实际总高度是否仍与 .ui ``minimumSize`` 匹配（原先 padding 过大
 # 导致 L1/L2 实际高度达 72/56px，远超 .ui 的 48/40px，与同行 QComboBox 40px 不一致）。
 
 BTN_HEIGHT_PRIMARY = "32px"

@@ -74,25 +74,23 @@ class Config:
     include_network_drives: bool = False
     # 是否扫描压缩包
     scan_archives: bool = True
-    # 最大工作线程数（iter-91：8 → 3，减少 GIL 争用方数，避免 CPU 密集型
-    # 提取饿死主线程导致界面卡死；CPU 密集型提取在 CPython GIL 下本无真并行）
+    # 最大工作线程数：3 线程减少 GIL 争用方数，避免 CPU 密集型
+    # 提取饿死主线程导致界面卡死（CPython GIL 下 CPU 密集型提取本无真并行）
     max_workers: int = 3
     # 最大扫描深度（None 表示无限制）
     max_depth: int | None = None
-    # 跳过大于此大小的文件（字节），避免大文件读取导致卡死；0 表示不限制
-    # iter-91：100MB → 50MB，避免单个大文件独占 GIL 数秒冻结界面
+    # 跳过大于此大小的文件（字节），避免单个大文件独占 GIL 数秒冻结界面；0 表示不限制
     max_file_size: int = 50 * 1024 * 1024
     # 是否启用扫描结果缓存（基于内容哈希跳过未变化文件，提升二次扫描速度）
     cache_enabled: bool = True
-    # 是否启用性能详细日志（PerfTimer，iter-69 起持久化）
+    # 是否启用性能详细日志（PerfTimer 持久化到缓存数据库）
     perf_log_enabled: bool = False
-    # 已禁用的提取器类名列表（iter-72）：默认空列表表示全部启用，
+    # 已禁用的提取器类名列表：默认空列表表示全部启用，
     # 用户在主界面勾选区取消的提取器类名追加到此列表，对应文件类型不扫描。
-    # 替代 iter-71 的 scan_extensions 方案，改为按解析器粒度勾选。
     disabled_extractors: list[str] = field(default_factory=list)
     # 缓存数据库路径（None 表示默认 ~/.fuscan/cache.db）
     cache_path: str | None = None
-    # 暂存区目录（iter-77）：用户点击「移动至暂存区」后文件被移动到此目录。
+    # 暂存区目录：用户点击「移动至暂存区」后文件被移动到此目录。
     # None 表示自动探测剩余空间最大的盘符下 ``.fuscan-cache``（见 detect_default_staging_dir）。
     staging_dir: str | None = None
     # 忽略目录名（按目录名匹配任意层级，大小写不敏感）。
@@ -168,7 +166,7 @@ class Config:
             "ProgramData",
             "System Volume Information",
             "$Recycle.Bin",
-            # fuscan 暂存区目录（iter-77）：避免扫描被移动到暂存区的文件
+            # fuscan 暂存区目录：避免扫描被移动到暂存区的文件
             ".fuscan-cache",
         ]
     )

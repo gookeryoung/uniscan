@@ -286,7 +286,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         # detail_layout: detail_action_stack / detail_main_stack
         self.detail_layout.setStretch(0, 0)
         self.detail_layout.setStretch(1, 1)
-        # detail_nonempty_main_layout（iter-85 重构为 splitter 布局）：
+        # detail_nonempty_main_layout（splitter 布局）：
         #   item 0: detail_info_label（固定高度）
         #   item 1: detail_content_splitter（伸展填充，含 hits_table + preview）
         #   item 2: detail_actions_layout（固定高度）
@@ -514,8 +514,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _setup_context_menus(self) -> None:
         """配置结果树右键菜单策略（规则文件列表右键已由 RulesFilePanel 内部处理）。"""
-        # 结果树右键由 ResultTreeView 信号路由；规则文件列表的右键菜单与
-        # itemChanged 信号已迁入 RulesFilePanel（iter-79 续解耦）
+        # 结果树右键由 ResultTreeView 信号路由；规则文件列表的右键菜单与 itemChanged 信号已迁入 RulesFilePanel
         pass
 
     def _on_result_tree_context_menu(self, pos: QPoint) -> None:  # type: ignore[unknown-name]
@@ -572,7 +571,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     # _use_builtin / _rules_paths 实际由 RulesFilePanel 持有，此处 property
     # 转发保持主窗口各方法（_reload_ruleset / _apply_ruleset_loaded /
     # _on_load_rules / _build_cache_context / _apply_config / _save_config 等）
-    # 与测试用例无需改动（iter-79 续解耦）。
     @property
     def _use_builtin(self) -> bool:
         return self._rules_panel.use_builtin
@@ -592,9 +590,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
     # ----------------------------- 工作流阶段切换 -----------------------------
 
     # 阶段切换相关方法（_switch_stage / _on_header_tab_changed /
-    # _on_sidebar_stage_changed / _update_stage_actions / _on_view_results /
-    # _on_rescan）已移到 StageController（iter-80 UI 控件解耦），
-    # 主窗口通过 self._stage_controller 公共 API 驱动；_can_start_scan
+    # _on_sidebar_stage_changed / _update_stage_actions / _on_view_results / _on_rescan）
+    # 已移到 StageController，主窗口通过 self._stage_controller 公共 API 驱动；_can_start_scan
     # 保留在主窗口（依赖 _scan_state / _ruleset / _scan_mode_panel），
     # 通过 callback 供 StageController.update_actions 读取
 
@@ -785,7 +782,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     # 扫描模式相关方法（_on_scan_mode_changed / _update_target_visibility /
     # _refresh_drive_buttons / _on_drive_selected / _build_scan_roots）已移到
-    # ScanModePanel（iter-79 续解耦），主窗口通过 self._scan_mode_panel 公共 API 驱动
+    # ScanModePanel，主窗口通过 self._scan_mode_panel 公共 API 驱动
 
     # ----------------------------- 槽函数 -----------------------------
 
@@ -874,7 +871,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "提示", "未选择有效的扫描目标")
             return
 
-        # flush 忽略项节流保存（iter-79）：用户编辑后可能未满 500ms 就点扫描，
+        # flush 忽略项节流保存：用户编辑后可能未满 500ms 就点扫描，
         # 此处立即保存确保扫描使用最新忽略配置
         self._content_panel.flush_pending_save()
 
@@ -1090,7 +1087,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
         self._populate_results(report)
 
-        # 状态栏追加吞吐量与性能热点摘要（iter-66）
+        # 状态栏追加吞吐量与性能热点摘要
         summary = report.summary()
         speed = report.stats.speed
         if speed > 0:
@@ -1267,7 +1264,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         assert isinstance(result, ScanResult)
         logger.debug("选中结果项: %s, 命中数=%d", result.path, len(result.hits))
         self._detail_panel.show_result(result)
-        # iter-77：根据 SkipStore 持久化状态同步「标记为跳过」按钮勾选与文案
+        # 根据 SkipStore 持久化状态同步「标记为跳过」按钮勾选与文案
         self._detail_panel.set_skip_state(self._skip_store.contains(str(result.path)))
 
     def _on_path_copy_requested(self, _path_str: str) -> None:

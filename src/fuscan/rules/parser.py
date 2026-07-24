@@ -132,8 +132,7 @@ def parse_rule(data: Any) -> Rule:
         valid = ", ".join(s.value for s in Severity)
         raise RuleParseError(f"规则 {name!r} 未知严重等级 {severity_raw!r}，合法值: {valid}") from exc
 
-    # file_extensions 已移除（iter-86）：旧规则文件中的该字段被静默忽略，
-    # 文件后缀过滤由全局 Config.extractors 统一管理（iter-71 起 Scanner 不再读取此字段）。
+    # file_extensions 已移除：旧规则文件中的该字段被静默忽略，文件后缀过滤由全局 Config 统一管理。
     return Rule(
         name=str(name),
         match=match,

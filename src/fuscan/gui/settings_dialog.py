@@ -52,7 +52,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.max_depth_spin.setValue(self.config.max_depth or 0)
         # 字节转 MB（0 表示不限制，SpinBox 最小值 0 + specialValueText "不限制"）
         self.max_file_size_spin.setValue(self.config.max_file_size // (1024 * 1024))
-        # scan_archives 由主界面文件类型树的"压缩包"勾选项控制（iter-85），此处不暴露
+        # scan_archives 由主界面文件类型树的"压缩包"勾选项控制，此处不暴露
         self.include_network_check.setChecked(self.config.include_network_drives)
         self.use_builtin_check.setChecked(self.config.use_builtin)
         self.cache_enabled_check.setChecked(self.config.cache_enabled)
@@ -67,7 +67,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.config.max_depth = depth if depth > 0 else None
         # MB 转 bytes（0 表示不限制，与 Scanner._normalize_max_file_size 语义一致）
         self.config.max_file_size = self.max_file_size_spin.value() * 1024 * 1024
-        # scan_archives 由主界面文件类型树控制，此处不保存（iter-85）
+        # scan_archives 由主界面文件类型树控制，此处不保存
         self.config.include_network_drives = self.include_network_check.isChecked()
         self.config.use_builtin = self.use_builtin_check.isChecked()
         self.config.cache_enabled = self.cache_enabled_check.isChecked()

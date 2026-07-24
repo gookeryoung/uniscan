@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 _SCAN_MODE_TO_INDEX: dict[str, int] = {"full": 0, "drive": 1, "folder": 2}
 _INDEX_TO_SCAN_MODE: dict[int, str] = {v: k for k, v in _SCAN_MODE_TO_INDEX.items()}
 
-# 扫描模式 combo 三个选项的图标资源路径（iter-85）：与 .ui 中 item 顺序对齐
+# 扫描模式 combo 三个选项的图标资源路径：与 .ui 中 item 顺序对齐
 _MODE_ICON_PATHS: tuple[str, ...] = (
     ":/assets/icons/all_disk.svg",  # index 0 全盘扫描
     ":/assets/icons/disk.svg",  # index 1 选择盘符
@@ -107,7 +107,7 @@ class ScanModePanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         # 扫描模式切换信号
         self._combo.currentIndexChanged.connect(self._on_mode_changed)
 
-        # 为 scan_mode_combo 三个选项设置图标（iter-85）：图标已在 .ui 中通过
+        # 为 scan_mode_combo 三个选项设置图标：图标已在 .ui 中通过
         # addItem 声明，此处仅补充 setItemIcon，避免修改 .ui 触发 _ui.py 重新生成
         self._apply_mode_icons()
 

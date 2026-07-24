@@ -104,7 +104,6 @@ class ExtractorItem:
     class_name: str
     display_name: str
     extensions: tuple[str, ...]
-    # iter-90：解析速度档次，用于树形展示与 tooltip
     speed_tier: SpeedTier
 
     @property
@@ -193,8 +192,8 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
                     items.append(item)
                     flags.append(True)
                     break
-        # 压缩包分类：从 archive.default_factory 加载已注册扩展名（iter-79）
-        # iter-90：压缩包为 T5 极慢（解压 + 内部条目提取，条目数决定总耗时）
+        # 压缩包分类：从 archive.default_factory 加载已注册扩展名
+        # 压缩包为 T5 极慢（解压 + 内部条目提取，条目数决定总耗时）
         from fuscan.archive import default_factory as _archive_factory
 
         archive_exts = tuple(sorted(_archive_factory.registered_extensions))
@@ -301,7 +300,6 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
             if role == Qt.ToolTipRole:
                 return item.tooltip_text
             if role == Qt.ForegroundRole:
-                # iter-91：按速度档次着色（T1 绿 → T5 红）
                 return QBrush(QColor(item.speed_tier.color))
             if role == Qt.CheckStateRole:
                 return Qt.Checked if flags[row] else Qt.Unchecked

@@ -106,7 +106,7 @@ class ArchiveScanner:
         for entry in entries:
             if entry.is_dir:
                 continue
-            # iter-87：按白名单过滤压缩包内部条目。
+            # 按白名单过滤压缩包内部条目。
             # None 表示全选快速路径（扫所有条目）；非空 frozenset 表示仅扫扩展名在
             # 白名单中的条目（用户勾选压缩包但未勾选文本类型时，压缩包内 .txt 被跳过）。
             # 空 frozenset 表示用户全部取消勾选，跳过所有条目。
@@ -155,7 +155,7 @@ class ArchiveScanner:
         hits: list[RuleHit] = []
         rule_errors = 0
 
-        # iter-87：压缩包内条目已在 scan_archive 中按白名单过滤，
+        # 压缩包内条目已在 scan_archive 中按白名单过滤，
         # 此处对所有传入条目应用全部规则（无二次过滤）
         for rule, matcher in self._compiled:
             try:
@@ -224,7 +224,7 @@ class ArchiveScanner:
 
         context = MatchContext(file_entry, content_provider=content_provider)
 
-        # iter-87：压缩包内条目已在 scan_archive 中按白名单过滤，
+        # 压缩包内条目已在 scan_archive 中按白名单过滤，
         # 此处对所有传入条目应用全部规则（无二次过滤）
         applicable: list[tuple[Rule, Matcher, str]] = list(self._compiled_with_hash)
         rule_hashes = [rh for _, _, rh in applicable]
