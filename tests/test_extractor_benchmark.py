@@ -521,3 +521,11 @@ class TestSpeedTierCompleteness:
         assert "50-200ms/MB" in SpeedTier.MEDIUM.description
         assert "200-1000ms/MB" in SpeedTier.SLOW.description
         assert "> 1000ms/MB" in SpeedTier.VERY_SLOW.description
+
+    def test_speed_tier_colors_from_green_to_red(self) -> None:
+        """SpeedTier.color 返回从绿到红的十六进制色值（iter-91）。"""
+        assert SpeedTier.VERY_FAST.color == "#28A745"  # 绿
+        assert SpeedTier.FAST.color == "#17A2B8"  # 青
+        assert SpeedTier.MEDIUM.color == "#FFC107"  # 琥珀
+        assert SpeedTier.SLOW.color == "#FD7E14"  # 橙
+        assert SpeedTier.VERY_SLOW.color == "#DC3545"  # 红

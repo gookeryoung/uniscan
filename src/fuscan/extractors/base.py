@@ -78,6 +78,28 @@ class SpeedTier(enum.Enum):
         }
         return mapping[self]
 
+    @property
+    def color(self) -> str:
+        """返回档次对应的十六进制色值（从绿到红，用于 GUI 勾选树着色）。
+
+        色值与 ``scan_stats_label`` 内联 HTML 风格一致，属于 rule-12 例外
+        （程序化着色无法引用 QSS 令牌，在 docstring 注明）：
+
+        - T1 极速：``#28A745`` 绿色
+        - T2 快速：``#17A2B8`` 青色
+        - T3 中速：``#FFC107`` 琥珀
+        - T4 慢速：``#FD7E14`` 橙色
+        - T5 极慢：``#DC3545`` 红色
+        """
+        mapping = {
+            SpeedTier.VERY_FAST: "#28A745",
+            SpeedTier.FAST: "#17A2B8",
+            SpeedTier.MEDIUM: "#FFC107",
+            SpeedTier.SLOW: "#FD7E14",
+            SpeedTier.VERY_SLOW: "#DC3545",
+        }
+        return mapping[self]
+
 
 class ExtractorError(Exception):
     """提取器相关错误。"""

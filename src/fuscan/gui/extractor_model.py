@@ -26,8 +26,10 @@ from typing import TYPE_CHECKING
 
 try:
     from PySide2.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal
+    from PySide2.QtGui import QBrush, QColor
 except ImportError:  # pragma: no cover
     from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal  # pyrefly: ignore [missing-import]
+    from PySide6.QtGui import QBrush, QColor  # pyrefly: ignore [missing-import]
 
 from fuscan.extractors.base import SpeedTier
 
@@ -298,6 +300,9 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
                 return item.tree_display_text
             if role == Qt.ToolTipRole:
                 return item.tooltip_text
+            if role == Qt.ForegroundRole:
+                # iter-91：按速度档次着色（T1 绿 → T5 红）
+                return QBrush(QColor(item.speed_tier.color))
             if role == Qt.CheckStateRole:
                 return Qt.Checked if flags[row] else Qt.Unchecked
             return None

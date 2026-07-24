@@ -254,6 +254,32 @@ class TestExtractorTreeModelConstruction:
         child = _child_index(model, 0, 0)
         assert model.data(child, Qt.FontRole) is None
 
+    def test_child_foreground_role_returns_tier_color(self, model: ExtractorTreeModel) -> None:
+        """子项 ForegroundRole 返回速度档次对应的 QBrush 颜色（iter-91）。
+
+        桩提取器统一声明 VERY_FAST（绿色 #28A745），压缩包虚拟项声明
+        VERY_SLOW（红色 #DC3545），验证两端着色正确。
+        """
+        try:
+            from PySide2.QtGui import QBrush, QColor
+        except ImportError:  # pragma: no cover
+            from PySide6.QtGui import QBrush, QColor  # pyrefly: ignore [missing-import]
+
+        pdf_idx = _child_index(model, 0, 0)  # 桩 = VERY_FAST
+        brush = model.data(pdf_idx, Qt.ForegroundRole)
+        assert isinstance(brush, QBrush)
+        assert brush.color() == QColor("#28A745")
+
+        archive_idx = _child_index(model, 9, 0)  # 压缩包 = VERY_SLOW
+        brush_slow = model.data(archive_idx, Qt.ForegroundRole)
+        assert isinstance(brush_slow, QBrush)
+        assert brush_slow.color() == QColor("#DC3545")
+
+    def test_category_foreground_role_returns_none(self, model: ExtractorTreeModel) -> None:
+        """分类节点 ForegroundRole 返回 None（不着色）。"""
+        cat_idx = _cat_index(model, 0)
+        assert model.data(cat_idx, Qt.ForegroundRole) is None
+
     def test_item_at_returns_correct_item(self, model: ExtractorTreeModel) -> None:
         """item_at 返回指定分类与行的 ExtractorItem。"""
         item = model.item_at(0, 0)  # 文档 row 0 = PDF
