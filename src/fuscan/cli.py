@@ -27,8 +27,7 @@ from pathlib import Path
 from typing import Sequence
 
 from fuscan import __version__
-from fuscan.builtin import load_with_builtin
-from fuscan.config import load_config
+from fuscan.config import load_config, load_with_builtin
 from fuscan.rules import RuleError, RuleSet, load_ruleset, merge_multiple_rulesets
 from fuscan.scanner import Scanner, ScanReport
 from fuscan.scanner.export import export_excel, export_pdf

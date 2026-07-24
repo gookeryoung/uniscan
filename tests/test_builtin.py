@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from fuscan.builtin import BUILTIN_RULES_PATH, load_builtin_ruleset, load_with_builtin
+from fuscan.config import BUILTIN_RULES_PATH, load_builtin_ruleset, load_with_builtin
 from fuscan.rules import RuleError, RuleSet
 
 

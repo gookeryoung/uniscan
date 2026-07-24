@@ -107,12 +107,14 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
 
     # 选中项变化：携带 ScanResult 或 None（空选/分组顶层项）
     result_selected = Signal(object)
+
     # 右键菜单：携带右键位置的 viewport 坐标
     context_menu_requested = Signal(QPoint)
 
     def __init__(self, parent=None) -> None:  # type: ignore[no-untyped-def]
         """初始化结果树：创建模型、绑定视图、设置列宽、连接内部信号。"""
         super().__init__(parent)
+
         self._result_model: QStandardItemModel = QStandardItemModel()
         self._result_model.setHorizontalHeaderLabels(_HEADERS)
         self.setModel(self._result_model)
