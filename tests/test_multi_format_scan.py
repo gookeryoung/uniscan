@@ -30,6 +30,10 @@ _DB_CONN_WITH_BACKSLASH = r"mongodb://user:pass\123@host"
 _DB_CONN_WITH_QUOTE = "mongodb://user:pa'ss@host"
 _BEARER_CROSS_LINE = "Bearer\n  eyJhbGci.token"
 
+# 内置规则集端到端测试样本（对应 builtin/rules.yaml 中的 P0101/P0102 规则）
+_PASSWORD_SAMPLE = "password=S3cr3t!"
+_PRIVATE_KEY_SAMPLE = "-----BEGIN RSA PRIVATE KEY-----"
+
 
 def _db_rule() -> Rule:
     """构造数据库连接串规则（与内置规则一致，独立使用避免依赖内置规则加载顺序）。"""
@@ -441,48 +445,48 @@ class TestBinaryAndUnsupportedFormats:
 class TestBuiltinRulesetIntegration:
     """使用完整内置规则集的端到端扫描验证。"""
 
-    def test_builtin_ruleset_scans_txt_db_and_bearer(self, tmp_path: Path) -> None:
-        """内置规则集应同时扫描到 txt 中的数据库连接串和 Bearer 令牌。"""
+    def test_builtin_ruleset_scans_txt_password_and_key(self, tmp_path: Path) -> None:
+        """内置规则集应同时扫描到 txt 中的密码赋值和私钥文件头。"""
         path = tmp_path / "secrets.txt"
         path.write_text(
-            f"db = {_DB_CONN_SAMPLE}\nauth = {_BEARER_SAMPLE}\n",
+            f"{_PASSWORD_SAMPLE}\n{_PRIVATE_KEY_SAMPLE}\n",
             encoding="utf-8",
         )
         ruleset = load_builtin_ruleset()
         scanner = Scanner(ruleset)
         report = scanner.scan(tmp_path)
 
-        db_hit = _find_hit(report.results, "数据库连接串")
-        bearer_hit = _find_hit(report.results, "Bearer令牌")
-        assert db_hit is not None
-        assert bearer_hit is not None
-        assert "mongodb://user:pass123@" in db_hit.match_text
-        assert bearer_hit.match_text == _BEARER_SAMPLE
+        pwd_hit = _find_hit(report.results, "P0102-通用密码赋值")
+        key_hit = _find_hit(report.results, "P0101-私钥文件头")
+        assert pwd_hit is not None
+        assert key_hit is not None
+        assert pwd_hit.match_text == _PASSWORD_SAMPLE
+        assert key_hit.match_text == _PRIVATE_KEY_SAMPLE
 
-    def test_builtin_ruleset_scans_yaml_db(self, tmp_path: Path) -> None:
-        """内置规则集应扫描到 yaml 中的数据库连接串。"""
+    def test_builtin_ruleset_scans_yaml_password(self, tmp_path: Path) -> None:
+        """内置规则集应扫描到 yaml 中的密码赋值。"""
         path = tmp_path / "app.yaml"
         path.write_text(
-            f"development:\n  database_url: {_DB_CONN_SAMPLE}\n",
+            f"development:\n  database_{_PASSWORD_SAMPLE}\n",
             encoding="utf-8",
         )
         ruleset = load_builtin_ruleset()
         scanner = Scanner(ruleset)
         report = scanner.scan(tmp_path)
-        hit = _find_hit(report.results, "数据库连接串")
+        hit = _find_hit(report.results, "P0102-通用密码赋值")
         assert hit is not None
-        assert "mongodb://user:pass123@" in hit.match_text
+        assert _PASSWORD_SAMPLE in hit.match_text
 
-    def test_builtin_ruleset_scans_json_bearer(self, tmp_path: Path) -> None:
-        """内置规则集应扫描到 json 中的 Bearer 令牌。"""
+    def test_builtin_ruleset_scans_json_password(self, tmp_path: Path) -> None:
+        """内置规则集应扫描到 json 中的密码赋值。"""
         path = tmp_path / "config.json"
         path.write_text(
-            f'{{"auth_token": "{_BEARER_SAMPLE}"}}',
+            f'{{"config": "{_PASSWORD_SAMPLE}"}}',
             encoding="utf-8",
         )
         ruleset = load_builtin_ruleset()
         scanner = Scanner(ruleset)
         report = scanner.scan(tmp_path)
-        hit = _find_hit(report.results, "Bearer令牌")
+        hit = _find_hit(report.results, "P0102-通用密码赋值")
         assert hit is not None
-        assert hit.match_text == _BEARER_SAMPLE
+        assert _PASSWORD_SAMPLE in hit.match_text

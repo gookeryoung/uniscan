@@ -22,7 +22,7 @@ class TestBuiltinRuleset:
         assert len(rs.rules) > 0
         # 内置规则应包含常见密钥检测
         names = {r.name for r in rs.rules}
-        assert "AWS访问密钥" in names
+        assert "P0101-私钥文件头" in names
 
     def test_builtin_ruleset_has_ignore_paths(self) -> None:
         """内置规则集应包含 ignore_paths 配置。"""
@@ -62,7 +62,7 @@ class TestLoadWithBuiltin:
         names = {r.name for r in rs.rules}
         assert "用户自定义规则" in names
         # 内置规则仍保留
-        assert "AWS访问密钥" in names
+        assert "P0101-私钥文件头" in names
 
     def test_load_with_builtin_user_overrides_builtin(self, tmp_path: Path) -> None:
         """用户规则中同名规则覆盖内置规则。"""

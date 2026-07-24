@@ -45,7 +45,7 @@ def scan_root(tmp_path: Path) -> Path:
     root = tmp_path / "scan_root"
     root.mkdir()
     (root / "password.txt").write_text("normal", encoding="utf-8")
-    (root / "doc.conf").write_text("key=AKIA1234567890ABCDEF", encoding="utf-8")
+    (root / "doc.conf").write_text("password=AKIA1234567890ABCDEF", encoding="utf-8")
     (root / "readme.md").write_text("hello world", encoding="utf-8")
     (root / ".git").mkdir()
     (root / ".git" / "password.txt").write_text("ignored", encoding="utf-8")
@@ -344,7 +344,7 @@ class TestBuiltinRules:
         rc = main(["scan", str(scan_root)])
         assert rc == 0
         out = capsys.readouterr().out
-        # 内置规则包含 AWS 密钥检测，doc.conf 含 AKIA1234 应命中
+        # 内置规则包含通用密码赋值检测，doc.conf 含 password= 应命中
         assert "doc.conf" in out
 
     def test_scan_no_builtin_without_rules_errors(self, scan_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
