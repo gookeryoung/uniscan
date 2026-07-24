@@ -8231,23 +8231,23 @@ class TestOnHistoryItemDoubleClickedPathMissing:
 
 
 class TestOnPathSelectedEdgeCases:
-    """``_on_path_selected`` 边界分支测试（覆盖 858-859, 862 行）。"""
+    """``ScanTargetPanel._on_path_selected`` 边界分支测试（iter-93）。"""
 
     def test_negative_index_clears_folder_root(self, qapp: QApplication, tmp_path: Path) -> None:
-        """index < 0：清空 folder_root（覆盖 858-859 行）。"""
+        """index < 0：清空 folder_root。"""
         window = MainWindow()
         # 先设置一个 folder_root，再传入 -1 应清空
         window._scan_mode_panel.set_folder_root(tmp_path)
-        window._on_path_selected(-1)
+        window._scan_target_panel._on_path_selected(-1)
         assert window._scan_mode_panel.folder_root is None
         window.close()
 
     def test_empty_path_text_clears_folder_root(self, qapp: QApplication) -> None:
-        """index >= 0 但路径文本为空：清空 folder_root（覆盖 862 行）。"""
+        """index >= 0 但路径文本为空：清空 folder_root。"""
         window = MainWindow()
         # path_combo 是空的，itemText(0) 返回空字符串
         window.path_combo.clear()
-        window._on_path_selected(0)
+        window._scan_target_panel._on_path_selected(0)
         assert window._scan_mode_panel.folder_root is None
         window.close()
 

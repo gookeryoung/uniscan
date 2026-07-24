@@ -96,6 +96,7 @@ from fuscan.gui.rules_panel import RulesFilePanel
 from fuscan.gui.scan_mode_panel import ScanModePanel
 from fuscan.gui.scan_path_history import ScanPathHistory
 from fuscan.gui.scan_progress_lists import ScanListUpdater
+from fuscan.gui.scan_target import ScanTargetPanel
 from fuscan.gui.stage_controller import StageController, StageControls, WorkflowStage
 from fuscan.perf import PerfTimer, set_perf_enabled
 from fuscan.replacer import ReplaceResult, ReplaceStatus, replace_in_file
@@ -369,10 +370,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.sidebar.blockSignals(False)
 
     def _setup_scan_mode_panel(self) -> None:
-        """构造扫描模式选择面板控制器（模式 combo + 盘符按钮组 + folder 路径）。
+        """构造扫描目标面板控制器（模式 combo + 盘符按钮组 + folder 路径 + path_combo）。
 
         委托 :class:`ScanModePanel` 封装 ``scan_mode_combo`` 切换、盘符按钮组
-        创建/刷新/选择、folder 路径状态管理（iter-79 续内聚重构）。
+        创建/刷新/选择、folder 路径状态管理（iter-79 续内聚重构）；
+        :class:`ScanTargetPanel` 封装 ``path_combo`` 切换与 ``select_path_btn``
+        信号交互（iter-93），将 path_combo 切换逻辑内聚到面板内部，
+        ``select_path_btn`` 点击通过 ``select_path_requested`` 信号通知主窗口。
         主窗口通过公共 API（``apply_config`` / ``save_config`` /
         ``can_start_scan`` / ``build_scan_roots`` / ``set_folder_root`` 等）驱动，
         不直接操作底层控件。``mode_changed`` 信号触发 ``_update_scan_button``。
@@ -383,6 +387,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             drive_buttons_layout=self.drive_buttons_layout,
             hard_disk_icon=QIcon(":/assets/icons/hard_disk.svg"),
             config=self._config,
+            parent=self,
+        )
+        self._scan_target_panel = ScanTargetPanel(
+            scan_mode_panel=self._scan_mode_panel,
+            path_combo=self.path_combo,
+            select_path_btn=self.select_path_btn,
             parent=self,
         )
 
@@ -481,10 +491,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.pause_resume_btn.clicked.connect(self._on_pause_resume)
         self.cancel_btn.clicked.connect(self._on_cancel_scan)
         self.rescan_btn.clicked.connect(self._stage_controller.rescan)
-        # 扫描目标（scan_mode_combo 信号已由 ScanModePanel 内部连接）
+        # 扫描目标（scan_mode_combo 信号已由 ScanModePanel 内部连接，
+        # path_combo / select_path_btn 信号已由 ScanTargetPanel 内部连接）
         self._scan_mode_panel.mode_changed.connect(self._update_scan_button)  # pyrefly: ignore [missing-attribute]
-        self.path_combo.currentIndexChanged.connect(self._on_path_selected)
-        self.select_path_btn.clicked.connect(self._on_select_path)
+        self._scan_target_panel.select_path_requested.connect(self._on_select_path)  # pyrefly: ignore [missing-attribute]
         # 规则
         self.load_rules_btn.clicked.connect(self._on_load_rules)
         self.edit_rule_btn.clicked.connect(self._on_edit_rules)
@@ -840,7 +850,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             QMessageBox.warning(self, "规则错误", f"加载规则失败:\n{exc}")
 
     def _on_select_path(self) -> None:
-        """选择扫描路径。"""
+        """响应 ScanTargetPanel.select_path_requested 信号：弹出 QFileDialog 选择扫描路径。
+
+        选择有效目录后回写 :meth:`ScanModePanel.set_folder_root` 并追加到路径历史。
+        取消选择时直接返回，不做任何修改。
+        """
         path_str = QFileDialog.getExistingDirectory(
             self,
             "选择扫描目录",
@@ -851,18 +865,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         path = Path(path_str)
         self._scan_mode_panel.set_folder_root(path)
         self._add_scan_path_history(str(path))
-
-    def _on_path_selected(self, index: int) -> None:
-        """从历史下拉选择扫描路径。"""
-        if index < 0:
-            self._scan_mode_panel.set_folder_root(None)
-            return
-        path_str = self.path_combo.itemText(index)
-        if not path_str:
-            self._scan_mode_panel.set_folder_root(None)
-        else:
-            path = Path(path_str)
-            self._scan_mode_panel.set_folder_root(path if path.exists() else None)
 
     def _on_scan(self) -> None:
         """开始扫描（仅配置页可触发，扫描中页的暂停/继续由 _on_pause_resume 处理）。
