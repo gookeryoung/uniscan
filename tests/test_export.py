@@ -105,7 +105,8 @@ class TestSaveReport:
         target = tmp_path / "out.csv"
         save_report(report, target)
         content = target.read_text(encoding="utf-8")
-        assert content.startswith("path,size,severity,rule,description,match_count,detail")
+        # iter-89：CSV 列新增 archive_path/inner_path 标识压缩包内部条目
+        assert content.startswith("path,archive_path,inner_path,size,severity,rule,description,match_count,detail")
 
     def test_save_report_json(self, tmp_path: Path) -> None:
         """save_report 按 .json 扩展名写入 JSON 文本。"""

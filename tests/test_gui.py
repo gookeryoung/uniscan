@@ -4050,6 +4050,113 @@ class TestMatchCountDisplay:
         window.close()
 
 
+# ----------------------------- iter-89：压缩包条目展示 -----------------------------
+
+
+def _build_archive_entry_report(tmp_path: Path) -> ScanReport:
+    """构造含压缩包内部条目的 ScanReport，用于 iter-89 GUI 展示测试。
+
+    路径形如 ``archive.zip!dir/secret.txt``，``archive_path`` 指向压缩根。
+    规则命中内容关键词 ``password``。
+    """
+    from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+    archive_path = tmp_path / "archive.zip"
+    archive_path.write_bytes(b"PK\x03\x04")  # 假压缩包，仅用于路径展示
+    entry_path = Path(f"{archive_path}!dir/secret.txt")
+    sr = ScanResult(
+        path=entry_path,
+        size=20,
+        hits=(RuleHit("pwd", Severity.CRITICAL, "命中密码", match_text="password"),),
+        archive_path=archive_path,
+    )
+    stats = ScanStats(total_files=1, scanned_files=1, matched_files=1, total_matches=1)
+    return ScanReport(root=tmp_path, results=(sr,), stats=stats)
+
+
+class TestArchiveEntryDisplay:
+    """压缩包内部条目 GUI 展示测试（iter-89）。
+
+    覆盖：
+    - 结果树第 0 列 ``a.zip » dir/file.txt`` 格式
+    - 详情区文件信息显示压缩包路径/内部条目路径双字段
+    - 详情区内容预览跳过解压，显示提示文案
+    """
+
+    def test_result_tree_shows_archive_format(self, qapp: QApplication, tmp_path: Path) -> None:
+        """结果树第 0 列应显示 ``archive.zip » dir/secret.txt`` 格式。"""
+        window = MainWindow()
+        report = _build_archive_entry_report(tmp_path)
+        window._populate_results(report)
+        window._result_filter_panel.refresh()
+
+        assert window.result_tree.model().rowCount() == 1
+        cell_text = window.result_tree.model().item(0, 0).text()
+        assert cell_text == "archive.zip » dir/secret.txt"
+        window.close()
+
+    def test_result_tree_tooltip_shows_full_path(self, qapp: QApplication, tmp_path: Path) -> None:
+        """结果树第 0 列 tooltip 应显示完整 ``archive.zip!dir/secret.txt`` 路径。"""
+        window = MainWindow()
+        report = _build_archive_entry_report(tmp_path)
+        window._populate_results(report)
+        window._result_filter_panel.refresh()
+
+        item = window.result_tree.model().item(0, 0)
+        assert item is not None
+        assert item.toolTip() == str(Path(f"{tmp_path / 'archive.zip'}!dir/secret.txt"))
+        window.close()
+
+    def test_detail_info_shows_archive_path_fields(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情区文件信息应显示压缩包路径与内部条目路径双字段。"""
+        window = MainWindow()
+        report = _build_archive_entry_report(tmp_path)
+        window._populate_results(report)
+        window._result_filter_panel.refresh()
+
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
+        info_text = window.detail_info_label.text()
+        assert "压缩包路径" in info_text
+        assert "内部条目路径" in info_text
+        assert "压缩包内部条目，无法获取" in info_text
+        window.close()
+
+    def test_detail_preview_skips_archive_entry(self, qapp: QApplication, tmp_path: Path) -> None:
+        """详情区内容预览应跳过解压，显示提示文案。"""
+        window = MainWindow()
+        report = _build_archive_entry_report(tmp_path)
+        window._populate_results(report)
+        window._result_filter_panel.refresh()
+
+        window.result_tree.setCurrentIndex(window.result_tree.model().index(0, 0))
+        preview_text = window.detail_preview.toPlainText()
+        assert "压缩包内部条目" in preview_text
+        assert "未解压预览内容" in preview_text
+        # 命中导航应被禁用（无命中位置）
+        assert window._detail_panel._hit_positions == []
+        assert "无命中" in window._detail_panel._c.nav_label.text()
+        window.close()
+
+    def test_grouped_by_rule_shows_archive_format(self, qapp: QApplication, tmp_path: Path) -> None:
+        """按规则分组模式下子项也应显示 ``archive.zip » dir/file.txt`` 格式。"""
+        window = MainWindow()
+        report = _build_archive_entry_report(tmp_path)
+        window._populate_results(report)
+        # 切换为按规则分组
+        idx = window.group_mode_combo.findData("rule")
+        assert idx >= 0
+        window.group_mode_combo.setCurrentIndex(idx)
+
+        top_item = window.result_tree.model().item(0, 0)
+        assert top_item is not None
+        # 顶层为规则名，子项应为压缩包条目
+        assert top_item.rowCount() == 1
+        child = top_item.child(0, 0)
+        assert child is not None
+        assert child.text() == "archive.zip » dir/secret.txt"
+        window.close()
+
+
 class TestRuleEditor:
     """规则编辑器测试。"""
 

@@ -165,6 +165,11 @@ class ScanResult:
     ``user_skipped`` 标识该文件是否被用户在结果详情区「标记为跳过」（iter-77）。
     标记后本次扫描结果中仍保留该条目（带跳过标记），下一次扫描起扫描器在遍历
     阶段直接跳过该路径并计入 ``ScanStats.user_skipped`` 统计。
+
+    ``archive_path`` 标识压缩包内部条目（iter-89）：非 None 时表示该结果来自
+    压缩包内某个文件，``archive_path`` 指向压缩根本身（可 stat/打开），
+    ``path`` 为 ``archive.zip!inner/file.txt`` 格式的展示路径。GUI 据此跳过
+    内容预览（避免解压耗时）并展示"压缩包路径 / 内部条目路径"双字段。
     """
 
     path: Path
@@ -173,6 +178,8 @@ class ScanResult:
     errors: int = 0
     # 用户标记跳过标识（iter-77）：True 表示用户已对该文件标记跳过
     user_skipped: bool = False
+    # 压缩包根路径（iter-89）：非 None 时标识本结果为压缩包内部条目
+    archive_path: Path | None = None
 
     @property
     def has_hit(self) -> bool:
@@ -181,6 +188,30 @@ class ScanResult:
     @property
     def has_error(self) -> bool:
         return self.errors > 0
+
+    @property
+    def is_archive_entry(self) -> bool:
+        """是否为压缩包内部条目（archive_path 非 None）。"""
+        return self.archive_path is not None
+
+    @property
+    def inner_path(self) -> str:
+        """压缩包内部条目路径（``!`` 后部分）。
+
+        非压缩包内部条目时返回空字符串。压缩包内部条目的 ``path`` 形如
+        ``archive.zip!dir/file.txt``，本属性返回 ``dir/file.txt``。
+
+        路径分隔符统一为正斜杠 ``/``（与 ZIP/RAR/7Z 规范一致）：
+        Windows 上 ``Path`` 构造会把 ``!`` 后部分的 ``/`` 转成 ``\\``，
+        导出与 GUI 展示时需还原为 ``/``，避免 ``dir\\file.txt`` 跨平台不一致。
+        """
+        if self.archive_path is None:
+            return ""
+        path_str = str(self.path)
+        sep_idx = path_str.find("!")
+        if sep_idx < 0:
+            return ""
+        return path_str[sep_idx + 1 :].replace("\\", "/")
 
     @property
     def max_severity(self) -> Severity:
@@ -220,8 +251,23 @@ class ScanResult:
         ``extra`` 用于 GUI 追加自身状态相关的字段（如"可切换位置"数），
         为已格式化的 HTML 片段，将以 `` | `` 分隔附加在末尾。
 
-        修改时间通过 ``Path.stat`` 获取，失败时显示"无法获取"。
+        压缩包内部条目（``archive_path`` 非 None，iter-89）：跳过 ``stat`` 调用
+        （内部条目路径在文件系统不存在），改为显示"压缩包路径 / 内部条目路径"
+        双字段，修改时间显示"压缩包内部条目，无法获取"。
         """
+        if self.archive_path is not None:
+            # 压缩包内部条目：无法 stat，显示压缩包路径与内部条目路径
+            info = (
+                f"<b>压缩包路径:</b> {html.escape(str(self.archive_path))}<br>"
+                f"<b>内部条目路径:</b> {html.escape(self.inner_path)}<br>"
+                f"<b>文件大小:</b> {format_size(self.size)} ({self.size} 字节)<br>"
+                f"<b>修改时间:</b> 压缩包内部条目，无法获取<br>"
+                f"<b>命中规则数:</b> {len(self.hits)} | <b>匹配条数:</b> {self.total_match_count}"
+            )
+            if extra:
+                info += f" | {extra}"
+            return info
+
         try:
             mtime = datetime.datetime.fromtimestamp(self.path.stat().st_mtime)
             mtime_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
@@ -386,6 +432,7 @@ class ScanReport:
                         hits=matching_hits,
                         errors=sr.errors,
                         user_skipped=sr.user_skipped,
+                        archive_path=sr.archive_path,
                     )
                 )
             else:
@@ -425,6 +472,8 @@ class ScanReport:
             "hits": [
                 {
                     "path": str(r.path),
+                    "archive_path": str(r.archive_path) if r.archive_path is not None else None,
+                    "inner_path": r.inner_path or None,
                     "size": r.size,
                     "max_severity": r.max_severity.value,
                     "match_count": r.total_match_count,
@@ -440,12 +489,19 @@ class ScanReport:
         """将扫描报告转换为 CSV 字符串（每行一条规则命中）。"""
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(["path", "size", "severity", "rule", "description", "match_count", "detail"])
+        # iter-89：新增 archive_path/inner_path 列，标识压缩包内部条目
+        writer.writerow(
+            ["path", "archive_path", "inner_path", "size", "severity", "rule", "description", "match_count", "detail"]
+        )
         for r in self.hits:
+            archive_path_str = str(r.archive_path) if r.archive_path is not None else ""
+            inner_path_str = r.inner_path or ""
             for hit in r.hits:
                 writer.writerow(
                     [
                         str(r.path),
+                        archive_path_str,
+                        inner_path_str,
                         r.size,
                         hit.severity.value,
                         hit.rule_name,
@@ -471,7 +527,14 @@ class ScanReport:
                 rel = result.path.relative_to(self.root)
             except ValueError:
                 rel = result.path
-            lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
+            # iter-89：压缩包内部条目附加压缩包路径标注
+            if result.archive_path is not None:
+                lines.append(
+                    f"  {rel} [压缩包: {result.archive_path} » {result.inner_path}] "
+                    f"(规则 {len(result.hits)} / 条数 {result.total_match_count})"
+                )
+            else:
+                lines.append(f"  {rel} (规则 {len(result.hits)} / 条数 {result.total_match_count})")
             for hit in result.hits:
                 # 描述非空时附加在规则名后，便于用户理解匹配规则含义
                 rule_label = f"{hit.rule_name} - {hit.match_description}" if hit.match_description else hit.rule_name

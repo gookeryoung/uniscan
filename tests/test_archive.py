@@ -725,6 +725,88 @@ class TestArchiveScanner:
         assert results[0].errors == 1
 
 
+# ----------------------------- iter-89：压缩包内部条目标识 -----------------------------
+
+
+class TestArchiveEntryResultFields:
+    """压缩包内部条目 ScanResult.archive_path/is_archive_entry/inner_path 测试（iter-89）。
+
+    ArchiveScanner 扫描压缩包内条目时应在 ScanResult 上填充 ``archive_path``，
+    使 GUI/CLI/导出端可据此区分压缩包内部条目与普通文件，跳过 stat/预览
+    并以 "archive.zip » dir/file.txt" 格式展示。
+    """
+
+    def test_scan_archive_populates_archive_path(self, tmp_path: Path) -> None:
+        """扫描压缩包命中条目的 archive_path 应指向压缩根本身。"""
+        zip_path = _make_zip(tmp_path / "a.zip", {"dir/secret.txt": "password=123"})
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = ArchiveScanner(rs)
+        results = scanner.scan_archive(zip_path)
+        hits = [r for r in results if r.has_hit]
+        assert len(hits) == 1
+        hit = hits[0]
+        assert hit.archive_path == zip_path
+        assert hit.is_archive_entry is True
+        # inner_path 取自 path 中 "!" 后部分
+        assert hit.inner_path == "dir/secret.txt"
+
+    def test_scan_archive_no_hit_still_populates_archive_path(self, tmp_path: Path) -> None:
+        """即使规则未命中，archive_path 也应填充（用于 GUI 区分展示）。"""
+        zip_path = _make_zip(tmp_path / "a.zip", {"dir/a.txt": "no hit here"})
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        scanner = ArchiveScanner(rs)
+        results = scanner.scan_archive(zip_path)
+        assert len(results) == 1
+        r = results[0]
+        assert r.archive_path == zip_path
+        assert r.is_archive_entry is True
+        assert r.inner_path == "dir/a.txt"
+
+    def test_scan_archive_cache_mode_populates_archive_path(self, tmp_path: Path) -> None:
+        """缓存模式下也应正确填充 archive_path。"""
+        from fuscan.cache import CacheStore
+
+        zip_path = _make_zip(tmp_path / "a.zip", {"dir/secret.txt": "password=123"})
+        rs = _build_ruleset(_content_rule("pwd", "password"))
+        cache = CacheStore(tmp_path / "cache.db")
+        cache.register_ruleset(rs)
+        scanner = ArchiveScanner(rs, cache=cache)
+        try:
+            results = scanner.scan_archive(zip_path)
+            hits = [r for r in results if r.has_hit]
+            assert len(hits) == 1
+            hit = hits[0]
+            assert hit.archive_path == zip_path
+            assert hit.is_archive_entry is True
+            assert hit.inner_path == "dir/secret.txt"
+        finally:
+            cache.close()
+
+    def test_scan_archive_error_result_no_archive_path(self, tmp_path: Path) -> None:
+        """压缩包打开失败时返回的错误结果不应填充 archive_path。
+
+        该 ScanResult 代表压缩根本身的错误（非内部条目），archive_path 应为 None，
+        ``is_archive_entry`` 为 False。
+        """
+        path = tmp_path / "bad.zip"
+        path.write_bytes(b"not a zip file")
+        rs = _build_ruleset(_filename_rule("r", "x"))
+        scanner = ArchiveScanner(rs)
+        results = scanner.scan_archive(path)
+        assert len(results) == 1
+        assert results[0].archive_path is None
+        assert results[0].is_archive_entry is False
+
+    def test_inner_path_returns_empty_for_non_archive_entry(self, tmp_path: Path) -> None:
+        """普通文件 ScanResult 的 inner_path 返回空字符串。"""
+        from fuscan.scanner.result import ScanResult
+
+        sr = ScanResult(path=tmp_path / "a.txt", size=10)
+        assert sr.archive_path is None
+        assert sr.is_archive_entry is False
+        assert sr.inner_path == ""
+
+
 class TestArchiveScannerCache:
     """压缩包缓存模式测试。"""
 

@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover
 from fuscan.gui.preview_utils import SEVERITY_BACKGROUNDS, severity_text
 from fuscan.rules.model import Severity
 from fuscan.scanner import ScanReport
+from fuscan.scanner.result import ScanResult
 
 __all__ = ["ResultTreeView"]
 
@@ -37,6 +38,20 @@ _SEVERITY_RANK: dict[Severity, int] = {
     Severity.WARNING: 1,
     Severity.CRITICAL: 2,
 }
+
+
+def _display_name(sr: ScanResult) -> str:
+    """返回结果树第 0 列展示的文件名（iter-89）。
+
+    普通文件仅展示 ``path.name``（如 ``a.txt``）；压缩包内部条目展示
+    ``archive.zip » dir/file.txt`` 格式，让用户一眼看出命中的是压缩包内的
+    哪个文件——原本第 0 列只显示 ``file.txt``（来自 ``entry.display_path``
+    中 ``!`` 后部分的 basename），用户无法区分这是普通文件还是压缩包条目。
+    """
+    if sr.is_archive_entry and sr.archive_path is not None:
+        return f"{sr.archive_path.name} » {sr.inner_path}"
+    return sr.path.name
+
 
 # 结果树表头（4 列：文件名/规则/严重等级/详情）
 # iter-86：移除"命中数/条数"列——这两列信息已包含在"详情"列（sr.summary() 返回"N 条规则 / M 处匹配"）
@@ -169,10 +184,12 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
     def _populate_flat(self, report: ScanReport) -> None:
         """不分组：文件为顶层项，规则命中为子项。"""
         for sr in report.hits:
-            file_row = _make_result_row([sr.path.name, "", "", sr.summary()])
+            # iter-89：压缩包内部条目第 0 列显示 "archive.zip » dir/file.txt" 格式，
+            # 普通文件仅显示文件名；tooltip 均显示完整路径
+            display_name = _display_name(sr)
+            file_row = _make_result_row([display_name, "", "", sr.summary()])
             # ScanResult 存在该行第 0 列 UserRole，双击/选中时通过 sibling(row, 0) 取回
             file_row[0].setData(sr, Qt.UserRole)
-            # 第 0 列 tooltip 显示完整路径，鼠标悬停可查看（iter-85：第 0 列仅显示文件名）
             file_row[0].setToolTip(str(sr.path))
             _apply_severity_to_standard_item(file_row[2], sr.max_severity)
             # critical 整行背景高亮，区别于仅 severity 列着色
@@ -198,7 +215,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             _clear_row_selectable(top_row)
             for sr, hit in entries:
-                child_row = _make_result_row([sr.path.name, "", "", hit.detail])
+                child_row = _make_result_row([_display_name(sr), "", "", hit.detail])
                 _apply_severity_to_standard_item(child_row[2], hit.severity)
                 child_row[0].setData(sr, Qt.UserRole)
                 child_row[0].setToolTip(str(sr.path))
@@ -218,7 +235,7 @@ class ResultTreeView(QTreeView):  # pyrefly: ignore [invalid-inheritance]
             # 分组项不可选中，避免选中后详情区被清空产生"无命中"误解
             _clear_row_selectable(top_row)
             for sr in entries:
-                child_row = _make_result_row([sr.path.name, "", "", sr.summary()])
+                child_row = _make_result_row([_display_name(sr), "", "", sr.summary()])
                 _apply_severity_to_standard_item(child_row[2], sr.max_severity)
                 child_row[0].setData(sr, Qt.UserRole)
                 child_row[0].setToolTip(str(sr.path))

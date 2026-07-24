@@ -307,7 +307,23 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
             self._c.hits_table.setItem(row, 5, desc_item)
 
     def _populate_preview(self, result: ScanResult) -> None:
-        """填充详情区内容预览，命中关键词高亮并定位到首个命中。"""
+        """填充详情区内容预览，命中关键词高亮并定位到首个命中。
+
+        压缩包内部条目（``is_archive_entry``，iter-89）：跳过内容预览避免解压耗时，
+        展示提示文案告知用户命中已记录但内容未提取。``_hit_positions`` 置空，
+        ``_current_hit_index`` 重置为 -1，导航按钮禁用。
+        """
+        if result.is_archive_entry:
+            self._c.preview.setPlainText(
+                "压缩包内部条目：未解压预览内容（避免解压耗时）。\n"
+                "命中信息见上方命中表与详情列；压缩包路径与内部条目路径见上方文件信息。"
+            )
+            self._hit_positions = []
+            self._current_hit_index = -1
+            self._plain_text = ""
+            self._update_nav_label()
+            return
+
         path = result.path
         truncated = False
 

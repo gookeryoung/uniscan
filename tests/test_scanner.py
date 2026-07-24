@@ -763,7 +763,8 @@ class TestScanReport:
         report = self._build_report(tmp_path)
         csv_text = report.to_csv()
         lines = csv_text.strip().splitlines()
-        assert lines[0] == "path,size,severity,rule,description,match_count,detail"
+        # iter-89：新增 archive_path/inner_path 列，标识压缩包内部条目
+        assert lines[0] == "path,archive_path,inner_path,size,severity,rule,description,match_count,detail"
         # 3 条命中：a.txt 2 条 + b.txt 1 条
         assert len(lines) - 1 == 3
         # 第一条数据应包含 a.txt 路径
@@ -773,7 +774,7 @@ class TestScanReport:
 
         report = ScanReport(root=tmp_path, results=(), stats=ScanStats())
         csv_text = report.to_csv()
-        assert csv_text.strip() == "path,size,severity,rule,description,match_count,detail"
+        assert csv_text.strip() == "path,archive_path,inner_path,size,severity,rule,description,match_count,detail"
 
     def test_to_csv_includes_description(self, tmp_path: Path) -> None:
         """to_csv 应在 description 列填入 match_description（需求4）。"""
@@ -797,9 +798,10 @@ class TestScanReport:
         report = ScanReport(root=tmp_path, results=results, stats=ScanStats())
         csv_text = report.to_csv()
         lines = csv_text.strip().splitlines()
-        assert lines[0] == "path,size,severity,rule,description,match_count,detail"
+        # iter-89：CSV 列顺序新增 archive_path/inner_path
+        assert lines[0] == "path,archive_path,inner_path,size,severity,rule,description,match_count,detail"
         # 第二行（数据行）的 description 列应包含描述文本
-        # CSV 列顺序：path,size,severity,rule,description,match_count,detail
+        # CSV 列顺序：path,archive_path,inner_path,size,severity,rule,description,match_count,detail
         # 由于 detail 可能含逗号被引号包裹，用简单的 in 判断
         assert "敏感凭证关键词" in lines[1]
 
@@ -822,9 +824,10 @@ class TestScanReport:
 
         reader = _csv.reader(_io.StringIO(csv_text))
         rows = list(reader)
-        # 列顺序：path,size,severity,rule,description,match_count,detail
-        assert rows[0][4] == "description"
-        assert rows[1][4] == ""  # description 列为空
+        # iter-89：列顺序新增 archive_path/inner_path 后 description 索引由 4 变 6
+        # path=0,archive_path=1,inner_path=2,size=3,severity=4,rule=5,description=6,match_count=7,detail=8
+        assert rows[0][6] == "description"
+        assert rows[1][6] == ""  # description 列为空
 
     def test_to_text_includes_description(self, tmp_path: Path) -> None:
         """to_text 应在规则名后附加 match_description（需求4）。"""

@@ -186,6 +186,7 @@ class ArchiveScanner:
             size=file_entry.size,
             hits=tuple(hits),
             errors=rule_errors,
+            archive_path=archive_path,
         )
 
     def _scan_entry_cached(
@@ -279,6 +280,7 @@ class ArchiveScanner:
             size=file_entry.size,
             hits=tuple(hits),
             errors=rule_errors,
+            archive_path=archive_path,
         )
 
     def _read_entry_content(
