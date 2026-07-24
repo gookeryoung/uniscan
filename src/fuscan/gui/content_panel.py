@@ -20,6 +20,11 @@ from fuscan.config import Config, save_config
 from fuscan.extractors.base import default_registry
 from fuscan.gui.extractor_model import ExtractorTreeModel
 
+try:
+    from PySide2.QtWidgets import QPushButton
+except ImportError:  # pragma: no cover
+    from PySide6.QtWidgets import QPushButton  # pyrefly: ignore [missing-import]
+
 if TYPE_CHECKING:
     from PySide2.QtWidgets import QLabel, QPlainTextEdit, QTreeView
 
@@ -58,6 +63,8 @@ class ContentTabPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         count_label: QLabel,
         dirs_edit: QPlainTextEdit,
         config: Config,
+        select_all_btn: QPushButton,
+        unselect_all_btn: QPushButton,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -82,6 +89,9 @@ class ContentTabPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         # 信号槽连接：勾选变化 → 即时保存 + 更新计数；忽略目录变化 → 节流保存
         self._extractor_model.extractors_changed.connect(self._on_extractor_toggled)  # pyrefly: ignore [missing-attribute]
         self._dirs_edit.textChanged.connect(self._on_ignore_changed)
+        # 全选/全不选按钮：委托模型批量勾选，extractors_changed 信号触发保存与计数同步
+        select_all_btn.clicked.connect(self._extractor_model.check_all)
+        unselect_all_btn.clicked.connect(self._extractor_model.uncheck_all)
 
         self._update_count()
 

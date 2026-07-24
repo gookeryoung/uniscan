@@ -104,13 +104,6 @@ class Ui_MainWindow(object):
 
         self.header_layout.addWidget(self.tab_scan_btn)
 
-        self.tab_rules_btn = QPushButton(self.header_bar)
-        self.tab_rules_btn.setObjectName(u"tab_rules_btn")
-        self.tab_rules_btn.setIcon(icon2)
-        self.tab_rules_btn.setCheckable(True)
-
-        self.header_layout.addWidget(self.tab_rules_btn)
-
         self.tab_history_btn = QPushButton(self.header_bar)
         self.tab_history_btn.setObjectName(u"tab_history_btn")
         icon11 = QIcon()
@@ -242,7 +235,11 @@ class Ui_MainWindow(object):
 
         self.setup_layout.addWidget(self.target_group)
 
-        self.file_types_group = QGroupBox(self.setup_page)
+        self.config_splitter = QSplitter(self.setup_page)
+        self.config_splitter.setObjectName(u"config_splitter")
+        self.config_splitter.setOrientation(Qt.Vertical)
+        self.config_splitter.setHandleWidth(6)
+        self.file_types_group = QGroupBox(self.config_splitter)
         self.file_types_group.setObjectName(u"file_types_group")
         self.horizontalLayout_3 = QHBoxLayout(self.file_types_group)
         self.horizontalLayout_3.setSpacing(8)
@@ -256,10 +253,30 @@ class Ui_MainWindow(object):
         self.file_types_tab_layout.setSpacing(4)
         self.file_types_tab_layout.setObjectName(u"file_types_tab_layout")
         self.file_types_tab_layout.setContentsMargins(4, 4, 4, 4)
+        self.file_types_toolbar_layout = QHBoxLayout()
+        self.file_types_toolbar_layout.setSpacing(6)
+        self.file_types_toolbar_layout.setObjectName(u"file_types_toolbar_layout")
         self.file_types_count_label = QLabel(self.file_types_tab)
         self.file_types_count_label.setObjectName(u"file_types_count_label")
 
-        self.file_types_tab_layout.addWidget(self.file_types_count_label)
+        self.file_types_toolbar_layout.addWidget(self.file_types_count_label)
+
+        self.file_types_toolbar_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.file_types_toolbar_layout.addItem(self.file_types_toolbar_spacer)
+
+        self.select_all_btn = QPushButton(self.file_types_tab)
+        self.select_all_btn.setObjectName(u"select_all_btn")
+
+        self.file_types_toolbar_layout.addWidget(self.select_all_btn)
+
+        self.unselect_all_btn = QPushButton(self.file_types_tab)
+        self.unselect_all_btn.setObjectName(u"unselect_all_btn")
+
+        self.file_types_toolbar_layout.addWidget(self.unselect_all_btn)
+
+
+        self.file_types_tab_layout.addLayout(self.file_types_toolbar_layout)
 
         self.file_types_view = QTreeView(self.file_types_tab)
         self.file_types_view.setObjectName(u"file_types_view")
@@ -297,8 +314,57 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_3.addWidget(self.content_tab_widget)
 
+        self.config_splitter.addWidget(self.file_types_group)
+        self.rules_group = QGroupBox(self.config_splitter)
+        self.rules_group.setObjectName(u"rules_group")
+        self.rules_group_layout = QVBoxLayout(self.rules_group)
+        self.rules_group_layout.setSpacing(6)
+        self.rules_group_layout.setObjectName(u"rules_group_layout")
+        self.rules_group_layout.setContentsMargins(12, 16, 12, 12)
+        self.rules_btn_row = QHBoxLayout()
+        self.rules_btn_row.setSpacing(8)
+        self.rules_btn_row.setObjectName(u"rules_btn_row")
+        self.load_rules_btn = QPushButton(self.rules_group)
+        self.load_rules_btn.setObjectName(u"load_rules_btn")
+        self.load_rules_btn.setMinimumSize(QSize(150, 40))
+        self.load_rules_btn.setIcon(icon1)
 
-        self.setup_layout.addWidget(self.file_types_group)
+        self.rules_btn_row.addWidget(self.load_rules_btn)
+
+        self.edit_rule_btn = QPushButton(self.rules_group)
+        self.edit_rule_btn.setObjectName(u"edit_rule_btn")
+        self.edit_rule_btn.setMinimumSize(QSize(0, 40))
+        self.edit_rule_btn.setIcon(icon2)
+
+        self.rules_btn_row.addWidget(self.edit_rule_btn)
+
+        self.rules_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.rules_btn_row.addItem(self.rules_btn_spacer)
+
+
+        self.rules_group_layout.addLayout(self.rules_btn_row)
+
+        self.rules_file_label = QLabel(self.rules_group)
+        self.rules_file_label.setObjectName(u"rules_file_label")
+
+        self.rules_group_layout.addWidget(self.rules_file_label)
+
+        self.rules_file_list = QListWidget(self.rules_group)
+        self.rules_file_list.setObjectName(u"rules_file_list")
+        self.rules_file_list.setMaximumSize(QSize(16777215, 120))
+
+        self.rules_group_layout.addWidget(self.rules_file_list)
+
+        self.rules_tree = QTreeWidget(self.rules_group)
+        self.rules_tree.setObjectName(u"rules_tree")
+        self.rules_tree.setRootIsDecorated(False)
+
+        self.rules_group_layout.addWidget(self.rules_tree)
+
+        self.config_splitter.addWidget(self.rules_group)
+
+        self.setup_layout.addWidget(self.config_splitter)
 
         self.setup_action_bar = QFrame(self.setup_page)
         self.setup_action_bar.setObjectName(u"setup_action_bar")
@@ -685,63 +751,6 @@ class Ui_MainWindow(object):
         self.scan_tab_layout.addWidget(self.sidebar_splitter)
 
         self.tab_stack.addWidget(self.scan_tab)
-        self.rules_tab = QWidget()
-        self.rules_tab.setObjectName(u"rules_tab")
-        self.rules_tab_layout = QVBoxLayout(self.rules_tab)
-        self.rules_tab_layout.setSpacing(8)
-        self.rules_tab_layout.setObjectName(u"rules_tab_layout")
-        self.rules_tab_layout.setContentsMargins(12, 12, 12, 12)
-        self.rules_group = QGroupBox(self.rules_tab)
-        self.rules_group.setObjectName(u"rules_group")
-        self.rules_group_layout = QVBoxLayout(self.rules_group)
-        self.rules_group_layout.setSpacing(6)
-        self.rules_group_layout.setObjectName(u"rules_group_layout")
-        self.rules_group_layout.setContentsMargins(12, 16, 12, 12)
-        self.rules_btn_row = QHBoxLayout()
-        self.rules_btn_row.setSpacing(8)
-        self.rules_btn_row.setObjectName(u"rules_btn_row")
-        self.load_rules_btn = QPushButton(self.rules_group)
-        self.load_rules_btn.setObjectName(u"load_rules_btn")
-        self.load_rules_btn.setMinimumSize(QSize(150, 40))
-        self.load_rules_btn.setIcon(icon1)
-
-        self.rules_btn_row.addWidget(self.load_rules_btn)
-
-        self.edit_rule_btn = QPushButton(self.rules_group)
-        self.edit_rule_btn.setObjectName(u"edit_rule_btn")
-        self.edit_rule_btn.setMinimumSize(QSize(0, 40))
-        self.edit_rule_btn.setIcon(icon2)
-
-        self.rules_btn_row.addWidget(self.edit_rule_btn)
-
-        self.rules_btn_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-
-        self.rules_btn_row.addItem(self.rules_btn_spacer)
-
-
-        self.rules_group_layout.addLayout(self.rules_btn_row)
-
-        self.rules_file_label = QLabel(self.rules_group)
-        self.rules_file_label.setObjectName(u"rules_file_label")
-
-        self.rules_group_layout.addWidget(self.rules_file_label)
-
-        self.rules_file_list = QListWidget(self.rules_group)
-        self.rules_file_list.setObjectName(u"rules_file_list")
-        self.rules_file_list.setMaximumSize(QSize(16777215, 120))
-
-        self.rules_group_layout.addWidget(self.rules_file_list)
-
-        self.rules_tree = QTreeWidget(self.rules_group)
-        self.rules_tree.setObjectName(u"rules_tree")
-        self.rules_tree.setRootIsDecorated(False)
-
-        self.rules_group_layout.addWidget(self.rules_tree)
-
-
-        self.rules_tab_layout.addWidget(self.rules_group)
-
-        self.tab_stack.addWidget(self.rules_tab)
         self.history_tab = QWidget()
         self.history_tab.setObjectName(u"history_tab")
         self.history_tab_layout = QVBoxLayout(self.history_tab)
@@ -855,7 +864,6 @@ class Ui_MainWindow(object):
         self.perf_stats_action.setText(QCoreApplication.translate("MainWindow", u"\u6027\u80fd\u7edf\u8ba1...", None))
         self.perf_log_action.setText(QCoreApplication.translate("MainWindow", u"\u542f\u7528\u6027\u80fd\u65e5\u5fd7", None))
         self.tab_scan_btn.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf", None))
-        self.tab_rules_btn.setText(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u7ba1\u7406", None))
         self.tab_history_btn.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5386\u53f2", None))
         self.settings_btn.setText(QCoreApplication.translate("MainWindow", u"\u8bbe\u7f6e", None))
         self.about_btn.setText(QCoreApplication.translate("MainWindow", u"\u5173\u4e8e", None))
@@ -881,6 +889,14 @@ class Ui_MainWindow(object):
 #endif // QT_CONFIG(tooltip)
         self.file_types_count_label.setText(QCoreApplication.translate("MainWindow", u"\u5df2\u52fe\u9009 15/15 \u9879", None))
 #if QT_CONFIG(tooltip)
+        self.select_all_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u52fe\u9009\u6240\u6709\u6587\u4ef6\u7c7b\u578b", None))
+#endif // QT_CONFIG(tooltip)
+        self.select_all_btn.setText(QCoreApplication.translate("MainWindow", u"\u5168\u9009", None))
+#if QT_CONFIG(tooltip)
+        self.unselect_all_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u53d6\u6d88\u52fe\u9009\u6240\u6709\u6587\u4ef6\u7c7b\u578b", None))
+#endif // QT_CONFIG(tooltip)
+        self.unselect_all_btn.setText(QCoreApplication.translate("MainWindow", u"\u5168\u4e0d\u9009", None))
+#if QT_CONFIG(tooltip)
         self.file_types_view.setToolTip(QCoreApplication.translate("MainWindow", u"\u52fe\u9009\u8981\u626b\u63cf\u7684\u6587\u4ef6\u7c7b\u578b\uff0c\u53d6\u6d88\u53ef\u63d0\u9ad8\u626b\u63cf\u901f\u5ea6\uff1b\u70b9\u51fb\u7236\u7c7b\u522b\u6279\u91cf\u52fe\u9009", None))
 #endif // QT_CONFIG(tooltip)
         self.content_tab_widget.setTabText(self.content_tab_widget.indexOf(self.file_types_tab), QCoreApplication.translate("MainWindow", u"\u6587\u4ef6\u7c7b\u578b", None))
@@ -893,6 +909,20 @@ class Ui_MainWindow(object):
 "    node_modules\n"
 "    Program Files", None))
         self.content_tab_widget.setTabText(self.content_tab_widget.indexOf(self.ignore_dirs_tab), QCoreApplication.translate("MainWindow", u"\u5ffd\u7565\u76ee\u5f55", None))
+        self.rules_group.setTitle(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u914d\u7f6e", None))
+        self.load_rules_btn.setText(QCoreApplication.translate("MainWindow", u"\u52a0\u8f7d\u89c4\u5219...", None))
+#if QT_CONFIG(tooltip)
+        self.edit_rule_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u7f16\u8f91\u9009\u4e2d\u7684\u89c4\u5219\u6587\u4ef6", None))
+#endif // QT_CONFIG(tooltip)
+        self.edit_rule_btn.setText(QCoreApplication.translate("MainWindow", u"\u7f16\u8f91", None))
+        self.rules_file_label.setText(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u6587\u4ef6\uff08\u987a\u5e8f\u4ece\u4e0a\u5230\u4e0b\uff0c\u540e\u8005\u8986\u76d6\u524d\u8005\uff09", None))
+#if QT_CONFIG(tooltip)
+        self.rules_file_list.setToolTip(QCoreApplication.translate("MainWindow", u"\u5df2\u52a0\u8f7d\u7684\u89c4\u5219\u6587\u4ef6\uff0c\u5217\u8868\u987a\u5e8f\u4ee3\u8868\u4f18\u5148\u7ea7\uff08\u4ece\u4f4e\u5230\u9ad8\uff09", None))
+#endif // QT_CONFIG(tooltip)
+        ___qtreewidgetitem = self.rules_tree.headerItem()
+        ___qtreewidgetitem.setText(2, QCoreApplication.translate("MainWindow", u"\u6269\u5c55\u540d", None));
+        ___qtreewidgetitem.setText(1, QCoreApplication.translate("MainWindow", u"\u4e25\u91cd\u7b49\u7ea7", None));
+        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u540d", None));
 #if QT_CONFIG(tooltip)
         self.view_results_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u67e5\u770b\u4e0a\u6b21\u626b\u63cf\u7ed3\u679c", None))
 #endif // QT_CONFIG(tooltip)
@@ -962,20 +992,6 @@ class Ui_MainWindow(object):
         self.toggle_skip_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6807\u8bb0\u540e\u540e\u7eed\u626b\u63cf\u5c06\u76f4\u63a5\u8df3\u8fc7\u6b64\u6587\u4ef6", None))
 #endif // QT_CONFIG(tooltip)
         self.toggle_skip_btn.setText(QCoreApplication.translate("MainWindow", u"\u6807\u8bb0\u4e3a\u8df3\u8fc7", None))
-        self.rules_group.setTitle(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u914d\u7f6e", None))
-        self.load_rules_btn.setText(QCoreApplication.translate("MainWindow", u"\u52a0\u8f7d\u89c4\u5219...", None))
-#if QT_CONFIG(tooltip)
-        self.edit_rule_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u7f16\u8f91\u9009\u4e2d\u7684\u89c4\u5219\u6587\u4ef6", None))
-#endif // QT_CONFIG(tooltip)
-        self.edit_rule_btn.setText(QCoreApplication.translate("MainWindow", u"\u7f16\u8f91", None))
-        self.rules_file_label.setText(QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u6587\u4ef6\uff08\u987a\u5e8f\u4ece\u4e0a\u5230\u4e0b\uff0c\u540e\u8005\u8986\u76d6\u524d\u8005\uff09", None))
-#if QT_CONFIG(tooltip)
-        self.rules_file_list.setToolTip(QCoreApplication.translate("MainWindow", u"\u5df2\u52a0\u8f7d\u7684\u89c4\u5219\u6587\u4ef6\uff0c\u5217\u8868\u987a\u5e8f\u4ee3\u8868\u4f18\u5148\u7ea7\uff08\u4ece\u4f4e\u5230\u9ad8\uff09", None))
-#endif // QT_CONFIG(tooltip)
-        ___qtreewidgetitem = self.rules_tree.headerItem()
-        ___qtreewidgetitem.setText(2, QCoreApplication.translate("MainWindow", u"\u6269\u5c55\u540d", None));
-        ___qtreewidgetitem.setText(1, QCoreApplication.translate("MainWindow", u"\u4e25\u91cd\u7b49\u7ea7", None));
-        ___qtreewidgetitem.setText(0, QCoreApplication.translate("MainWindow", u"\u89c4\u5219\u540d", None));
         self.history_label.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5386\u53f2\uff08\u53cc\u51fb\u5feb\u901f\u9009\u62e9\uff09", None))
 #if QT_CONFIG(tooltip)
         self.history_list.setToolTip(QCoreApplication.translate("MainWindow", u"\u6700\u8fd1\u626b\u63cf\u8fc7\u7684\u8def\u5f84\uff0c\u53cc\u51fb\u53ef\u5feb\u901f\u9009\u62e9", None))

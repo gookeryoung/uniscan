@@ -1891,15 +1891,15 @@ class TestWorkflowStage:
         window.close()
 
     def test_on_header_tab_changed_switches_tab_stack(self, qapp: QApplication) -> None:
-        """_on_header_tab_changed 应切换 tab_stack 页面。"""
+        """_on_header_tab_changed 应切换 tab_stack 页面。
+
+        iter-91 起规则管理内嵌配置页，tab_stack 仅剩 2 页（0=扫描 / 1=历史）。
+        """
         window = MainWindow()
         window.show()
         qapp.processEvents()
         window._stage_controller.on_header_tab_changed(1)
         assert window.tab_stack.currentIndex() == 1
-        assert not window.sidebar.isVisible()
-        window._stage_controller.on_header_tab_changed(2)
-        assert window.tab_stack.currentIndex() == 2
         assert not window.sidebar.isVisible()
         window._stage_controller.on_header_tab_changed(0)
         assert window.tab_stack.currentIndex() == 0
@@ -6988,6 +6988,60 @@ class TestContentTabPanel:
         panel._extractor_model.set_disabled_extractors(["ArchiveFiles"])
         assert panel.archives_enabled() is False
         assert window._config.scan_archives is False
+        window.close()
+
+    def test_select_all_btn_checks_all_extractors(self, qapp: QApplication) -> None:
+        """点击全选按钮后所有提取器勾选，enabled_extensions 返回 None。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 先取消勾选部分提取器
+        panel._extractor_model.set_disabled_extractors(["PdfExtractor", "ArchiveFiles"])
+        assert panel.enabled_extensions() is not None
+        # 点击全选按钮
+        window.select_all_btn.click()
+        # 所有提取器应勾选
+        assert panel.disabled_extractors() == []
+        assert panel.enabled_extensions() is None
+        window.close()
+
+    def test_unselect_all_btn_unchecks_all_extractors(self, qapp: QApplication) -> None:
+        """点击全不选按钮后所有提取器取消勾选，enabled_extensions 返回空 tuple。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 默认全选
+        assert panel.enabled_extensions() is None
+        # 点击全不选按钮
+        window.unselect_all_btn.click()
+        # 所有提取器应取消勾选
+        assert len(panel.disabled_extractors()) == panel._extractor_model.total_count()
+        assert panel.enabled_extensions() == ()
+        window.close()
+
+    def test_check_all_saves_config_and_updates_count(self, qapp: QApplication) -> None:
+        """check_all 触发 extractors_changed 信号，保存配置并更新计数标签。"""
+        window = MainWindow()
+        panel = window._content_panel
+        # 先取消勾选
+        panel._extractor_model.set_disabled_extractors(["PdfExtractor"])
+        assert "PdfExtractor" in window._config.disabled_extractors
+        # 全选
+        panel._extractor_model.check_all()
+        # 配置应保存，disabled_extractors 清空
+        assert window._config.disabled_extractors == []
+        # 计数标签应显示全部勾选
+        total = panel._extractor_model.total_count()
+        assert f"已勾选 {total}/{total} 项" in panel._count_label.text()
+        window.close()
+
+    def test_rules_group_embedded_in_config_splitter(self, qapp: QApplication) -> None:
+        """规则配置区已内嵌配置页的 config_splitter，不再有独立 rules_tab。"""
+        window = MainWindow()
+        # rules_group 的父控件应为 config_splitter
+        assert window.rules_group.parent() is window.config_splitter
+        # config_splitter 的父控件应为 setup_page
+        assert window.config_splitter.parent() is window.setup_page
+        # tab_stack 应只有 2 个页面（扫描 + 历史），规则管理 Tab 已移除
+        assert window.tab_stack.count() == 2
         window.close()
 
 

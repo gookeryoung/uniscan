@@ -406,6 +406,48 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
                     self.dataChanged.emit(top_child, bottom_child, [Qt.CheckStateRole])
         self.extractors_changed.emit()  # pyrefly: ignore [missing-attribute]
 
+    def check_all(self) -> None:
+        """勾选所有提取器条目（全选）。
+
+        批量设置所有分类下所有子项为启用状态，一次性发出 ``dataChanged`` 与
+        ``extractors_changed`` 信号。全选时 :meth:`enabled_extensions` 返回 ``None``，
+        Scanner 走快速路径扫所有文件。
+        """
+        self._set_all_checked(True)
+
+    def uncheck_all(self) -> None:
+        """取消勾选所有提取器条目（全不选）。
+
+        批量设置所有分类下所有子项为禁用状态，一次性发出 ``dataChanged`` 与
+        ``extractors_changed`` 信号。全不选时 :meth:`enabled_extensions` 返回空 tuple，
+        Scanner 不扫任何文件（防御性边界）。
+        """
+        self._set_all_checked(False)
+
+    def _set_all_checked(self, checked: bool) -> None:
+        """批量设置所有子项勾选状态并发出信号。
+
+        :param checked: ``True``=全选 / ``False``=全不选
+        """
+        changed = False
+        for _cat_name, _items, flags in self._categories:
+            for i in range(len(flags)):
+                if flags[i] != checked:
+                    flags[i] = checked
+                    changed = True
+        if not changed:
+            return
+        for cat_i in range(len(self._categories)):
+            cat_idx = self.index(cat_i, 0)
+            if cat_idx.isValid():
+                self.dataChanged.emit(cat_idx, cat_idx, [Qt.CheckStateRole])
+                n = self.rowCount(cat_idx)
+                if n > 0:
+                    top_child = self.index(0, 0, cat_idx)
+                    bottom_child = self.index(n - 1, 0, cat_idx)
+                    self.dataChanged.emit(top_child, bottom_child, [Qt.CheckStateRole])
+        self.extractors_changed.emit()  # pyrefly: ignore [missing-attribute]
+
     def enabled_extensions(self) -> tuple[str, ...] | None:
         """根据勾选状态计算启用的扩展名白名单（含压缩包扩展名）。
 

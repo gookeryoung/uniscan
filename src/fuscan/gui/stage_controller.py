@@ -192,7 +192,7 @@ class StageController(QObject):  # pyrefly: ignore [invalid-inheritance]
     def on_header_tab_changed(self, tab_id: int) -> None:
         """头部 Tab 切换：切换 tab_stack 页面，非扫描 Tab 隐藏侧边栏。
 
-        :param tab_id: 0=扫描 / 1=规则管理 / 2=扫描历史
+        :param tab_id: 0=扫描 / 1=扫描历史（规则配置已内嵌配置页，无独立 Tab）
         """
         self._controls.tab_stack.setCurrentIndex(tab_id)
         self._controls.sidebar.setVisible(tab_id == 0)

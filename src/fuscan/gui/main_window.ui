@@ -79,20 +79,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="tab_rules_btn">
-         <property name="text">
-          <string>规则管理</string>
-         </property>
-         <property name="icon">
-          <iconset resource="../resources.qrc">
-           <normaloff>:/assets/icons/edit.svg</normaloff>:/assets/icons/edit.svg</iconset>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QPushButton" name="tab_history_btn">
          <property name="text">
           <string>扫描历史</string>
@@ -381,7 +367,14 @@
               </widget>
              </item>
              <item>
-              <widget class="QGroupBox" name="file_types_group">
+              <widget class="QSplitter" name="config_splitter">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="handleWidth">
+                <number>6</number>
+               </property>
+               <widget class="QGroupBox" name="file_types_group">
                <property name="toolTip">
                 <string>通过 TAB 切换文件类型、忽略目录与忽略扩展名</string>
                </property>
@@ -433,11 +426,51 @@
                      <number>4</number>
                     </property>
                     <item>
-                     <widget class="QLabel" name="file_types_count_label">
-                      <property name="text">
-                       <string>已勾选 15/15 项</string>
+                     <layout class="QHBoxLayout" name="file_types_toolbar_layout">
+                      <property name="spacing">
+                       <number>6</number>
                       </property>
-                     </widget>
+                      <item>
+                       <widget class="QLabel" name="file_types_count_label">
+                        <property name="text">
+                         <string>已勾选 15/15 项</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <spacer name="file_types_toolbar_spacer">
+                        <property name="orientation">
+                         <enum>Qt::Horizontal</enum>
+                        </property>
+                        <property name="sizeHint" stdset="0">
+                         <size>
+                          <width>40</width>
+                          <height>20</height>
+                         </size>
+                        </property>
+                       </spacer>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="select_all_btn">
+                        <property name="toolTip">
+                         <string>勾选所有文件类型</string>
+                        </property>
+                        <property name="text">
+                         <string>全选</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="unselect_all_btn">
+                        <property name="toolTip">
+                         <string>取消勾选所有文件类型</string>
+                        </property>
+                        <property name="text">
+                         <string>全不选</string>
+                        </property>
+                       </widget>
+                      </item>
+                     </layout>
                     </item>
                     <item>
                      <widget class="QTreeView" name="file_types_view">
@@ -514,6 +547,128 @@
                  </widget>
                 </item>
                </layout>
+              </widget>
+               <widget class="QGroupBox" name="rules_group">
+                <property name="title">
+                 <string>规则配置</string>
+                </property>
+                <layout class="QVBoxLayout" name="rules_group_layout">
+                 <property name="spacing">
+                  <number>6</number>
+                 </property>
+                 <property name="leftMargin">
+                  <number>12</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>16</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>12</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>12</number>
+                 </property>
+                 <item>
+                  <layout class="QHBoxLayout" name="rules_btn_row">
+                   <property name="spacing">
+                    <number>8</number>
+                   </property>
+                   <item>
+                    <widget class="QPushButton" name="load_rules_btn">
+                     <property name="minimumSize">
+                      <size>
+                       <width>150</width>
+                       <height>40</height>
+                      </size>
+                     </property>
+                     <property name="text">
+                      <string>加载规则...</string>
+                     </property>
+                     <property name="icon">
+                      <iconset resource="../resources.qrc">
+                       <normaloff>:/assets/icons/load_list.svg</normaloff>:/assets/icons/load_list.svg</iconset>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="edit_rule_btn">
+                     <property name="minimumSize">
+                      <size>
+                       <width>0</width>
+                       <height>40</height>
+                      </size>
+                     </property>
+                     <property name="toolTip">
+                      <string>编辑选中的规则文件</string>
+                     </property>
+                     <property name="text">
+                      <string>编辑</string>
+                     </property>
+                     <property name="icon">
+                      <iconset resource="../resources.qrc">
+                       <normaloff>:/assets/icons/edit.svg</normaloff>:/assets/icons/edit.svg</iconset>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <spacer name="rules_btn_spacer">
+                     <property name="orientation">
+                      <enum>Qt::Horizontal</enum>
+                     </property>
+                     <property name="sizeHint" stdset="0">
+                      <size>
+                       <width>40</width>
+                       <height>20</height>
+                      </size>
+                     </property>
+                    </spacer>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="rules_file_label">
+                   <property name="text">
+                    <string>规则文件（顺序从上到下，后者覆盖前者）</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QListWidget" name="rules_file_list">
+                   <property name="maximumSize">
+                    <size>
+                     <width>16777215</width>
+                     <height>120</height>
+                    </size>
+                   </property>
+                   <property name="toolTip">
+                    <string>已加载的规则文件，列表顺序代表优先级（从低到高）</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QTreeWidget" name="rules_tree">
+                   <property name="rootIsDecorated">
+                    <bool>false</bool>
+                   </property>
+                   <column>
+                    <property name="text">
+                     <string>规则名</string>
+                    </property>
+                   </column>
+                   <column>
+                    <property name="text">
+                     <string>严重等级</string>
+                    </property>
+                   </column>
+                   <column>
+                    <property name="text">
+                     <string>扩展名</string>
+                    </property>
+                   </column>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
               </widget>
              </item>
              <item>
@@ -1304,148 +1459,6 @@
             </layout>
            </widget>
           </widget>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="rules_tab">
-       <layout class="QVBoxLayout" name="rules_tab_layout">
-        <property name="spacing">
-         <number>8</number>
-        </property>
-        <property name="leftMargin">
-         <number>12</number>
-        </property>
-        <property name="topMargin">
-         <number>12</number>
-        </property>
-        <property name="rightMargin">
-         <number>12</number>
-        </property>
-        <property name="bottomMargin">
-         <number>12</number>
-        </property>
-        <item>
-         <widget class="QGroupBox" name="rules_group">
-          <property name="title">
-           <string>规则配置</string>
-          </property>
-          <layout class="QVBoxLayout" name="rules_group_layout">
-           <property name="spacing">
-            <number>6</number>
-           </property>
-           <property name="leftMargin">
-            <number>12</number>
-           </property>
-           <property name="topMargin">
-            <number>16</number>
-           </property>
-           <property name="rightMargin">
-            <number>12</number>
-           </property>
-           <property name="bottomMargin">
-            <number>12</number>
-           </property>
-           <item>
-            <layout class="QHBoxLayout" name="rules_btn_row">
-             <property name="spacing">
-              <number>8</number>
-             </property>
-             <item>
-              <widget class="QPushButton" name="load_rules_btn">
-               <property name="minimumSize">
-                <size>
-                 <width>150</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>加载规则...</string>
-               </property>
-               <property name="icon">
-                <iconset resource="../resources.qrc">
-                 <normaloff>:/assets/icons/load_list.svg</normaloff>:/assets/icons/load_list.svg</iconset>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="edit_rule_btn">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="toolTip">
-                <string>编辑选中的规则文件</string>
-               </property>
-               <property name="text">
-                <string>编辑</string>
-               </property>
-               <property name="icon">
-                <iconset resource="../resources.qrc">
-                 <normaloff>:/assets/icons/edit.svg</normaloff>:/assets/icons/edit.svg</iconset>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <spacer name="rules_btn_spacer">
-               <property name="orientation">
-                <enum>Qt::Horizontal</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>40</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <widget class="QLabel" name="rules_file_label">
-             <property name="text">
-              <string>规则文件（顺序从上到下，后者覆盖前者）</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QListWidget" name="rules_file_list">
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>120</height>
-              </size>
-             </property>
-             <property name="toolTip">
-              <string>已加载的规则文件，列表顺序代表优先级（从低到高）</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QTreeWidget" name="rules_tree">
-             <property name="rootIsDecorated">
-              <bool>false</bool>
-             </property>
-             <column>
-              <property name="text">
-               <string>规则名</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>严重等级</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>扩展名</string>
-              </property>
-             </column>
-            </widget>
-           </item>
-          </layout>
          </widget>
         </item>
        </layout>

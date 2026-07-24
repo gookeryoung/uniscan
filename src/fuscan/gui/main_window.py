@@ -257,10 +257,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.sidebar_splitter.setStretchFactor(0, 0)
         self.sidebar_splitter.setStretchFactor(1, 1)
         self.sidebar_splitter.setSizes([220, 1060])
+        # config_splitter: 文件类型与忽略项(0) : 规则配置(1) = 3:2
+        self.config_splitter.setStretchFactor(0, 3)
+        self.config_splitter.setStretchFactor(1, 2)
 
     def _setup_layouts(self) -> None:
         """设置各 layout 伸缩因子（.ui 不支持 stretch vector）。"""
-        # 配置页：target_group 自然尺寸 + file_types_group 伸展填充 + setup_action_bar 固定底部
+        # 配置页：target_group 自然尺寸 + config_splitter 伸展填充 + setup_action_bar 固定底部
         self.setup_layout.setStretch(0, 0)
         self.setup_layout.setStretch(1, 1)
         self.setup_layout.setStretch(2, 0)
@@ -271,8 +274,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.rules_group_layout.setStretch(1, 0)
         self.rules_group_layout.setStretch(2, 0)
         self.rules_group_layout.setStretch(3, 1)
-        # rules_tab_layout: rules_group 占满
-        self.rules_tab_layout.setStretch(0, 1)
         # history_tab_layout: history_label(0) / history_list(1)
         self.history_tab_layout.setStretch(0, 0)
         self.history_tab_layout.setStretch(1, 1)
@@ -338,12 +339,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
 
     def _setup_button_groups(self) -> None:
         """初始化头部 Tab 按钮互斥组（盘符按钮组已移到 ScanModePanel）。"""
-        # 头部 Tab 按钮互斥组（id 0=扫描 / 1=规则 / 2=历史）
+        # 头部 Tab 按钮互斥组（id 0=扫描 / 1=历史；规则配置已内嵌配置页，无独立 Tab）
         self._header_button_group = QButtonGroup(self)
         self._header_button_group.setExclusive(True)
         self._header_button_group.addButton(self.tab_scan_btn, 0)
-        self._header_button_group.addButton(self.tab_rules_btn, 1)
-        self._header_button_group.addButton(self.tab_history_btn, 2)
+        self._header_button_group.addButton(self.tab_history_btn, 1)
 
     def _setup_sidebar(self) -> None:
         """填充侧边栏阶段项（配置 / 扫描中 / 结果）。
@@ -458,6 +458,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             count_label=self.file_types_count_label,
             dirs_edit=self.ignore_dirs_edit,
             config=self._config,
+            select_all_btn=self.select_all_btn,
+            unselect_all_btn=self.unselect_all_btn,
             parent=self,
         )
 
