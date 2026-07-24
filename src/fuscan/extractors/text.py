@@ -26,7 +26,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = [
     "CONFIG_FILE_EXTENSIONS",
@@ -152,6 +152,12 @@ class TextExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回纯文本提取器支持的扩展名。"""
         return TEXT_EXTENSIONS
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """纯文本解码为 T1 极速（charset-normalizer + 字节解码）。"""
+        return SpeedTier.VERY_FAST
 
     @override
     @property

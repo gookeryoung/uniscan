@@ -20,7 +20,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["WpsExtractor"]
 
@@ -37,6 +37,12 @@ class WpsExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 WPS 提取器支持的扩展名。"""
         return ("wps", "et", "dps")
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """WPS 委托到 DOCX/XLSX/PPTX 提取，综合为 T3 中速。"""
+        return SpeedTier.MEDIUM
 
     @override
     @property

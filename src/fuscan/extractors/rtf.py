@@ -10,7 +10,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["RtfExtractor"]
 
@@ -25,6 +25,12 @@ class RtfExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 RTF 提取器支持的扩展名。"""
         return ("rtf",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """RTF striprtf 库正则/栈式解析为 T3 中速。"""
+        return SpeedTier.MEDIUM
 
     @override
     @property

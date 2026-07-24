@@ -11,7 +11,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["PdfExtractor"]
 
@@ -29,6 +29,12 @@ class PdfExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 PDF 提取器支持的扩展名。"""
         return ("pdf",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """PDF 逐页布局分析为 T5 极慢（pypdf 页面文本提取）。"""
+        return SpeedTier.VERY_SLOW
 
     @override
     @property

@@ -942,12 +942,18 @@ class TestExtractorRegistry:
         assert display_names == sorted(display_names)
 
     def test_list_extractors_entry_format(self) -> None:
-        """list_extractors 返回元组格式为 (class_name, display_name, extensions)。"""
+        """list_extractors 返回元组格式为 (class_name, display_name, extensions, speed_tier)。
+
+        iter-90 起新增 speed_tier 字段（SpeedTier 枚举）。
+        """
+        from fuscan.extractors.base import SpeedTier
+
         extractors = default_registry.list_extractors()
-        for class_name, display_name, exts in extractors:
+        for class_name, display_name, exts, tier in extractors:
             assert isinstance(class_name, str) and class_name
             assert isinstance(display_name, str) and display_name
             assert isinstance(exts, tuple) and exts
+            assert isinstance(tier, SpeedTier)
             # 扩展名均为小写无点
             for e in exts:
                 assert e == e.lower().lstrip(".")

@@ -29,6 +29,8 @@ try:
 except ImportError:  # pragma: no cover
     from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, Signal  # pyrefly: ignore [missing-import]
 
+from fuscan.extractors.base import SpeedTier
+
 if TYPE_CHECKING:
     from fuscan.extractors.base import ExtractorRegistry
 
@@ -90,30 +92,37 @@ _CHILD_BIT = 0x10000
 
 @dataclass(frozen=True)
 class ExtractorItem:
-    """提取器条目：类名 + 中文显示名 + 支持的扩展名集合。
+    """提取器条目：类名 + 中文显示名 + 支持的扩展名集合 + 速度档次（iter-90）。
 
     ``display_name`` 可能含全角括号后缀（如 "Word（DOCX）"），:attr:`tree_display_text`
-    去掉括号后拼接小写扩展名列表，符合需求1格式 ``类别+扩展名``（如 "Word（docx）"）。
+    去掉括号后拼接小写扩展名列表与速度档次标签，符合需求1格式 ``类别+扩展名``，
+    并在末尾附加 ``· T3 中速`` 档次标注（如 "Word（docx） · T3 中速"）。
     """
 
     class_name: str
     display_name: str
     extensions: tuple[str, ...]
+    # iter-90：解析速度档次，用于树形展示与 tooltip
+    speed_tier: SpeedTier
 
     @property
     def tree_display_text(self) -> str:
-        """返回树形子项展示文本：``{中文名}（{扩展名列表}）``。
+        """返回树形子项展示文本：``{中文名}（{扩展名列表}） · {档次标签}``。
 
-        去掉 display_name 中的全角括号后缀，再拼接小写扩展名列表，
-        符合需求1格式 ``类别+扩展名``，如 ``Word（docx）`` / ``纯文本（txt, log, md）``。
+        去掉 display_name 中的全角括号后缀，再拼接小写扩展名列表与速度档次
+        短标签，如 ``Word（docx） · T3 中速`` / ``纯文本（txt, log） · T1 极速``。
         """
         name = _PAREN_RE.sub("", self.display_name).strip()
-        return f"{name}（{', '.join(self.extensions)}）"
+        return f"{name}（{', '.join(self.extensions)}） · {self.speed_tier.label}"
 
     @property
     def tooltip_text(self) -> str:
-        """返回鼠标悬停提示文本：列出所有扩展名。"""
-        return f"扩展名: {', '.join(self.extensions)}"
+        """返回鼠标悬停提示文本：列出扩展名与速度档次说明。"""
+        return (
+            f"扩展名: {', '.join(self.extensions)}\n"
+            f"速度档次: {self.speed_tier.label}\n"
+            f"解析方式: {self.speed_tier.description}"
+        )
 
 
 class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheritance]
@@ -166,18 +175,24 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
             self._categories.append((cat, [], []))
             seen_cats.add(cat)
         # 加载提取器并归类
-        for class_name, display_name, exts in registry.list_extractors():
+        for class_name, display_name, exts, tier in registry.list_extractors():
             cat = _EXTRACTOR_CATEGORIES.get(class_name, "文档")
             if cat not in seen_cats:
                 self._categories.append((cat, [], []))
                 seen_cats.add(cat)
-            item = ExtractorItem(class_name=class_name, display_name=display_name, extensions=exts)
+            item = ExtractorItem(
+                class_name=class_name,
+                display_name=display_name,
+                extensions=exts,
+                speed_tier=tier,
+            )
             for _i, (cname, items, flags) in enumerate(self._categories):
                 if cname == cat:
                     items.append(item)
                     flags.append(True)
                     break
         # 压缩包分类：从 archive.default_factory 加载已注册扩展名（iter-79）
+        # iter-90：压缩包为 T5 极慢（解压 + 内部条目提取，条目数决定总耗时）
         from fuscan.archive import default_factory as _archive_factory
 
         archive_exts = tuple(sorted(_archive_factory.registered_extensions))
@@ -186,6 +201,7 @@ class ExtractorTreeModel(QAbstractItemModel):  # pyrefly: ignore [invalid-inheri
                 class_name=_ARCHIVE_CLASS_NAME,
                 display_name=_ARCHIVE_DISPLAY_NAME,
                 extensions=archive_exts,
+                speed_tier=SpeedTier.VERY_SLOW,
             )
             for cname, items, flags in self._categories:
                 if cname == _ARCHIVE_CATEGORY:

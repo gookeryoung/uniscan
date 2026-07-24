@@ -28,7 +28,7 @@ try:
     except ImportError:  # pragma: no cover
         from PySide6.QtCore import Qt  # pyrefly: ignore [missing-import]
 
-    from fuscan.extractors.base import Extractor, ExtractorRegistry
+    from fuscan.extractors.base import Extractor, ExtractorRegistry, SpeedTier
     from fuscan.gui.extractor_model import ExtractorItem, ExtractorTreeModel
 
     PYSIDE_AVAILABLE = True
@@ -44,6 +44,8 @@ class _StubExtractor(Extractor):
 
     子类通过 ``type().__name__`` 提供不同的 class_name，需匹配
     ``_EXTRACTOR_CATEGORIES`` 的键才能归入非默认分类。
+    iter-90：桩提取器统一返回 ``SpeedTier.VERY_FAST``（仅用于测试树形结构，
+    不测试真实解析速度）。
     """
 
     _exts: tuple[str, ...] = ()
@@ -53,6 +55,11 @@ class _StubExtractor(Extractor):
     @override
     def supported_extensions(self) -> tuple[str, ...]:
         return self._exts
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        return SpeedTier.VERY_FAST
 
     @property
     @override
@@ -191,29 +198,33 @@ class TestExtractorTreeModelConstruction:
         """
         pdf_idx = _child_index(model, 0, 0)
         text_idx = _child_index(model, 4, 0)
-        assert model.data(pdf_idx, Qt.DisplayRole) == "PDF（pdf）"
-        assert model.data(text_idx, Qt.DisplayRole) == "纯文本（csv, json, log, md, py, txt）"
+        # iter-90：子项 DisplayRole 末尾附加速度档次标签
+        assert model.data(pdf_idx, Qt.DisplayRole) == "PDF（pdf） · T1 极速"
+        assert model.data(text_idx, Qt.DisplayRole) == "纯文本（csv, json, log, md, py, txt） · T1 极速"
 
     def test_child_display_text_strips_paren_suffix(self, model: ExtractorTreeModel) -> None:
         """display_name 含全角括号后缀时去掉后缀再拼接扩展名。
 
-        Excel（XLSX）→ 去掉后缀得 "Excel"，再拼接 "（xlsx）"。
+        Excel（XLSX）→ 去掉后缀得 "Excel"，再拼接 "（xlsx） · T1 极速"。
         """
         xlsx_idx = _child_index(model, 1, 0)
-        assert model.data(xlsx_idx, Qt.DisplayRole) == "Excel（xlsx）"
+        assert model.data(xlsx_idx, Qt.DisplayRole) == "Excel（xlsx） · T1 极速"
 
     def test_archive_display_text(self, model: ExtractorTreeModel) -> None:
-        """压缩包分类虚拟项 DisplayRole 返回 ``压缩文件（7z, rar, zip）``。
+        """压缩包分类虚拟项 DisplayRole 返回 ``压缩文件（7z, rar, zip） · T5 极慢``。
 
         扩展名按字母序排序：7z < rar < zip。
+        iter-90：压缩包标记为 T5 极慢（解压 + 内部条目提取）。
         """
         archive_idx = _child_index(model, 9, 0)
-        assert model.data(archive_idx, Qt.DisplayRole) == "压缩文件（7z, rar, zip）"
+        assert model.data(archive_idx, Qt.DisplayRole) == "压缩文件（7z, rar, zip） · T5 极慢"
 
     def test_tooltip_lists_all_extensions(self, model: ExtractorTreeModel) -> None:
-        """子项 ToolTipRole 返回所有扩展名（含 6 个的纯文本，按字母序排序）。"""
+        """子项 ToolTipRole 返回扩展名与速度档次说明（iter-90 扩展）。"""
         text_idx = _child_index(model, 4, 0)
-        assert model.data(text_idx, Qt.ToolTipRole) == "扩展名: csv, json, log, md, py, txt"
+        assert model.data(text_idx, Qt.ToolTipRole) == (
+            "扩展名: csv, json, log, md, py, txt\n速度档次: T1 极速\n解析方式: 纯字节解码，无第三方库（< 10ms/MB）"
+        )
 
     def test_check_state_default_checked(self, model: ExtractorTreeModel) -> None:
         """子项 CheckStateRole 默认返回 Qt.Checked。"""

@@ -7,10 +7,13 @@
 - :class:`ExtractorRegistry` 按扩展名分发，支持注册与查找
 - 依赖第三方库的提取器在 ``extract`` 方法内部懒加载 import，避免模块导入时强依赖
 - :func:`get_extractor` 提供默认注册表查询，未注册返回 ``None``（由调用方回退到纯文本）
+- :class:`SpeedTier` 枚举（iter-90）划分 5 档解析速度，GUI 勾选树展示档次
+  便于用户按需选择文件类型
 """
 
 from __future__ import annotations
 
+import enum
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -19,6 +22,7 @@ __all__ = [
     "Extractor",
     "ExtractorError",
     "ExtractorRegistry",
+    "SpeedTier",
     "default_registry",
     "extract_content",
     "extract_content_from_bytes",
@@ -27,6 +31,52 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+class SpeedTier(enum.Enum):
+    """提取器解析速度档次（iter-90，5 档）。
+
+    档次依据实现复杂度划分，与典型文件大小（1MB）下的解析耗时对应：
+
+    - ``VERY_FAST`` (T1 极速)：< 10ms/MB，纯字节解码，无第三方库
+    - ``FAST`` (T2 快速)：10-50ms/MB，标准库解析
+    - ``MEDIUM`` (T3 中速)：50-200ms/MB，单次 XML 解析 + 树遍历
+    - ``SLOW`` (T4 慢速)：200-1000ms/MB，单元格遍历或字节级扫描
+    - ``VERY_SLOW`` (T5 极慢)：> 1000ms/MB，复杂页面布局分析或解压+条目提取
+
+    档次用于 GUI 勾选树展示，帮助用户预估勾选某类文件类型后的扫描耗时。
+    实际耗时受文件大小、内容复杂度、磁盘缓存等影响，档次仅为数量级参考。
+    """
+
+    VERY_FAST = 1
+    FAST = 2
+    MEDIUM = 3
+    SLOW = 4
+    VERY_SLOW = 5
+
+    @property
+    def label(self) -> str:
+        """返回档次短标签，如 ``T1 极速``（用于树形展示）。"""
+        mapping = {
+            SpeedTier.VERY_FAST: "T1 极速",
+            SpeedTier.FAST: "T2 快速",
+            SpeedTier.MEDIUM: "T3 中速",
+            SpeedTier.SLOW: "T4 慢速",
+            SpeedTier.VERY_SLOW: "T5 极慢",
+        }
+        return mapping[self]
+
+    @property
+    def description(self) -> str:
+        """返回档次说明（用于 tooltip）。"""
+        mapping = {
+            SpeedTier.VERY_FAST: "纯字节解码，无第三方库（< 10ms/MB）",
+            SpeedTier.FAST: "标准库解析（10-50ms/MB）",
+            SpeedTier.MEDIUM: "单次 XML 解析 + 树遍历（50-200ms/MB）",
+            SpeedTier.SLOW: "单元格遍历或字节级扫描（200-1000ms/MB）",
+            SpeedTier.VERY_SLOW: "复杂布局分析或解压+条目提取（> 1000ms/MB）",
+        }
+        return mapping[self]
 
 
 class ExtractorError(Exception):
@@ -39,12 +89,26 @@ class Extractor(ABC):
     子类须实现 :meth:`extract`（从路径提取）与 :meth:`extract_from_bytes`
     （从内存字节提取）。后者用于缓存模式：调用方一次 ``read_bytes`` 既算哈希
     又提取内容，避免双重磁盘 I/O。
+
+    子类还须声明 :attr:`speed_tier` 标识解析速度档次（iter-90），
+    供 GUI 勾选树展示。档次依据实现复杂度划分，详见 :class:`SpeedTier`。
     """
 
     @property
     @abstractmethod
     def supported_extensions(self) -> tuple[str, ...]:
         """该提取器支持的文件扩展名列表（不含点，小写）。"""
+
+    @property
+    @abstractmethod
+    def speed_tier(self) -> SpeedTier:
+        """该提取器的解析速度档次（iter-90）。
+
+        子类须按实现复杂度返回对应 :class:`SpeedTier`：
+        纯文本解码 → ``VERY_FAST``，标准库解析 → ``FAST``，
+        XML 解析 → ``MEDIUM``，单元格遍历/字节扫描 → ``SLOW``，
+        页面布局分析/解压+条目提取 → ``VERY_SLOW``。
+        """
 
     @property
     def display_name(self) -> str:
@@ -99,13 +163,14 @@ class ExtractorRegistry:
         """已注册的所有扩展名。"""
         return tuple(sorted(self._extractors.keys()))
 
-    def list_extractors(self) -> list[tuple[str, str, tuple[str, ...]]]:
+    def list_extractors(self) -> list[tuple[str, str, tuple[str, ...], SpeedTier]]:
         """列出所有已注册的提取器信息，供 GUI 勾选区展示。
 
-        :return: ``[(class_name, display_name, supported_extensions), ...]`` 列表，
-                 按 display_name 排序。同一提取器实例支持多个扩展名时合并为一项。
+        :return: ``[(class_name, display_name, supported_extensions, speed_tier), ...]``
+                 列表，按 display_name 排序。同一提取器实例支持多个扩展名时合并为一项。
+                 ``speed_tier`` 为 :class:`SpeedTier` 枚举值（iter-90）。
         """
-        seen: dict[int, tuple[str, str, tuple[str, ...]]] = {}
+        seen: dict[int, tuple[str, str, tuple[str, ...], SpeedTier]] = {}
         for _ext, extractor in self._extractors.items():
             obj_id = id(extractor)
             if obj_id not in seen:
@@ -114,6 +179,7 @@ class ExtractorRegistry:
                     type(extractor).__name__,
                     extractor.display_name,
                     tuple(sorted(e.lower().lstrip(".") for e in exts)),
+                    extractor.speed_tier,
                 )
         return sorted(seen.values(), key=lambda x: x[1])
 

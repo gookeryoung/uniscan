@@ -12,7 +12,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["DocxExtractor", "PptxExtractor"]
 
@@ -27,6 +27,12 @@ class DocxExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 DOCX 提取器支持的扩展名。"""
         return ("docx",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """DOCX 单次 XML 解析 + 段落/表格遍历为 T3 中速。"""
+        return SpeedTier.MEDIUM
 
     @override
     @property
@@ -87,6 +93,12 @@ class PptxExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 PPTX 提取器支持的扩展名。"""
         return ("pptx",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """PPTX 逐幻灯片遍历形状/文本框/表格为 T4 慢速。"""
+        return SpeedTier.SLOW
 
     @override
     @property

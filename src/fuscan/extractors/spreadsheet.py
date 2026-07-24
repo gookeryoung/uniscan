@@ -12,7 +12,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["OdsExtractor", "XlsxExtractor"]
 
@@ -34,6 +34,12 @@ class XlsxExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 XLSX 提取器支持的扩展名。"""
         return ("xlsx", "xlsm")
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """XLSX 逐行逐单元格遍历（上限 10k 行 × 256 列）为 T4 慢速。"""
+        return SpeedTier.SLOW
 
     @override
     @property
@@ -103,6 +109,12 @@ class OdsExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 ODS 提取器支持的扩展名。"""
         return ("ods",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """ODS XML 解析 + TableRow/Cell 遍历为 T4 慢速。"""
+        return SpeedTier.SLOW
 
     @override
     @property

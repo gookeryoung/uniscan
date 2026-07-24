@@ -11,7 +11,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["OdtExtractor"]
 
@@ -26,6 +26,12 @@ class OdtExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 ODT 提取器支持的扩展名。"""
         return ("odt",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """ODT 单次 XML 解析 + 段落/标题遍历为 T3 中速。"""
+        return SpeedTier.MEDIUM
 
     @override
     @property

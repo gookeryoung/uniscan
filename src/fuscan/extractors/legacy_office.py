@@ -16,7 +16,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["DocExtractor", "PptExtractor", "XlsExtractor"]
 
@@ -74,6 +74,12 @@ class XlsExtractor(Extractor):
         """返回 XLS 提取器支持的扩展名。"""
         return ("xls",)
 
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """XLS 二进制解析 + 逐单元格遍历为 T4 慢速。"""
+        return SpeedTier.SLOW
+
     @override
     @property
     def display_name(self) -> str:
@@ -128,6 +134,12 @@ class DocExtractor(Extractor):
         """返回 DOC 提取器支持的扩展名。"""
         return ("doc",)
 
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """DOC OLE 复合文档 + UTF-16LE 逐字节扫描为 T4 慢速。"""
+        return SpeedTier.SLOW
+
     @override
     @property
     def display_name(self) -> str:
@@ -178,6 +190,12 @@ class PptExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 PPT 提取器支持的扩展名。"""
         return ("ppt",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """PPT OLE 复合文档 + UTF-16LE 逐字节扫描为 T4 慢速。"""
+        return SpeedTier.SLOW
 
     @override
     @property

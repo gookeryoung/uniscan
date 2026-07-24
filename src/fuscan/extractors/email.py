@@ -16,7 +16,7 @@ from pathlib import Path
 
 from typing_extensions import override
 
-from fuscan.extractors.base import Extractor, ExtractorError
+from fuscan.extractors.base import Extractor, ExtractorError, SpeedTier
 
 __all__ = ["EmlExtractor", "MsgExtractor"]
 
@@ -42,6 +42,12 @@ class EmlExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 EML 提取器支持的扩展名。"""
         return ("eml",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """EML 标准库 email 解析（含 multipart 遍历）为 T2 快速。"""
+        return SpeedTier.FAST
 
     @override
     @property
@@ -127,6 +133,12 @@ class MsgExtractor(Extractor):
     def supported_extensions(self) -> tuple[str, ...]:
         """返回 MSG 提取器支持的扩展名。"""
         return ("msg",)
+
+    @property
+    @override
+    def speed_tier(self) -> SpeedTier:
+        """MSG 二进制解析（extract-msg 库读取 OLE 结构）为 T3 中速。"""
+        return SpeedTier.MEDIUM
 
     @override
     @property
