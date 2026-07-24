@@ -30,9 +30,9 @@ src/fuscan/
 │   ├── zip_reader.py   # ZIP（zipfile）
 │   ├── rar_reader.py   # RAR（rarfile，惰性导入）
 │   └── scanner.py  # ArchiveScanner（临时文件提取）
-├── builtin/        # 内置通用规则
-│   ├── __init__.py # load_with_builtin / load_builtin_ruleset
-│   └── rules.yaml  # 8 条通用安全规则 + ignore 配置
+├── assets/         # 随包分发资源（图标/PDF/内置规则）
+│   ├── rules/builtin.yaml  # 内置通用规则（4 条安全规则 + ignore 配置）
+│   └── docs/       # 用户手册 PDF
 ├── gui/            # PySide2/PySide6 GUI（GitHub Desktop 风格 5 区布局）
 │   ├── __main__.py         # `python -m fuscan.gui` 入口
 │   ├── app.py              # launch() 入口，构造 QApplication 与主窗口
@@ -60,6 +60,7 @@ src/fuscan/
 │   ├── ignore_dirs.py  # 平台默认忽略目录
 │   ├── tray.py         # TrayApp(QSystemTrayIcon)
 │   └── __init__.py     # TrayApp 惰性导入
+├── config.py        # 配置持久化 + 内置规则加载（load_with_builtin/load_builtin_ruleset）
 └── cli.py          # CLI 入口（scan/rules/gui/tray/version）
 ```
 
@@ -219,9 +220,10 @@ GUI 默认 `max_workers=8`，CLI 保持单线程（兼容性优先）。
 
 ### 9. 内置规则随包分发
 
-内置规则文件放在 `src/fuscan/builtin/rules.yaml`，通过 `pyproject.toml`
-的 `package-data` 打包，确保安装后即可使用。`load_with_builtin()` 合并内置与
-用户规则（按名称覆盖，`ignore_paths` 取并集）。
+内置规则文件放在 `src/fuscan/assets/rules/builtin.yaml`，位于包目录内，
+由 hatchling 默认随包打包（`packages = ["src/fuscan"]` 递归包含非 Python 资源）。
+`load_with_builtin()`（定义在 `config.py`）合并内置与用户规则（按名称覆盖，
+`ignore_paths` 取并集）。
 
 ### 10. 规则合并链式覆盖
 

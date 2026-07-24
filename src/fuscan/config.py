@@ -23,12 +23,15 @@ import yaml
 from fuscan.rules import RuleSet, load_ruleset, merge_multiple_rulesets
 
 __all__ = [
+    "BUILTIN_RULES_PATH",
     "CONFIG_DIR",
     "CONFIG_PATH",
     "MANUAL_PDF_PATH",
     "Config",
     "detect_default_staging_dir",
+    "load_builtin_ruleset",
     "load_config",
+    "load_with_builtin",
     "save_config",
 ]
 

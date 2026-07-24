@@ -75,8 +75,8 @@ except ImportError:  # pragma: no cover
         QWidget,
     )
 
-from fuscan.config import MANUAL_PDF_PATH as _MANUAL_PDF, load_with_builtin
-from fuscan.config import Config, detect_default_staging_dir, load_config, save_config
+from fuscan.config import MANUAL_PDF_PATH as _MANUAL_PDF
+from fuscan.config import Config, detect_default_staging_dir, load_config, load_with_builtin, save_config
 from fuscan.gui.about_dialog import AboutDialog
 from fuscan.gui.content_panel import ContentTabPanel
 from fuscan.gui.detail_panel import DetailControls, DetailPanel

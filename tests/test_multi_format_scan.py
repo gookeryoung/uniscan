@@ -30,7 +30,7 @@ _DB_CONN_WITH_BACKSLASH = r"mongodb://user:pass\123@host"
 _DB_CONN_WITH_QUOTE = "mongodb://user:pa'ss@host"
 _BEARER_CROSS_LINE = "Bearer\n  eyJhbGci.token"
 
-# 内置规则集端到端测试样本（对应 builtin/rules.yaml 中的 P0101/P0102 规则）
+# 内置规则集端到端测试样本（对应 assets/rules/builtin.yaml 中的 P0101/P0102 规则）
 _PASSWORD_SAMPLE = "password=S3cr3t!"
 _PRIVATE_KEY_SAMPLE = "-----BEGIN RSA PRIVATE KEY-----"
 

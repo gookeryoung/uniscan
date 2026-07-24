@@ -24,12 +24,14 @@ from fuscan.cache import (
     CacheStore,
     compute_file_hash,
     compute_rule_hash,
+    compute_source_files,
     default_cache_path,
     hash_bytes,
     serialize_match,
     serialize_rule,
 )
 from fuscan.cache.schema import CURRENT_VERSION, migrate
+from fuscan.config import BUILTIN_RULES_PATH
 from fuscan.rules.model import (
     AndMatch,
     LeafMatch,
@@ -1985,3 +1987,56 @@ class TestBatchPutResults:
             assert store.stats().scan_results == 1
             assert store.stats().scanned_files == 1  # 原有 1 条
             assert store.stats().file_paths == 0  # 新增的 a.txt 被回滚
+
+
+# ---------------------------------------------------------------- 规则来源文件哈希
+
+
+class TestComputeSourceFiles:
+    """``compute_source_files``：规则来源文件 SHA-256 映射计算。
+
+    覆盖 ``use_builtin`` 开关与文件不存在跳过分支，供 CacheStore.register_ruleset
+    构造 ``source_files`` 参数。
+    """
+
+    def test_no_builtin_no_user_paths_returns_empty(self) -> None:
+        """``use_builtin=False`` 且无用户规则时返回空映射。"""
+        assert compute_source_files([], use_builtin=False) == {}
+
+    def test_builtin_only_returns_builtin_path(self) -> None:
+        """``use_builtin=True`` 且无用户规则时仅含内置规则文件。"""
+        sources = compute_source_files([], use_builtin=True)
+        assert BUILTIN_RULES_PATH in sources
+        # 哈希值为 64 位十六进制 SHA-256
+        assert len(sources[BUILTIN_RULES_PATH]) == 64
+
+    def test_user_paths_only_without_builtin(self, tmp_path: Path) -> None:
+        """``use_builtin=False`` 时仅含用户规则文件。"""
+        user_yaml = tmp_path / "user.yaml"
+        user_yaml.write_text("rules: []\n", encoding="utf-8")
+
+        sources = compute_source_files([user_yaml], use_builtin=False)
+        assert BUILTIN_RULES_PATH not in sources
+        assert user_yaml in sources
+        assert sources[user_yaml] == hash_bytes(user_yaml.read_bytes())
+
+    def test_builtin_and_user_paths_union(self, tmp_path: Path) -> None:
+        """``use_builtin=True`` 且有用户规则时取并集。"""
+        user_yaml = tmp_path / "user.yaml"
+        user_yaml.write_text("rules: []\n", encoding="utf-8")
+
+        sources = compute_source_files([user_yaml], use_builtin=True)
+        assert BUILTIN_RULES_PATH in sources
+        assert user_yaml in sources
+
+    def test_nonexistent_user_path_skipped(self, tmp_path: Path) -> None:
+        """不存在的用户规则文件静默跳过，不抛异常。"""
+        missing = tmp_path / "missing.yaml"
+        sources = compute_source_files([missing], use_builtin=False)
+        assert sources == {}
+
+    def test_builtin_path_missing_skipped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """内置规则文件不存在时静默跳过（``use_builtin=True`` 也不报错）。"""
+        monkeypatch.setattr("fuscan.config.BUILTIN_RULES_PATH", tmp_path / "absent.yaml")
+        sources = compute_source_files([], use_builtin=True)
+        assert sources == {}
