@@ -1,7 +1,9 @@
 """电子表格提取器：XLSX 与 ODS。
 
-XLSX 使用 openpyxl 提取所有工作表单元格文本。
-ODS 使用 odfpy 提取表格内容。
+XLSX/XLSM 使用 calamine（Rust + PyO3）提取所有工作表单元格文本，相比
+openpyxl 的纯 Python 逐单元格遍历有 5-10 倍提速，且 Rust 侧执行期间释放
+GIL，避免阻塞 Qt 主线程。ODS 因 calamine 0.3.1 对 odfpy 生成的标准 ODS
+解析不完整（0.4+ 已修复但要求 Python 3.9+），暂保留 odfpy 实现。
 """
 
 from __future__ import annotations
@@ -22,8 +24,71 @@ _MAX_ROWS = 10000
 _MAX_COLS = 256
 
 
+def _extract_calamine_workbook(
+    data: bytes,
+    max_rows: int = _MAX_ROWS,
+    max_cols: int = _MAX_COLS,
+    error_label: str = "工作簿",
+) -> str:
+    """使用 calamine (Rust + PyO3) 提取工作簿所有工作表文本。
+
+    支持 XLSX/XLSM/XLSB/XLS 等 Excel 格式（calamine 0.3.1 对 ODS 解析不
+    完整，OdsExtractor 仍走 odfpy 后端）。calamine 在 Rust 侧完成全部解析
+    与单元格遍历，PyO3 边界仅一次性返回二维列表，避免 Python 层逐单元格
+    调用带来的 GIL 长期占用。
+
+    :param data: 工作簿字节内容
+    :param max_rows: 单工作表最大行数（超出截断）
+    :param max_cols: 单工作表最大列数（超出截断）
+    :param error_label: 错误信息前缀（如 ``"XLSX"`` / ``"XLS"`` /
+        ``"WPS 表格"``），用于生成可定位的 ExtractorError 消息
+    :return: 各工作表文本拼接，工作表名以 ``--- 工作表: 名称 ---`` 分隔，
+        行内单元格以 ``\\t`` 分隔，行间以 ``\\n`` 分隔
+    :raises ExtractorError: calamine 未安装或解析失败（含加密文件）
+    """
+    try:
+        from python_calamine import CalamineError, CalamineWorkbook
+    except ImportError as exc:
+        raise ExtractorError(f"python-calamine 未安装，无法提取{error_label}") from exc
+
+    try:
+        workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
+    except (CalamineError, OSError, ValueError) as exc:
+        raise ExtractorError(f"{error_label} 解析失败: {exc}") from exc
+
+    parts: list[str] = []
+    for sheet_idx, sheet_name in enumerate(workbook.sheet_names):
+        sheet = workbook.get_sheet_by_index(sheet_idx)
+        # calamine 0.3.1 的 iter_rows() 在空 sheet 上会 panic，改用 to_python()
+        rows = sheet.to_python()
+        sheet_texts: list[str] = []
+        for row_count, row in enumerate(rows, 1):
+            if row_count > max_rows:
+                logger.debug("工作表 %s 行数超过上限 %d，截断", sheet_name, max_rows)
+                break
+            cell_texts: list[str] = []
+            for col_idx, cell in enumerate(row):
+                if col_idx >= max_cols:
+                    break
+                if cell is None:
+                    continue
+                cell_str = str(cell).strip()
+                if cell_str:
+                    cell_texts.append(cell_str)
+            if cell_texts:
+                sheet_texts.append("\t".join(cell_texts))
+        if sheet_texts:
+            parts.append(f"--- 工作表: {sheet_name} ---")
+            parts.extend(sheet_texts)
+
+    return "\n".join(parts)
+
+
 class XlsxExtractor(Extractor):
-    """XLSX 电子表格文本提取器。"""
+    """XLSX 电子表格文本提取器。
+
+    iter-92 起切换到 calamine (Rust + PyO3) 后端，从 T4 慢速降至 T2 快速。
+    """
 
     def __init__(self, max_rows: int = _MAX_ROWS, max_cols: int = _MAX_COLS) -> None:
         self._max_rows = max_rows
@@ -38,8 +103,8 @@ class XlsxExtractor(Extractor):
     @property
     @override
     def speed_tier(self) -> SpeedTier:
-        """XLSX 逐行逐单元格遍历（上限 10k 行 × 256 列）为 T4 慢速。"""
-        return SpeedTier.SLOW
+        """calamine (Rust + PyO3) 释放 GIL，T2 快速。"""
+        return SpeedTier.FAST
 
     @override
     @property
@@ -59,50 +124,21 @@ class XlsxExtractor(Extractor):
     @override
     def extract_from_bytes(self, data: bytes) -> str:
         """从内存字节提取 XLSX 工作簿文本。"""
-        try:
-            from openpyxl import load_workbook
-        except ImportError as exc:
-            raise ExtractorError("openpyxl 未安装，无法提取 XLSX") from exc
-
-        try:
-            wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        except Exception as exc:
-            raise ExtractorError(f"XLSX 解析失败: {exc}") from exc
-
-        parts: list[str] = []
-        try:
-            for sheet in wb:
-                sheet_texts = self._extract_sheet(sheet)
-                if sheet_texts:
-                    parts.append(f"--- 工作表: {sheet.title} ---")
-                    parts.extend(sheet_texts)
-        finally:
-            wb.close()
-
-        return "\n".join(parts)
-
-    def _extract_sheet(self, sheet: object) -> list[str]:
-        """提取单个工作表的文本。"""
-        texts: list[str] = []
-        for row_count, row in enumerate(sheet.iter_rows(values_only=True), 1):  # pyrefly: ignore [missing-attribute]
-            if row_count > self._max_rows:
-                logger.debug("工作表行数超过上限 %d，截断", self._max_rows)
-                break
-            cell_texts = []
-            for col_idx, cell in enumerate(row):
-                if col_idx >= self._max_cols:
-                    break
-                if cell is not None:
-                    cell_str = str(cell).strip()
-                    if cell_str:
-                        cell_texts.append(cell_str)
-            if cell_texts:
-                texts.append("\t".join(cell_texts))
-        return texts
+        return _extract_calamine_workbook(
+            data,
+            max_rows=self._max_rows,
+            max_cols=self._max_cols,
+            error_label="XLSX",
+        )
 
 
 class OdsExtractor(Extractor):
-    """ODS 电子表格文本提取器（OpenDocument Spreadsheet）。"""
+    """ODS 电子表格文本提取器（OpenDocument Spreadsheet）。
+
+    使用 odfpy 解析 ODS 表格。calamine 0.3.1 对 odfpy 生成的标准 ODS 单元格
+    解析不完整（0.4+ 已修复但要求 Python 3.9+，fuscan 仍支持 Python 3.8），
+    故 ODS 暂保留 odfpy 实现，speed_tier 维持 T4 慢速。
+    """
 
     @property
     @override

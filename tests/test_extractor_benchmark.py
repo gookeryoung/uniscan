@@ -7,14 +7,14 @@
 
 - T1 极速（``VERY_FAST``）：< 10ms/MB，纯字节解码
   - 纯文本/源代码/配置文件/标记与数据/样式表 5 个子提取器
-- T2 快速（``FAST``）：10-50ms/MB，标准库解析
-  - EML 邮件
+- T2 快速（``FAST``）：10-50ms/MB，Rust 加速后端或标准库解析
+  - EML 邮件、PDF（pdf_oxide）、XLSX/XLS（calamine，iter-92）
 - T3 中速（``MEDIUM``）：50-200ms/MB，单次 XML 解析 + 树遍历
   - DOCX/ODT/RTF/WPS/MSG
 - T4 慢速（``SLOW``）：200-1000ms/MB，单元格遍历或字节级扫描
-  - XLSX/ODS/XLS/PPTX/DOC/PPT
+  - ODS（odfpy）/PPTX/DOC/PPT
 - T5 极慢（``VERY_SLOW``）：> 1000ms/MB，复杂页面布局分析
-  - PDF
+  - PDF（pypdf 回退）
 
 基准测试设计原则：
 
@@ -313,7 +313,7 @@ class TestTier1VeryFast:
 
 @pytest.mark.slow
 class TestTier2Fast:
-    """T2 快速档次基准测试：标准库解析。"""
+    """T2 快速档次基准测试：Rust 加速后端或标准库解析。"""
 
     def test_eml_extractor_tier(self) -> None:
         """EmlExtractor 声明为 T2 快速。"""
@@ -350,6 +350,26 @@ class TestTier2Fast:
         _assert_time_within_tier(elapsed, SpeedTier.FAST, "PdfExtractor (pdf_oxide)")
         content = extractor.extract_from_bytes(data)
         assert "password" in content
+
+    def test_xlsx_extractor_tier(self) -> None:
+        """XlsxExtractor 声明为 T2 快速（iter-92 切换 calamine）。"""
+        extractor = XlsxExtractor()
+        _assert_tier(extractor, SpeedTier.FAST)
+
+    def test_xlsx_extraction_speed(self) -> None:
+        """典型 XLSX 工作簿（100 行 × 10 列）提取应在 1s 内完成（T2 快速基准，iter-92 calamine）。"""
+        extractor = XlsxExtractor()
+        data = _make_xlsx_sample()
+        elapsed = _measure(extractor.extract_from_bytes, data)
+        _assert_time_within_tier(elapsed, SpeedTier.FAST, "XlsxExtractor")
+        content = extractor.extract_from_bytes(data)
+        assert "password" in content
+
+    def test_xls_extractor_tier(self) -> None:
+        """XlsExtractor 声明为 T2 快速（iter-92 切换 calamine）。"""
+        extractor = XlsExtractor()
+        _assert_tier(extractor, SpeedTier.FAST)
+        # XLS 二进制样本难以程序化生成，仅验证档次声明
 
 
 # ----------------------------- T3 中速：XML 解析 + 树遍历 -----------------------------
@@ -429,20 +449,6 @@ class TestTier3Medium:
 class TestTier4Slow:
     """T4 慢速档次基准测试：单元格遍历或字节级扫描。"""
 
-    def test_xlsx_extractor_tier(self) -> None:
-        """XlsxExtractor 声明为 T4 慢速。"""
-        extractor = XlsxExtractor()
-        _assert_tier(extractor, SpeedTier.SLOW)
-
-    def test_xlsx_extraction_speed(self) -> None:
-        """典型 XLSX 工作簿（100 行 × 10 列）提取应在 5s 内完成（T4 慢速基准）。"""
-        extractor = XlsxExtractor()
-        data = _make_xlsx_sample()
-        elapsed = _measure(extractor.extract_from_bytes, data)
-        _assert_time_within_tier(elapsed, SpeedTier.SLOW, "XlsxExtractor")
-        content = extractor.extract_from_bytes(data)
-        assert "password" in content
-
     def test_pptx_extractor_tier(self) -> None:
         """PptxExtractor 声明为 T4 慢速。"""
         extractor = PptxExtractor()
@@ -470,11 +476,6 @@ class TestTier4Slow:
         _assert_time_within_tier(elapsed, SpeedTier.SLOW, "OdsExtractor")
         content = extractor.extract_from_bytes(data)
         assert "password" in content
-
-    def test_xls_extractor_tier(self) -> None:
-        """XlsExtractor 声明为 T4 慢速（仅档次声明，样本无法程序化生成）。"""
-        extractor = XlsExtractor()
-        _assert_tier(extractor, SpeedTier.SLOW)
 
     def test_doc_extractor_tier(self) -> None:
         """DocExtractor 声明为 T4 慢速（仅档次声明，样本无法程序化生成）。"""

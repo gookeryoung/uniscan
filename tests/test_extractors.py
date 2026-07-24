@@ -429,7 +429,7 @@ class TestXlsxExtractor:
         assert "姓名" in content
 
     def test_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """openpyxl 未安装时应抛出 ExtractorError。"""
+        """python-calamine 未安装时应抛出 ExtractorError。"""
         path = tmp_path / "test.xlsx"
         path.write_bytes(b"fake")
         import builtins
@@ -437,12 +437,12 @@ class TestXlsxExtractor:
         original_import = builtins.__import__
 
         def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if name == "openpyxl":
-                raise ImportError("No module named 'openpyxl'")
+            if name == "python_calamine":
+                raise ImportError("No module named 'python_calamine'")
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
-        with pytest.raises(ExtractorError, match="openpyxl 未安装"):
+        with pytest.raises(ExtractorError, match="python-calamine 未安装"):
             XlsxExtractor().extract(path)
 
 
@@ -533,7 +533,7 @@ class TestWpsExtractor:
         """有效的 ZIP 但 xlsx 内容损坏时应抛出 ExtractorError。"""
         path = tmp_path / "bad.et"
         path.write_bytes(_make_ooxml_zip("xl/workbook.xml", "corrupt xml"))
-        with pytest.raises(ExtractorError, match="WPS 表格解析失败"):
+        with pytest.raises(ExtractorError, match="WPS 表格 解析失败"):
             WpsExtractor().extract(path)
 
     def test_wps_invalid_dps_raises(self, tmp_path: Path) -> None:
@@ -605,7 +605,7 @@ class TestWpsExtractorErrorPaths:
             WpsExtractor().extract(path)
 
     def test_extract_as_xlsx_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """openpyxl 未安装时 _extract_as_xlsx 应抛出 ExtractorError。"""
+        """python-calamine 未安装时 _extract_as_xlsx 应抛出 ExtractorError。"""
         path = tmp_path / "test.et"
         path.write_bytes(_make_ooxml_zip("xl/workbook.xml"))
         import builtins
@@ -613,12 +613,12 @@ class TestWpsExtractorErrorPaths:
         original_import = builtins.__import__
 
         def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if name == "openpyxl":
-                raise ImportError("No module named 'openpyxl'")
+            if name == "python_calamine":
+                raise ImportError("No module named 'python_calamine'")
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
-        with pytest.raises(ExtractorError, match="openpyxl 未安装"):
+        with pytest.raises(ExtractorError, match="python-calamine 未安装"):
             WpsExtractor().extract(path)
 
     def test_extract_as_pptx_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1902,25 +1902,33 @@ class TestMsgExtractor:
 
 
 class TestXlsExtractor:
+    """XLS 提取器测试。
+
+    iter-92 起 XlsExtractor 与 XlsxExtractor 共用 calamine (Rust + PyO3) 后端，
+    以下 mock 测试通过 ``monkeypatch`` 替换 ``CalamineWorkbook.from_filelike``
+    验证文本提取逻辑；calamine 后端的真实解析由 ``test_extractor_benchmark.py``
+    覆盖（XLS 二进制样本难以程序化生成，跳过基准测试）。
+    """
+
     def test_supported_extensions(self) -> None:
         assert XlsExtractor().supported_extensions == ("xls",)
 
     def test_extract_from_bytes_with_mock(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """mock xlrd.open_workbook 验证单元格遍历逻辑。"""
-        import xlrd
+        """mock calamine 验证单元格遍历逻辑。"""
 
         class FakeSheet:
-            nrows = 2
-            ncols = 2
-
-            def cell_value(self, row: int, col: int) -> str:
-                return [["姓名", "密码"], ["张三", "pwd123"]][row][col]
+            def to_python(self) -> list[list[object]]:
+                return [["姓名", "密码"], ["张三", "pwd123"]]
 
         class FakeWorkbook:
-            def sheets(self) -> list[object]:
-                return [FakeSheet()]
+            sheet_names = ["Sheet1"]
 
-        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+            def get_sheet_by_index(self, idx: int) -> object:
+                return FakeSheet()
+
+        import python_calamine
+
+        monkeypatch.setattr(python_calamine.CalamineWorkbook, "from_filelike", lambda f: FakeWorkbook())
 
         content = XlsExtractor().extract_from_bytes(b"fake xls data")
         assert "姓名" in content
@@ -1929,12 +1937,12 @@ class TestXlsExtractor:
 
     def test_extract_from_bytes_parse_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """XLS 解析失败抛 ExtractorError。"""
-        import xlrd
+        import python_calamine
 
-        def raise_parse(**kwargs: object) -> None:
-            raise ValueError("解析失败")
+        def raise_parse(_filelike: object) -> None:
+            raise python_calamine.CalamineError("解析失败")
 
-        monkeypatch.setattr(xlrd, "open_workbook", raise_parse)
+        monkeypatch.setattr(python_calamine.CalamineWorkbook, "from_filelike", raise_parse)
         with pytest.raises(ExtractorError, match="XLS 解析失败"):
             XlsExtractor().extract_from_bytes(b"bad data")
 
@@ -1947,20 +1955,20 @@ class TestXlsExtractor:
 
     def test_extract_from_path_with_mock(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """extract(path) 路径应正确提取单元格文本。"""
-        import xlrd
 
         class FakeSheet:
-            nrows = 1
-            ncols = 2
-
-            def cell_value(self, row: int, col: int) -> str:
-                return ["user", "password123"][col]
+            def to_python(self) -> list[list[object]]:
+                return [["user", "password123"]]
 
         class FakeWorkbook:
-            def sheets(self) -> list[object]:
-                return [FakeSheet()]
+            sheet_names = ["Sheet1"]
 
-        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+            def get_sheet_by_index(self, idx: int) -> object:
+                return FakeSheet()
+
+        import python_calamine
+
+        monkeypatch.setattr(python_calamine.CalamineWorkbook, "from_filelike", lambda f: FakeWorkbook())
         path = tmp_path / "test.xls"
         path.write_bytes(b"fake xls")
         content = XlsExtractor().extract(path)
@@ -1968,36 +1976,36 @@ class TestXlsExtractor:
         assert "user" in content
 
     def test_xls_import_error_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """xlrd 未安装时应抛出 ExtractorError。"""
+        """python-calamine 未安装时应抛出 ExtractorError。"""
         import builtins
 
         original_import = builtins.__import__
 
         def fake_import(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
-            if name == "xlrd":
-                raise ImportError("No module named 'xlrd'")
+            if name == "python_calamine":
+                raise ImportError("No module named 'python_calamine'")
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
-        with pytest.raises(ExtractorError, match="xlrd 未安装"):
+        with pytest.raises(ExtractorError, match="python-calamine 未安装"):
             XlsExtractor().extract_from_bytes(b"fake")
 
     def test_xls_empty_sheet(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """空工作表应返回空字符串。"""
-        import xlrd
 
         class FakeSheet:
-            nrows = 0
-            ncols = 0
-
-            def cell_value(self, row: int, col: int) -> str:
-                return ""
+            def to_python(self) -> list[list[object]]:
+                return []
 
         class FakeWorkbook:
-            def sheets(self) -> list[object]:
-                return [FakeSheet()]
+            sheet_names = ["Empty"]
 
-        monkeypatch.setattr(xlrd, "open_workbook", lambda **kwargs: FakeWorkbook())
+            def get_sheet_by_index(self, idx: int) -> object:
+                return FakeSheet()
+
+        import python_calamine
+
+        monkeypatch.setattr(python_calamine.CalamineWorkbook, "from_filelike", lambda f: FakeWorkbook())
         assert XlsExtractor().extract_from_bytes(b"fake") == ""
 
 

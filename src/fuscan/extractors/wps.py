@@ -3,7 +3,7 @@
 WPS 文档格式（.wps/.et/.dps）有两种形态：
 
 1. **OOXML 兼容**：现代 WPS 默认保存格式，本质是 ZIP 打包的 XML，
-   可复用 python-docx/openpyxl/python-pptx 提取。
+   可复用 python-docx/calamine(Rust)/python-pptx 提取。
 2. **旧版二进制**：早期 WPS 私有格式，无法用 Office 库解析，
    记录告警并返回空字符串。
 
@@ -119,28 +119,13 @@ class WpsExtractor(Extractor):
         return "\n".join(parts)
 
     def _extract_as_xlsx(self, data: bytes) -> str:
-        """以 XLSX 方式提取 WPS 表格文档。"""
-        try:
-            from openpyxl import load_workbook
-        except ImportError as exc:
-            raise ExtractorError("openpyxl 未安装，无法提取 WPS 表格") from exc
+        """以 XLSX 方式提取 WPS 表格文档。
 
-        try:
-            wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        except Exception as exc:
-            raise ExtractorError(f"WPS 表格解析失败: {exc}") from exc
+        iter-92 起复用 calamine (Rust + PyO3) 后端，与 XLSX/ODS/XLS 共用。
+        """
+        from fuscan.extractors.spreadsheet import _extract_calamine_workbook
 
-        parts = []
-        try:
-            for sheet in wb:
-                parts.append(f"--- 工作表: {sheet.title} ---")
-                for row in sheet.iter_rows(values_only=True):
-                    cell_texts = [str(c).strip() for c in row if c is not None]
-                    if cell_texts:
-                        parts.append("\t".join(cell_texts))
-        finally:
-            wb.close()
-        return "\n".join(parts)
+        return _extract_calamine_workbook(data, error_label="WPS 表格")
 
     def _extract_as_pptx(self, data: bytes) -> str:
         """以 PPTX 方式提取 WPS 演示文档。"""

@@ -1,7 +1,8 @@
 """旧版 Microsoft Office 提取器：XLS、DOC、PPT。
 
-XLS 使用 xlrd 库读取 Excel 97-2003 工作簿，遍历单元格提取文本。
-DOC/PPT 使用 olefile 读取 OLE 复合文档，从文本流中提取 UTF-16LE 编码内容。
+XLS 通过 calamine（Rust + PyO3）读取 Excel 97-2003 工作簿，与 XLSX/ODS
+共用同一 Rust 后端。DOC/PPT 仍使用 olefile 读取 OLE 复合文档，从文本流中
+提取 UTF-16LE 编码内容。
 
 注意：DOC/PPT 为二进制格式，本提取器仅做简单文本提取，不支持复杂格式
 （如修订、嵌入对象等）。如需完整提取，建议先转换为 DOCX/PPTX。
@@ -66,7 +67,11 @@ def _extract_utf16le_text(data: bytes) -> str:
 
 
 class XlsExtractor(Extractor):
-    """XLS (Excel 97-2003) 工作簿文本提取器。"""
+    """XLS (Excel 97-2003) 工作簿文本提取器。
+
+    iter-92 起切换到 calamine (Rust + PyO3) 后端，从 T4 慢速降至 T2 快速，
+    与 XLSX/ODS 共用同一 Rust 后端。
+    """
 
     @property
     @override
@@ -77,8 +82,8 @@ class XlsExtractor(Extractor):
     @property
     @override
     def speed_tier(self) -> SpeedTier:
-        """XLS 二进制解析 + 逐单元格遍历为 T4 慢速。"""
-        return SpeedTier.SLOW
+        """calamine (Rust + PyO3) 释放 GIL，T2 快速。"""
+        return SpeedTier.FAST
 
     @override
     @property
@@ -98,27 +103,9 @@ class XlsExtractor(Extractor):
     @override
     def extract_from_bytes(self, data: bytes) -> str:
         """从内存字节解析 XLS 工作簿。"""
-        try:
-            import xlrd
-        except ImportError as exc:
-            raise ExtractorError("xlrd 未安装，无法提取 XLS") from exc
+        from fuscan.extractors.spreadsheet import _extract_calamine_workbook
 
-        try:
-            wb = xlrd.open_workbook(file_contents=data)
-        except Exception as exc:
-            raise ExtractorError(f"XLS 解析失败: {exc}") from exc
-
-        parts: list[str] = []
-        for sheet in wb.sheets():
-            for row_idx in range(sheet.nrows):
-                row_texts: list[str] = []
-                for col_idx in range(sheet.ncols):
-                    cell = sheet.cell_value(row_idx, col_idx)
-                    if cell:
-                        row_texts.append(str(cell).strip())
-                if row_texts:
-                    parts.append("\t".join(row_texts))
-        return "\n".join(parts)
+        return _extract_calamine_workbook(data, error_label="XLS")
 
 
 class DocExtractor(Extractor):
