@@ -1428,7 +1428,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
                 [
                     rule.name,
                     "",
-                    # iter-71：file_extensions 已废弃，所有规则对全局过滤后的文件均适用
+                    # 规则不再绑定文件扩展名，对全局白名单过滤后的文件均适用
                     "(全局)",
                 ]
             )
