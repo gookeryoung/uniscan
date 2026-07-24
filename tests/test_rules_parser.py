@@ -229,6 +229,52 @@ class TestParseRule:
         assert rule.name == "r1"
         assert not hasattr(rule, "file_extensions")
 
+    def test_parse_rule_replace_defaults(self) -> None:
+        """未指定 replace/replace_with 时默认值：replace=False, replace_with=''。"""
+        rule = parse_rule({"name": "r1", "match": {"type": "filename", "mode": "contains", "pattern": "x"}})
+        assert rule.replace is False
+        assert rule.replace_with == ""
+
+    def test_parse_rule_replace_enabled(self) -> None:
+        """replace: true + replace_with 字符串应正确解析。"""
+        rule = parse_rule(
+            {
+                "name": "r1",
+                "match": {"type": "content", "mode": "regex", "pattern": "AKIA[0-9]+"},
+                "replace": True,
+                "replace_with": "***REDACTED***",
+            }
+        )
+        assert rule.replace is True
+        assert rule.replace_with == "***REDACTED***"
+
+    def test_parse_rule_replace_with_empty_string(self) -> None:
+        """replace: true 但 replace_with 显式为空字符串：解析为空，触发替换时由调用方提示。"""
+        rule = parse_rule(
+            {
+                "name": "r1",
+                "match": {"type": "content", "mode": "contains", "pattern": "x"},
+                "replace": True,
+                "replace_with": "",
+            }
+        )
+        assert rule.replace is True
+        assert rule.replace_with == ""
+
+    def test_parse_rule_replace_non_bool_coerced(self) -> None:
+        """replace 非布尔值经 bool() 强制转换（YAML 中 truthy/falsy 字面量兼容）。"""
+        rule = parse_rule(
+            {
+                "name": "r1",
+                "match": {"type": "content", "mode": "contains", "pattern": "x"},
+                "replace": "true",  # YAML 解析后为字符串 "true"
+                "replace_with": "Y",
+            }
+        )
+        # 非空字符串经 bool() 为 True
+        assert rule.replace is True
+        assert rule.replace_with == "Y"
+
 
 class TestParseRuleset:
     def test_parse_ruleset_minimal(self) -> None:
@@ -325,4 +371,4 @@ rules:
         path = Path(__file__).parent.parent / "rules" / "example.yaml"
         rs = load_ruleset(path)
         assert rs.version == "1.0"
-        assert len(rs.rules) == 5
+        assert len(rs.rules) == 6

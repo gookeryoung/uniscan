@@ -28,6 +28,7 @@ __all__ = [
     "CONFIG_PATH",
     "MANUAL_PDF_PATH",
     "Config",
+    "default_backup_dir",
     "detect_default_staging_dir",
     "load_builtin_ruleset",
     "load_config",
@@ -94,6 +95,12 @@ class Config:
     # 暂存区目录：用户点击「移动至暂存区」后文件被移动到此目录。
     # None 表示自动探测剩余空间最大的盘符下 ``.fuscan-cache``（见 detect_default_staging_dir）。
     staging_dir: str | None = None
+    # 备份区目录：用户点击「替换内容」时源文件先复制到此目录（重命名为 .bak）。
+    # None 表示使用 ``~/.fuscan/backup``（见 default_backup_dir）。
+    backup_dir: str | None = None
+    # 备份时是否保留源文件相对扫描根目录的目录结构（避免不同子目录同名文件冲突）。
+    # False 时仅保留文件名，冲突时追加序号（如 b.1.txt.bak）。
+    backup_preserve_relative_path: bool = True
     # 忽略目录名（按目录名匹配任意层级，大小写不敏感）。
     # 含版本控制元数据、语言工具链缓存、构建输出、IDE 配置、临时/日志目录，
     # 以及 Windows 系统目录（含大量二进制/系统文件，扫描无意义且拖慢速度）。
@@ -206,6 +213,18 @@ def detect_default_staging_dir() -> Path:
             best_free = free
             best_drive = drive
     return best_drive / ".fuscan-cache"
+
+
+def default_backup_dir() -> Path:
+    """返回默认备份区目录：``~/.fuscan/backup``。
+
+    与暂存区不同，备份区存放的是「替换内容」前的源文件副本（``.bak`` 后缀），
+    体量较小且用户事后可手动清理，故无需探测剩余空间最大的盘符，
+    直接放在用户主目录下的 ``.fuscan`` 配置目录中，便于统一管理。
+
+    :return: 默认备份区目录路径（路径可能尚不存在，调用方按需 ``mkdir``）
+    """
+    return CONFIG_DIR / "backup"
 
 
 def load_config(path: Path | None = None) -> Config:

@@ -197,6 +197,65 @@
         </widget>
        </item>
        <item>
+        <widget class="QGroupBox" name="replace_group">
+         <property name="title">
+          <string>替换设置</string>
+         </property>
+         <layout class="QFormLayout" name="replace_layout">
+          <property name="horizontalSpacing">
+           <number>8</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>8</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="backup_dir_label">
+            <property name="text">
+             <string>备份区路径:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="backup_dir_row_layout">
+            <property name="spacing">
+             <number>4</number>
+            </property>
+            <item>
+             <widget class="QLineEdit" name="backup_dir_edit">
+              <property name="toolTip">
+               <string>「替换内容」按钮先将源文件复制到此目录（重命名为 .bak）再执行替换；留空使用 ~/.fuscan/backup</string>
+              </property>
+              <property name="placeholderText">
+               <string>留空使用 ~/.fuscan/backup</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="backup_dir_browse_btn">
+              <property name="text">
+               <string>选择...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QCheckBox" name="backup_preserve_relative_check">
+            <property name="toolTip">
+             <string>勾选后在备份区保留源文件相对扫描根目录的目录结构，避免不同子目录同名文件冲突</string>
+            </property>
+            <property name="text">
+             <string>备份时保持文件相对路径</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <spacer name="general_page_spacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>

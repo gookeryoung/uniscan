@@ -45,6 +45,7 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.button_box.rejected.connect(self.reject)
 
         self.staging_dir_browse_btn.clicked.connect(self._on_browse_staging_dir)
+        self.backup_dir_browse_btn.clicked.connect(self._on_browse_backup_dir)
 
     def _load_config(self) -> None:
         """加载当前配置到控件。"""
@@ -58,6 +59,8 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.cache_enabled_check.setChecked(self.config.cache_enabled)
         self.cache_path_edit.setText(self.config.cache_path or "")
         self.staging_dir_edit.setText(self.config.staging_dir or "")
+        self.backup_dir_edit.setText(self.config.backup_dir or "")
+        self.backup_preserve_relative_check.setChecked(self.config.backup_preserve_relative_path)
 
     def _save_config(self) -> None:
         """将控件值保存到配置。"""
@@ -75,6 +78,9 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         self.config.cache_path = path_text or None
         staging_text = self.staging_dir_edit.text().strip()
         self.config.staging_dir = staging_text or None
+        backup_text = self.backup_dir_edit.text().strip()
+        self.config.backup_dir = backup_text or None
+        self.config.backup_preserve_relative_path = self.backup_preserve_relative_check.isChecked()
 
     @Slot()  # pyrefly: ignore [not-callable]
     def _on_browse_staging_dir(self) -> None:
@@ -88,6 +94,19 @@ class SettingsDialog(QDialog, Ui_SettingsDialog):  # pyrefly: ignore [invalid-in
         chosen = QFileDialog.getExistingDirectory(self, "选择暂存区目录", start_dir)
         if chosen:
             self.staging_dir_edit.setText(chosen)
+
+    @Slot()  # pyrefly: ignore [not-callable]
+    def _on_browse_backup_dir(self) -> None:
+        """打开目录选择对话框，将所选路径填入备份区路径编辑框（iter-93）。
+
+        起始目录优先使用当前编辑框中的路径，否则回退到用户主目录。
+        取消选择时保持编辑框内容不变。
+        """
+        current = self.backup_dir_edit.text().strip()
+        start_dir = current if current else ""
+        chosen = QFileDialog.getExistingDirectory(self, "选择备份区目录", start_dir)
+        if chosen:
+            self.backup_dir_edit.setText(chosen)
 
     def _on_accept(self) -> None:
         """确定按钮：保存配置并关闭对话框。"""

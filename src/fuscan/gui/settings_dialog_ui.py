@@ -115,6 +115,42 @@ class Ui_SettingsDialog(object):
 
         self.general_page_layout.addWidget(self.staging_group)
 
+        self.replace_group = QGroupBox(self.general_page)
+        self.replace_group.setObjectName(u"replace_group")
+        self.replace_layout = QFormLayout(self.replace_group)
+        self.replace_layout.setObjectName(u"replace_layout")
+        self.replace_layout.setHorizontalSpacing(8)
+        self.replace_layout.setVerticalSpacing(8)
+        self.backup_dir_label = QLabel(self.replace_group)
+        self.backup_dir_label.setObjectName(u"backup_dir_label")
+
+        self.replace_layout.setWidget(0, QFormLayout.LabelRole, self.backup_dir_label)
+
+        self.backup_dir_row_layout = QHBoxLayout()
+        self.backup_dir_row_layout.setSpacing(4)
+        self.backup_dir_row_layout.setObjectName(u"backup_dir_row_layout")
+        self.backup_dir_edit = QLineEdit(self.replace_group)
+        self.backup_dir_edit.setObjectName(u"backup_dir_edit")
+
+        self.backup_dir_row_layout.addWidget(self.backup_dir_edit)
+
+        self.backup_dir_browse_btn = QPushButton(self.replace_group)
+        self.backup_dir_browse_btn.setObjectName(u"backup_dir_browse_btn")
+
+        self.backup_dir_row_layout.addWidget(self.backup_dir_browse_btn)
+
+
+        self.replace_layout.setLayout(0, QFormLayout.FieldRole, self.backup_dir_row_layout)
+
+        self.backup_preserve_relative_check = QCheckBox(self.replace_group)
+        self.backup_preserve_relative_check.setObjectName(u"backup_preserve_relative_check")
+        self.backup_preserve_relative_check.setChecked(True)
+
+        self.replace_layout.setWidget(1, QFormLayout.SpanningRole, self.backup_preserve_relative_check)
+
+
+        self.general_page_layout.addWidget(self.replace_group)
+
         self.general_page_spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
         self.general_page_layout.addItem(self.general_page_spacer)
@@ -242,6 +278,17 @@ class Ui_SettingsDialog(object):
 #endif // QT_CONFIG(tooltip)
         self.staging_dir_edit.setPlaceholderText(QCoreApplication.translate("SettingsDialog", u"\u7559\u7a7a\u81ea\u52a8\u63a2\u6d4b\u5269\u4f59\u7a7a\u95f4\u6700\u5927\u7684\u76d8\u7b26\u4e0b .fuscan-cache", None))
         self.staging_dir_browse_btn.setText(QCoreApplication.translate("SettingsDialog", u"\u9009\u62e9...", None))
+        self.replace_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u66ff\u6362\u8bbe\u7f6e", None))
+        self.backup_dir_label.setText(QCoreApplication.translate("SettingsDialog", u"\u5907\u4efd\u533a\u8def\u5f84:", None))
+#if QT_CONFIG(tooltip)
+        self.backup_dir_edit.setToolTip(QCoreApplication.translate("SettingsDialog", u"\u300c\u66ff\u6362\u5185\u5bb9\u300d\u6309\u94ae\u5148\u5c06\u6e90\u6587\u4ef6\u590d\u5236\u5230\u6b64\u76ee\u5f55\uff08\u91cd\u547d\u540d\u4e3a .bak\uff09\u518d\u6267\u884c\u66ff\u6362\uff1b\u7559\u7a7a\u4f7f\u7528 ~/.fuscan/backup", None))
+#endif // QT_CONFIG(tooltip)
+        self.backup_dir_edit.setPlaceholderText(QCoreApplication.translate("SettingsDialog", u"\u7559\u7a7a\u4f7f\u7528 ~/.fuscan/backup", None))
+        self.backup_dir_browse_btn.setText(QCoreApplication.translate("SettingsDialog", u"\u9009\u62e9...", None))
+#if QT_CONFIG(tooltip)
+        self.backup_preserve_relative_check.setToolTip(QCoreApplication.translate("SettingsDialog", u"\u52fe\u9009\u540e\u5728\u5907\u4efd\u533a\u4fdd\u7559\u6e90\u6587\u4ef6\u76f8\u5bf9\u626b\u63cf\u6839\u76ee\u5f55\u7684\u76ee\u5f55\u7ed3\u6784\uff0c\u907f\u514d\u4e0d\u540c\u5b50\u76ee\u5f55\u540c\u540d\u6587\u4ef6\u51b2\u7a81", None))
+#endif // QT_CONFIG(tooltip)
+        self.backup_preserve_relative_check.setText(QCoreApplication.translate("SettingsDialog", u"\u5907\u4efd\u65f6\u4fdd\u6301\u6587\u4ef6\u76f8\u5bf9\u8def\u5f84", None))
         self.settings_tab_widget.setTabText(self.settings_tab_widget.indexOf(self.general_page), QCoreApplication.translate("SettingsDialog", u"\u901a\u7528\u8bbe\u7f6e", None))
         self.workers_group.setTitle(QCoreApplication.translate("SettingsDialog", u"\u626b\u63cf\u7ebf\u7a0b", None))
         self.max_workers_label.setText(QCoreApplication.translate("SettingsDialog", u"\u6700\u5927\u5de5\u4f5c\u7ebf\u7a0b\u6570:", None))

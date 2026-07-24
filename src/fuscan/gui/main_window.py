@@ -76,7 +76,14 @@ except ImportError:  # pragma: no cover
     )
 
 from fuscan.config import MANUAL_PDF_PATH as _MANUAL_PDF
-from fuscan.config import Config, detect_default_staging_dir, load_config, load_with_builtin, save_config
+from fuscan.config import (
+    Config,
+    default_backup_dir,
+    detect_default_staging_dir,
+    load_config,
+    load_with_builtin,
+    save_config,
+)
 from fuscan.gui.about_dialog import AboutDialog
 from fuscan.gui.content_panel import ContentTabPanel
 from fuscan.gui.detail_panel import DetailControls, DetailPanel
@@ -91,6 +98,7 @@ from fuscan.gui.scan_path_history import ScanPathHistory
 from fuscan.gui.scan_progress_lists import ScanListUpdater
 from fuscan.gui.stage_controller import StageController, StageControls, WorkflowStage
 from fuscan.perf import PerfTimer, set_perf_enabled
+from fuscan.replacer import ReplaceResult, ReplaceStatus, replace_in_file
 from fuscan.rules import RuleError, load_ruleset, merge_multiple_rulesets
 from fuscan.rules.model import RuleSet, Severity
 from fuscan.scanner import ScanReport
@@ -172,8 +180,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         详情区 UI 控件由 ``setupUi`` 创建，本方法构造 :class:`DetailControls` 引用集合
         并传入 :class:`DetailPanel`，后续主窗口通过 ``self._detail_panel`` 公共 API 驱动详情区。
         信号路由：``path_copy_requested`` / ``open_location_requested`` /
-        ``move_to_staging_requested`` / ``toggle_skip_requested`` 连接到主窗口槽，
-        由主窗口更新状态栏、定位文件、移动至暂存区或切换跳过标记（iter-77）。
+        ``move_to_staging_requested`` / ``toggle_skip_requested`` /
+        ``replace_content_requested`` 连接到主窗口槽，由主窗口更新状态栏、定位文件、
+        移动至暂存区、切换跳过标记或执行命中内容替换（iter-77 / iter-93）。
         """
         controls = DetailControls(
             action_stack=self.detail_action_stack,
@@ -187,6 +196,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             preview=self.detail_preview,
             move_to_staging_btn=self.move_to_staging_btn,
             toggle_skip_btn=self.toggle_skip_btn,
+            replace_content_btn=self.replace_content_btn,
         )
         return DetailPanel(controls, parent=self)
 
@@ -487,11 +497,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         self.history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
         # 详情区（导出按钮 → ExportController.show_menu）
         self.export_btn.clicked.connect(self._export_controller.show_menu)
-        # 详情面板信号路由：复制路径/打开位置/移动至暂存区/切换跳过由 DetailPanel 发信号，主窗口响应
+        # 详情面板信号路由：复制路径/打开位置/移动至暂存区/切换跳过/替换内容由 DetailPanel 发信号，主窗口响应
         self._detail_panel.path_copy_requested.connect(self._on_path_copy_requested)  # pyrefly: ignore [missing-attribute]
         self._detail_panel.open_location_requested.connect(self._on_open_location_requested)  # pyrefly: ignore [missing-attribute]
         self._detail_panel.move_to_staging_requested.connect(self._on_move_to_staging)  # pyrefly: ignore [missing-attribute]
         self._detail_panel.toggle_skip_requested.connect(self._on_toggle_skip)  # pyrefly: ignore [missing-attribute]
+        self._detail_panel.replace_content_requested.connect(self._on_replace_content)  # pyrefly: ignore [missing-attribute]
         # 扫描中页命中文件列表双击：弹出简化详情与定位按钮（需求5）
         self.matched_files_list.itemDoubleClicked.connect(self._on_matched_file_double_clicked)
         # 头部栏与侧边栏（rule-12 HeaderBar + Sidebar）
@@ -1195,7 +1206,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
         save_btn = QPushButton("保存为 JSON...")
         report = self._last_report
 
-        def _on_save() -> None:
+        def _on_save() -> None:  # pragma: no cover - GUI 对话框回调，依赖 QFileDialog 交互
             path, _ = QFileDialog.getSaveFileName(dialog, "保存性能统计", "fuscan-perf.json", "JSON (*.json)")
             if not path:
                 return
@@ -1356,6 +1367,99 @@ class MainWindow(QMainWindow, Ui_MainWindow):  # pyrefly: ignore [invalid-inheri
             self._detail_panel.set_skip_state(True)
             self.stats_label.setText(f"已标记跳过: {result.path.name}")
             logger.info("标记跳过: %s", path_str)
+
+    def _resolve_backup_dir(self) -> Path:
+        """解析备份区目录路径：优先使用用户配置，否则回退到 ``~/.fuscan/backup``。
+
+        :return: 备份区目录路径（已确保存在，调用方可直接写入）
+        """
+        configured = self._config.backup_dir
+        backup = Path(configured) if configured else default_backup_dir()
+        backup.mkdir(parents=True, exist_ok=True)
+        return backup
+
+    def _on_replace_content(self, result: object) -> None:
+        """响应 DetailPanel 替换内容信号：备份源文件后按规则替换命中内容（iter-93）。
+
+        流程：
+
+        1. 校验前置条件：源文件存在、规则集已加载、最近扫描报告可用（提供 scan_root）
+        2. 解析备份区目录
+        3. 调 :func:`fuscan.replacer.replace_in_file` 执行备份+替换
+        4. 根据 :class:`ReplaceResult.status` 更新状态栏与提示对话框
+
+        :param result: 待替换的扫描结果（:class:`ScanResult`）
+        """
+        assert isinstance(result, ScanResult)
+        src = result.path
+        if not src.exists():
+            QMessageBox.warning(self, "提示", f"源文件不存在:\n{src}")
+            return
+        if self._ruleset is None:
+            QMessageBox.warning(self, "提示", "规则集未加载，无法执行替换")
+            return
+        if self._last_report is None:
+            QMessageBox.warning(self, "提示", "无最近扫描报告，无法确定扫描根目录")
+            return
+        try:
+            backup_root = self._resolve_backup_dir()
+        except OSError as exc:
+            logger.error("创建备份区目录失败", exc_info=True)
+            QMessageBox.warning(self, "提示", f"创建备份区目录失败:\n{exc}")
+            return
+
+        replace_result = replace_in_file(
+            src=src,
+            hits=result.hits,
+            ruleset=self._ruleset,
+            backup_root=backup_root,
+            scan_root=self._last_report.root,
+            preserve_relative=self._config.backup_preserve_relative_path,
+        )
+        self._handle_replace_result(result, replace_result)
+
+    def _handle_replace_result(self, result: ScanResult, replace_result: ReplaceResult) -> None:
+        """根据 :class:`ReplaceResult` 状态更新状态栏与弹出提示。
+
+        :param result: 触发替换的扫描结果（用于状态栏显示文件名）
+        :param replace_result: 替换操作的返回结果
+        """
+        status = replace_result.status
+        name = result.path.name
+        if status == ReplaceStatus.SUCCESS:
+            count = replace_result.replaced_count
+            backup = replace_result.backup_path
+            self.stats_label.setText(f"已替换 {name} 中 {count} 条规则命中，备份: {backup}")
+            logger.info("替换成功: %s, 备份: %s", result.path, backup)
+            # 刷新详情区预览：替换后文件内容已变，原高亮位置失效
+            self._detail_panel.show_result(result)
+            QMessageBox.information(
+                self,
+                "替换完成",
+                f"已替换 {count} 条规则命中。\n备份已保存到:\n{backup}",
+            )
+            return
+        if status == ReplaceStatus.NO_REPLACE_RULES:
+            self.stats_label.setText(f"未替换 {name}：命中的规则均未启用替换")
+            QMessageBox.information(self, "未替换", replace_result.message)
+            return
+        if status == ReplaceStatus.MISSING_REPLACE_WITH:
+            missing = "、".join(replace_result.missing_rules)
+            self.stats_label.setText(f"未替换 {name}：规则 {missing} 未定义替换内容")
+            QMessageBox.warning(
+                self,
+                "未替换",
+                f"以下规则启用替换但未定义 replace_with:\n{missing}\n\n"
+                "请在规则文件中为这些规则补充 replace_with 字段。",
+            )
+            return
+        if status == ReplaceStatus.UNSUPPORTED_FILE_TYPE:
+            self.stats_label.setText(f"未替换 {name}：不支持的文件类型")
+            QMessageBox.warning(self, "未替换", replace_result.message)
+            return
+        # BACKUP_FAILED / REPLACE_FAILED
+        self.stats_label.setText(f"替换失败 {name}：{replace_result.message}")
+        QMessageBox.warning(self, "替换失败", replace_result.message)
 
     def _remove_result_from_report(self, path: Path) -> None:
         """从最近一次扫描报告中移除指定路径的结果并刷新结果树（iter-77）。

@@ -730,6 +730,11 @@ class Ui_MainWindow(object):
 
         self.detail_actions_layout.addWidget(self.toggle_skip_btn)
 
+        self.replace_content_btn = QPushButton(self.detail_nonempty_main)
+        self.replace_content_btn.setObjectName(u"replace_content_btn")
+
+        self.detail_actions_layout.addWidget(self.replace_content_btn)
+
         self.detail_actions_spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         self.detail_actions_layout.addItem(self.detail_actions_spacer)
@@ -810,7 +815,7 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
 
         self.tab_stack.setCurrentIndex(0)
-        self.main_stack.setCurrentIndex(1)
+        self.main_stack.setCurrentIndex(0)
         self.target_stack.setCurrentIndex(2)
         self.content_tab_widget.setCurrentIndex(0)
         self.tabWidget.setCurrentIndex(0)
@@ -992,6 +997,10 @@ class Ui_MainWindow(object):
         self.toggle_skip_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u6807\u8bb0\u540e\u540e\u7eed\u626b\u63cf\u5c06\u76f4\u63a5\u8df3\u8fc7\u6b64\u6587\u4ef6", None))
 #endif // QT_CONFIG(tooltip)
         self.toggle_skip_btn.setText(QCoreApplication.translate("MainWindow", u"\u6807\u8bb0\u4e3a\u8df3\u8fc7", None))
+#if QT_CONFIG(tooltip)
+        self.replace_content_btn.setToolTip(QCoreApplication.translate("MainWindow", u"\u5148\u5c06\u6e90\u6587\u4ef6\u5907\u4efd\u5230\u5907\u4efd\u533a\uff08.bak\uff09\uff0c\u518d\u628a\u547d\u4e2d\u7684\u654f\u611f\u5185\u5bb9\u6309\u89c4\u5219\u66ff\u6362\u4e3a\u6307\u5b9a\u6587\u672c", None))
+#endif // QT_CONFIG(tooltip)
+        self.replace_content_btn.setText(QCoreApplication.translate("MainWindow", u"\u66ff\u6362\u5185\u5bb9", None))
         self.history_label.setText(QCoreApplication.translate("MainWindow", u"\u626b\u63cf\u5386\u53f2\uff08\u53cc\u51fb\u5feb\u901f\u9009\u62e9\uff09", None))
 #if QT_CONFIG(tooltip)
         self.history_list.setToolTip(QCoreApplication.translate("MainWindow", u"\u6700\u8fd1\u626b\u63cf\u8fc7\u7684\u8def\u5f84\uff0c\u53cc\u51fb\u53ef\u5feb\u901f\u9009\u62e9", None))

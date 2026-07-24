@@ -6844,6 +6844,43 @@ class TestSettingsDialog:
         assert dialog.staging_dir_edit.text() == "/tmp/predefined"
         dialog.close()
 
+    def test_settings_dialog_browse_backup_dir_updates_edit(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """iter-92：选择备份区目录按钮应将所选路径填入编辑框。"""
+        from fuscan.config import Config
+        from fuscan.gui import settings_dialog as sd_module
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        chosen_path = "/tmp/chosen_backup"
+
+        def fake_get_existing_directory(parent, title, start_dir):  # type: ignore[no-untyped-def]
+            assert title == "选择备份区目录"
+            return chosen_path
+
+        monkeypatch.setattr(sd_module.QFileDialog, "getExistingDirectory", fake_get_existing_directory)
+
+        dialog = SettingsDialog(Config())
+        dialog._on_browse_backup_dir()
+        assert dialog.backup_dir_edit.text() == chosen_path
+        dialog.close()
+
+    def test_settings_dialog_browse_backup_dir_cancelled_keeps_edit(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """iter-93：取消选择备份区时保持编辑框内容不变。"""
+        from fuscan.config import Config
+        from fuscan.gui import settings_dialog as sd_module
+        from fuscan.gui.settings_dialog import SettingsDialog
+
+        monkeypatch.setattr(sd_module.QFileDialog, "getExistingDirectory", lambda *a, **k: "")
+
+        dialog = SettingsDialog(Config())
+        dialog.backup_dir_edit.setText("/tmp/predefined_backup")
+        dialog._on_browse_backup_dir()
+        assert dialog.backup_dir_edit.text() == "/tmp/predefined_backup"
+        dialog.close()
+
 
 class TestMainWindowIgnore:
     """主窗口配置页忽略项控件测试（iter-79：从设置对话框迁移到配置页）。"""
@@ -7345,4 +7382,978 @@ class TestGuiCache:
         # 不应抛异常
         window._on_settings()
         assert window._cache is None
+        window.close()
+
+
+def _build_replace_ruleset(*, replace: bool = True, replace_with: str = "***") -> RuleSet:
+    """构造启用替换的规则集（content contains 'token'）。"""
+    return RuleSet(
+        version="1.0",
+        rules=(
+            Rule(
+                name="token检测",
+                severity=Severity.WARNING,
+                match=LeafMatch(target=MatchTarget.CONTENT, mode=MatchMode.CONTAINS, pattern="token"),
+                replace=replace,
+                replace_with=replace_with,
+            ),
+        ),
+    )
+
+
+def _build_replace_report(
+    tmp_path: Path, *, filename: str = "a.txt", content: str = "token=abc\n"
+) -> tuple[Any, Any, Path]:
+    """构造单文件命中报告，返回 (report, scan_result, src_path)。"""
+    from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+    src = tmp_path / filename
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text(content, encoding="utf-8")
+    hit = RuleHit(
+        rule_name="token检测",
+        severity=Severity.WARNING,
+        detail="包含 'token'",
+        match_text="token",
+        match_count=1,
+        target="content",
+        match_texts=("token",),
+    )
+    sr = ScanResult(path=src, size=len(content), hits=(hit,))
+    stats = ScanStats(total_files=1, scanned_files=1, matched_files=1, total_matches=1)
+    report = ScanReport(root=tmp_path, results=(sr,), stats=stats)
+    return report, sr, src
+
+
+class TestReplaceContent:
+    """替换内容功能 GUI 测试（iter-92）。
+
+    覆盖 :meth:`MainWindow._on_replace_content` 与 :meth:`_handle_replace_result`
+    的所有分支：源文件不存在、规则集未加载、无扫描报告、备份区创建失败、
+    替换成功、无替换规则、缺少 replace_with、不支持的文件类型、备份/替换失败。
+    所有 QMessageBox 通过 monkeypatch 替换为无操作 lambda，避免阻塞测试。
+    """
+
+    def test_replace_success_updates_status_and_calls_show_result(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """替换成功：状态栏更新，调用 show_result 刷新预览，弹 information。"""
+        report, sr, src = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset(replace=True, replace_with="***")
+        window._last_report = report
+        # 指定备份区到 tmp_path 下，避免写到用户主目录
+        backup_dir = tmp_path / "backup"
+        window._config.backup_dir = str(backup_dir)
+        monkeypatch.setattr("fuscan.gui.main_window.QMessageBox.information", lambda *a, **kw: None)
+        called: dict[str, bool] = {"show_result": False}
+        monkeypatch.setattr(window._detail_panel, "show_result", lambda r: called.update(show_result=True))
+
+        window._on_replace_content(sr)
+
+        assert "已替换" in window.stats_label.text()
+        assert called["show_result"]
+        # 源文件已被替换
+        assert src.read_text(encoding="utf-8") == "***=abc\n"
+        # 备份已生成（保留相对路径模式：backup/a.txt.bak）
+        assert (backup_dir / "a.txt.bak").exists()
+        window.close()
+
+    def test_replace_src_not_exists_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """源文件不存在：弹 warning，不执行替换。"""
+        report, sr, src = _build_replace_report(tmp_path)
+        src.unlink()  # 删除源文件
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = report
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_replace_no_ruleset_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """规则集未加载：弹 warning。"""
+        report, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = None
+        window._last_report = report
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_replace_no_report_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """无最近扫描报告：弹 warning（无法确定 scan_root）。"""
+        _, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = None
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_replace_backup_dir_oserror_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """备份区目录创建失败（OSError）：弹 warning。"""
+        report, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = report
+
+        def _raise_oserror() -> None:
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(window, "_resolve_backup_dir", _raise_oserror)
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_replace_no_replace_rules_shows_information(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """命中的规则均未启用 replace：弹 information 提示。"""
+        report, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        # replace=False：未启用替换
+        window._ruleset = _build_replace_ruleset(replace=False, replace_with="")
+        window._last_report = report
+        info_called: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *a, **kw: info_called.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert info_called["called"]
+        assert "未替换" in window.stats_label.text()
+        window.close()
+
+    def test_replace_missing_replace_with_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """replace=True 但 replace_with 为空：弹 warning 提示补充。"""
+        report, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset(replace=True, replace_with="")
+        window._last_report = report
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        assert "未定义替换内容" in window.stats_label.text()
+        window.close()
+
+    def test_replace_unsupported_file_type_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """不支持的文件类型（.pdf）：弹 warning。"""
+        from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+        src = tmp_path / "a.pdf"
+        src.write_text("token=abc\n", encoding="utf-8")
+        hit = RuleHit(
+            rule_name="token检测",
+            severity=Severity.WARNING,
+            detail="包含 'token'",
+            match_text="token",
+            match_texts=("token",),
+            target="content",
+        )
+        sr = ScanResult(path=src, size=10, hits=(hit,))
+        stats = ScanStats(total_files=1, scanned_files=1, matched_files=1, total_matches=1)
+        report = ScanReport(root=tmp_path, results=(sr,), stats=stats)
+
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = report
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        assert "不支持的文件类型" in window.stats_label.text()
+        # 源文件未被修改
+        assert src.read_text(encoding="utf-8") == "token=abc\n"
+        window.close()
+
+    def test_replace_backup_failed_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """备份失败（shutil.copy2 抛 OSError）：弹 warning，源文件未修改。"""
+        report, sr, src = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = report
+        # 备份区指向 tmp_path 下，避免写到用户主目录
+        window._config.backup_dir = str(tmp_path / "backup")
+        # 拦截 shutil.copy2 抛 OSError → replace_in_file 返回 BACKUP_FAILED
+        from fuscan import replacer as replacer_module
+
+        def _raise_oserror(src, dst, *, follow_symlinks=True):  # type: ignore[no-untyped-def]
+            raise OSError("copy failed")
+
+        monkeypatch.setattr(replacer_module.shutil, "copy2", _raise_oserror)
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        assert "替换失败" in window.stats_label.text()
+        # 源文件未被修改
+        assert src.read_text(encoding="utf-8") == "token=abc\n"
+        window.close()
+
+    def test_replace_failed_shows_warning(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """替换写回失败（OSError）：弹 warning，备份已保留。"""
+        report, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._ruleset = _build_replace_ruleset()
+        window._last_report = report
+
+        from fuscan import replacer as replacer_module
+
+        def _raise_oserror(path, content):  # type: ignore[no-untyped-def]
+            raise OSError("disk full")
+
+        monkeypatch.setattr(replacer_module, "_atomic_write_text", _raise_oserror)
+        warned: dict[str, bool] = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_replace_content(sr)
+
+        assert warned["called"]
+        assert "替换失败" in window.stats_label.text()
+        window.close()
+
+    def test_replace_content_btn_emits_signal(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """点击「替换内容」按钮应 emit replace_content_requested 信号。
+
+        emit 会同步触发主窗口 ``_on_replace_content`` 槽，槽内可能弹 QMessageBox，
+        故 mock QMessageBox 避免在 offscreen 平台崩溃。
+        """
+        _, sr, _ = _build_replace_report(tmp_path)
+        window = MainWindow()
+        window._detail_panel.show_result(sr)
+        received: list[Any] = []
+        window._detail_panel.replace_content_requested.connect(lambda r: received.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+        # mock QMessageBox 避免槽函数弹窗崩溃（无 ruleset 会走 warning 分支）
+        monkeypatch.setattr("fuscan.gui.main_window.QMessageBox.warning", lambda *a, **kw: None)
+
+        window._detail_panel.replace_content()
+
+        assert len(received) == 1
+        assert received[0] is sr
+        window.close()
+
+    def test_replace_content_no_current_result_no_signal(self, qapp: QApplication) -> None:
+        """无当前结果时点击「替换内容」不发信号（_current_result is None 时直接 return）。"""
+        window = MainWindow()
+        received: list[Any] = []
+        window._detail_panel.replace_content_requested.connect(lambda r: received.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+
+        window._detail_panel.replace_content()
+
+        assert received == []
+        window.close()
+
+
+class TestMoveToStaging:
+    """移动至暂存区功能 GUI 测试（iter-77）。
+
+    覆盖 :meth:`MainWindow._on_move_to_staging` 各分支：源文件不存在、
+    暂存区创建失败、目标已存在同名文件追加序号、移动成功后从结果树移除。
+    """
+
+    def _build_hit_result(self, tmp_path: Path) -> Any:
+        """构造单文件命中报告，返回 (report, scan_result, src_path)。"""
+        from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+        src = tmp_path / "a.txt"
+        src.write_text("token=abc\n", encoding="utf-8")
+        hit = RuleHit(
+            rule_name="token检测",
+            severity=Severity.WARNING,
+            detail="包含 'token'",
+            match_text="token",
+            match_count=1,
+            target="content",
+            match_texts=("token",),
+        )
+        sr = ScanResult(path=src, size=10, hits=(hit,))
+        stats = ScanStats(total_files=1, scanned_files=1, matched_files=1, total_matches=1)
+        report = ScanReport(root=tmp_path, results=(sr,), stats=stats)
+        return report, sr, src
+
+    def test_move_to_staging_success(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """移动成功：文件移到暂存区，从最近报告移除该结果。"""
+        report, sr, src = self._build_hit_result(tmp_path)
+        window = MainWindow()
+        window._last_report = report
+        staging = tmp_path / "staging"
+        window._config.staging_dir = str(staging)
+        monkeypatch.setattr("fuscan.gui.main_window.QMessageBox.warning", lambda *a, **kw: None)
+
+        window._on_move_to_staging(sr)
+
+        assert (staging / "a.txt").exists()
+        assert not src.exists()
+        assert "已移动至暂存区" in window.stats_label.text()
+        # 报告中已移除该结果
+        assert all(r.path != src for r in window._last_report.results)
+        window.close()
+
+    def test_move_to_staging_src_not_exists(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """源文件不存在：弹 warning，不崩溃。"""
+        report, sr, src = self._build_hit_result(tmp_path)
+        src.unlink()
+        window = MainWindow()
+        window._last_report = report
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_move_to_staging(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_move_to_staging_oserror(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """暂存区创建失败（OSError）：弹 warning。"""
+        report, sr, _ = self._build_hit_result(tmp_path)
+        window = MainWindow()
+        window._last_report = report
+
+        def _raise_oserror() -> None:
+            raise OSError("permission denied")
+
+        monkeypatch.setattr(window, "_resolve_staging_dir", _raise_oserror)
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_move_to_staging(sr)
+
+        assert warned["called"]
+        window.close()
+
+    def test_move_to_staging_dest_conflict_appends_index(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """目标已存在同名文件：追加序号 ``a.1.txt``。"""
+        report, sr, src = self._build_hit_result(tmp_path)
+        window = MainWindow()
+        window._last_report = report
+        staging = tmp_path / "staging"
+        staging.mkdir()
+        # 预先放置同名文件，触发序号追加
+        (staging / "a.txt").write_text("existing\n", encoding="utf-8")
+        window._config.staging_dir = str(staging)
+        monkeypatch.setattr("fuscan.gui.main_window.QMessageBox.warning", lambda *a, **kw: None)
+
+        window._on_move_to_staging(sr)
+
+        assert (staging / "a.1.txt").exists()
+        assert not src.exists()
+        window.close()
+
+    def test_move_to_staging_replace_oserror(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``src.replace`` 抛 OSError：弹 warning，不崩溃。"""
+        report, sr, _src = self._build_hit_result(tmp_path)
+        window = MainWindow()
+        window._last_report = report
+        window._config.staging_dir = str(tmp_path / "staging")
+        monkeypatch.setattr(Path, "replace", lambda self, dest: (_ for _ in ()).throw(OSError("move failed")))
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_move_to_staging(sr)
+
+        assert warned["called"]
+        window.close()
+
+
+class TestToggleSkip:
+    """标记跳过切换功能 GUI 测试（iter-77）。
+
+    覆盖 :meth:`MainWindow._on_toggle_skip` 的添加/移除两个分支。
+    """
+
+    def _build_hit_result(self, tmp_path: Path) -> Any:
+        from fuscan.scanner.result import RuleHit, ScanResult
+
+        src = tmp_path / "a.txt"
+        src.write_text("token=abc\n", encoding="utf-8")
+        hit = RuleHit(
+            rule_name="token检测",
+            severity=Severity.WARNING,
+            detail="包含 'token'",
+            match_text="token",
+            match_count=1,
+            target="content",
+            match_texts=("token",),
+        )
+        sr = ScanResult(path=src, size=10, hits=(hit,))
+        return sr
+
+    def test_toggle_skip_add(self, qapp: QApplication, tmp_path: Path) -> None:
+        """首次标记跳过：SkipStore 添加路径，按钮文案变为「取消跳过」。"""
+        sr = self._build_hit_result(tmp_path)
+        window = MainWindow()
+
+        window._on_toggle_skip(sr)
+
+        assert window._skip_store.contains(str(sr.path))
+        assert "已标记跳过" in window.stats_label.text()
+        window.close()
+
+    def test_toggle_skip_remove(self, qapp: QApplication, tmp_path: Path) -> None:
+        """已标记跳过后再次点击：SkipStore 移除路径，按钮文案变回「标记为跳过」。"""
+        sr = self._build_hit_result(tmp_path)
+        window = MainWindow()
+        window._skip_store.add(str(sr.path))
+
+        window._on_toggle_skip(sr)
+
+        assert not window._skip_store.contains(str(sr.path))
+        assert "已取消跳过" in window.stats_label.text()
+        window.close()
+
+
+class TestRemoveResultFromReport:
+    """``_remove_result_from_report`` 测试（iter-77）。
+
+    覆盖：无最近报告直接返回、未找到对应结果直接返回、成功移除后刷新结果树。
+    """
+
+    def test_no_report_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
+        """无最近报告：直接返回，不崩溃。"""
+        window = MainWindow()
+        window._last_report = None
+        window._remove_result_from_report(tmp_path / "nonexistent.txt")
+        window.close()
+
+    def test_path_not_in_report_does_nothing(self, qapp: QApplication, tmp_path: Path) -> None:
+        """待移除路径不在报告中：直接返回，报告不变。"""
+        from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+        src = tmp_path / "a.txt"
+        src.write_text("x", encoding="utf-8")
+        hit = RuleHit(
+            rule_name="r",
+            severity=Severity.WARNING,
+            detail="d",
+        )
+        sr = ScanResult(path=src, size=1, hits=(hit,))
+        report = ScanReport(root=tmp_path, results=(sr,), stats=ScanStats())
+        window = MainWindow()
+        window._last_report = report
+
+        window._remove_result_from_report(tmp_path / "other.txt")
+
+        assert len(window._last_report.results) == 1
+        window.close()
+
+    def test_remove_existing_path_refreshes_tree(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """待移除路径在报告中：从报告移除并刷新结果树、清空详情区。"""
+        from fuscan.scanner.result import RuleHit, ScanResult, ScanStats
+
+        src = tmp_path / "a.txt"
+        src.write_text("x", encoding="utf-8")
+        hit = RuleHit(rule_name="r", severity=Severity.WARNING, detail="d")
+        sr = ScanResult(path=src, size=1, hits=(hit,))
+        report = ScanReport(root=tmp_path, results=(sr,), stats=ScanStats())
+        window = MainWindow()
+        window._last_report = report
+        refreshed = {"called": False}
+        cleared = {"called": False}
+        monkeypatch.setattr(window._result_filter_panel, "refresh", lambda: refreshed.update(called=True))
+        monkeypatch.setattr(window._detail_panel, "clear", lambda: cleared.update(called=True))
+
+        window._remove_result_from_report(src)
+
+        assert refreshed["called"]
+        assert cleared["called"]
+        assert all(r.path != src for r in window._last_report.results)
+        window.close()
+
+
+class TestOpenManual:
+    """``_on_open_manual`` 测试（iter-92）。
+
+    覆盖 PDF 缺失提示分支与 ``QDesktopServices.openUrl`` 失败分支。
+    """
+
+    def test_open_manual_pdf_missing(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PDF 不存在：弹 information 提示，不调用 openUrl。"""
+        from fuscan.gui import main_window as mw_module
+
+        window = MainWindow()
+        # 模拟 PDF 路径不存在
+        monkeypatch.setattr(mw_module, "_MANUAL_PDF", tmp_path / "nonexistent.pdf")
+        open_url_called = {"called": False}
+        monkeypatch.setattr(mw_module.QDesktopServices, "openUrl", lambda url: open_url_called.update(called=True))
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *a, **kw: informed.update(called=True),
+        )
+
+        window._on_open_manual()
+
+        assert informed["called"]
+        assert not open_url_called["called"]
+        window.close()
+
+    def test_open_manual_open_url_failed(
+        self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PDF 存在但 openUrl 返回 False：弹 warning 提示打开失败。"""
+        from fuscan.gui import main_window as mw_module
+
+        pdf = tmp_path / "manual.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+        window = MainWindow()
+        monkeypatch.setattr(mw_module, "_MANUAL_PDF", pdf)
+        monkeypatch.setattr(mw_module.QDesktopServices, "openUrl", lambda url: False)
+        warned = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.warning",
+            lambda *a, **kw: warned.update(called=True),
+        )
+
+        window._on_open_manual()
+
+        assert warned["called"]
+        window.close()
+
+
+class TestResolveBackupDir:
+    """``_resolve_backup_dir`` 测试（iter-93）。
+
+    覆盖：用户配置目录优先、未配置时回退到默认目录、目录已存在不崩溃。
+    """
+
+    def test_uses_configured_dir(self, qapp: QApplication, tmp_path: Path) -> None:
+        """配置了 backup_dir：使用配置路径，自动创建。"""
+        window = MainWindow()
+        backup = tmp_path / "custom_backup"
+        window._config.backup_dir = str(backup)
+
+        result = window._resolve_backup_dir()
+
+        assert result == backup
+        assert backup.exists()
+        window.close()
+
+    def test_falls_back_to_default(self, qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """未配置 backup_dir：回退到 ``~/.fuscan/backup``。"""
+        window = MainWindow()
+        window._config.backup_dir = None
+        # 隔离到 tmp_path 避免写到用户主目录
+        monkeypatch.setattr("fuscan.gui.main_window.default_backup_dir", lambda: tmp_path / "default_backup")
+
+        result = window._resolve_backup_dir()
+
+        assert result == tmp_path / "default_backup"
+        assert result.exists()
+        window.close()
+
+
+class TestPauseResumeStatsWorker:
+    """``_pause_scan`` / ``_resume_scan`` 的 stats_worker 分支测试。
+
+    覆盖 main_window.py 994/1004 行：当 ``_stats_worker`` 非 None 时
+    调用其 pause/resume 方法（已有测试只覆盖 _worker 分支）。
+    """
+
+    def test_pause_scan_with_stats_worker(self, qapp: QApplication) -> None:
+        """``_stats_worker`` 非 None 时 _pause_scan 应调用其 pause 方法。"""
+
+        class _FakeStatsWorker:
+            def __init__(self) -> None:
+                self.paused = False
+
+            def pause(self) -> None:
+                self.paused = True
+
+        window = MainWindow()
+        fake = _FakeStatsWorker()
+        window._stats_worker = fake  # type: ignore[assignment]
+        window._worker = None
+
+        window._pause_scan()
+
+        assert fake.paused
+        assert window._scan_state == ScanState.PAUSED
+        window._stats_worker = None
+        window.close()
+
+    def test_resume_scan_with_stats_worker(self, qapp: QApplication) -> None:
+        """``_stats_worker`` 非 None 时 _resume_scan 应调用其 resume 方法。"""
+
+        class _FakeStatsWorker:
+            def __init__(self) -> None:
+                self.resumed = False
+
+            def resume(self) -> None:
+                self.resumed = True
+
+        window = MainWindow()
+        fake = _FakeStatsWorker()
+        window._stats_worker = fake  # type: ignore[assignment]
+        window._worker = None
+        window._scan_state = ScanState.PAUSED
+
+        window._resume_scan()
+
+        assert fake.resumed
+        assert window._scan_state == ScanState.RUNNING
+        window._stats_worker = None
+        window.close()
+
+
+class TestOnCancelScanStatsWorker:
+    """``_on_cancel_scan`` 的 stats_worker 分支测试（覆盖 main_window.py 659 行）。"""
+
+    def test_cancel_scan_with_stats_worker(self, qapp: QApplication) -> None:
+        """``_stats_worker`` 非 None 时 _on_cancel_scan 应调用其 cancel 方法。"""
+
+        class _FakeStatsWorker:
+            def __init__(self) -> None:
+                self.cancelled = False
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+        window = MainWindow()
+        fake = _FakeStatsWorker()
+        window._stats_worker = fake  # type: ignore[assignment]
+        window._worker = None
+
+        window._on_cancel_scan()
+
+        assert fake.cancelled
+        window._stats_worker = None
+        window.close()
+
+
+class TestDetailPanelNoneBranches:
+    """``DetailPanel`` 各公共方法在 ``_current_result is None`` 时的早返回分支测试。
+
+    覆盖 detail_panel.py 中 copy_path / open_location / move_to_staging /
+    toggle_skip / replace_content 的 None 分支（iter-77 / iter-93）。
+    """
+
+    def test_copy_path_no_current_result_no_signal(self, qapp: QApplication) -> None:
+        """无当前结果时 copy_path 不发信号。"""
+        window = MainWindow()
+        received: list[Any] = []
+        window._detail_panel.path_copy_requested.connect(lambda p: received.append(p))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+
+        window._detail_panel.copy_path()
+
+        assert received == []
+        window.close()
+
+    def test_open_location_no_current_result_no_signal(self, qapp: QApplication) -> None:
+        """无当前结果时 open_location 不发信号。"""
+        window = MainWindow()
+        received: list[Any] = []
+        window._detail_panel.open_location_requested.connect(lambda p: received.append(p))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+
+        window._detail_panel.open_location()
+
+        assert received == []
+        window.close()
+
+    def test_move_to_staging_no_current_result_no_signal(self, qapp: QApplication) -> None:
+        """无当前结果时 move_to_staging 不发信号。"""
+        window = MainWindow()
+        received: list[Any] = []
+        window._detail_panel.move_to_staging_requested.connect(lambda r: received.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+
+        window._detail_panel.move_to_staging()
+
+        assert received == []
+        window.close()
+
+    def test_toggle_skip_no_current_result_no_signal(self, qapp: QApplication) -> None:
+        """无当前结果时 toggle_skip 不发信号。"""
+        window = MainWindow()
+        received: list[Any] = []
+        window._detail_panel.toggle_skip_requested.connect(lambda r: received.append(r))  # noqa: PLW0108  # pyrefly: ignore [missing-attribute]
+
+        window._detail_panel.toggle_skip()
+
+        assert received == []
+        window.close()
+
+
+class TestRestoreWindowGeometry:
+    """``_restore_window_geometry`` 各分支测试。
+
+    覆盖：无 geometry 时居中分支、有 geometry 时夹紧分支、maximized 状态恢复分支。
+    """
+
+    def test_no_geometry_centers_window(self, qapp: QApplication) -> None:
+        """无 window_geometry 配置：走居中分支（覆盖 main_window.py 719-723 行）。"""
+        window = MainWindow()
+        window._config.window_geometry = None
+
+        window._restore_window_geometry()
+
+        # 居中后坐标应 >= 0
+        assert window.geometry().x() >= 0
+        assert window.geometry().y() >= 0
+        window.close()
+
+    def test_maximized_state_restored(self, qapp: QApplication) -> None:
+        """window_state=maximized：恢复为最大化（覆盖 726 行）。"""
+        window = MainWindow()
+        window._config.window_geometry = [100, 100, 800, 600]
+        window._config.window_state = "maximized"
+
+        window._restore_window_geometry()
+
+        assert window.isMaximized()
+        window.showNormal()
+        window.close()
+
+
+class TestOnStatsFailed:
+    """``_on_stats_failed`` 回调测试（覆盖 main_window.py 953-956 行）。"""
+
+    def test_on_stats_failed_resets_and_shows_error(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """统计失败：重置 UI、切回配置页、弹 critical 提示。"""
+        window = MainWindow()
+        critical_called = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.critical",
+            lambda *a, **kw: critical_called.update(called=True),
+        )
+
+        window._on_stats_failed("统计错误")
+
+        assert critical_called["called"]
+        assert window.stats_label.text() == "统计失败"
+        window.close()
+
+
+class TestOnHistoryItemDoubleClickedPathMissing:
+    """``_on_history_item_double_clicked`` 路径不存在分支测试（覆盖 755-756 行）。"""
+
+    def test_path_not_exists_shows_information(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """双击不存在的路径：弹 information 提示，不切换扫描模式。"""
+        try:
+            from PySide2.QtWidgets import QListWidgetItem
+        except ImportError:  # pragma: no cover
+            from PySide6.QtWidgets import QListWidgetItem  # pyrefly: ignore [missing-import]
+
+        window = MainWindow()
+        item = QListWidgetItem("/nonexistent/path/abc")
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *a, **kw: informed.update(called=True),
+        )
+
+        window._on_history_item_double_clicked(item)
+
+        assert informed["called"]
+        window.close()
+
+
+class TestOnPathSelectedEdgeCases:
+    """``_on_path_selected`` 边界分支测试（覆盖 858-859, 862 行）。"""
+
+    def test_negative_index_clears_folder_root(self, qapp: QApplication, tmp_path: Path) -> None:
+        """index < 0：清空 folder_root（覆盖 858-859 行）。"""
+        window = MainWindow()
+        # 先设置一个 folder_root，再传入 -1 应清空
+        window._scan_mode_panel.set_folder_root(tmp_path)
+        window._on_path_selected(-1)
+        assert window._scan_mode_panel.folder_root is None
+        window.close()
+
+    def test_empty_path_text_clears_folder_root(self, qapp: QApplication) -> None:
+        """index >= 0 但路径文本为空：清空 folder_root（覆盖 862 行）。"""
+        window = MainWindow()
+        # path_combo 是空的，itemText(0) 返回空字符串
+        window.path_combo.clear()
+        window._on_path_selected(0)
+        assert window._scan_mode_panel.folder_root is None
+        window.close()
+
+
+class TestOnScanGuardClauses:
+    """``_on_scan`` 早返回分支测试（覆盖 875, 877 行）。"""
+
+    def test_scan_when_not_setup_stage_does_nothing(self, qapp: QApplication) -> None:
+        """当前阶段非 SETUP：直接返回，不启动扫描（覆盖 875 行）。"""
+        window = MainWindow()
+        # 切换到扫描中阶段
+        window._stage_controller.switch_stage(WorkflowStage.SCANNING)
+        worker_before = window._worker
+
+        window._on_scan()
+
+        assert window._worker is worker_before
+        window.close()
+
+    def test_scan_when_running_does_nothing(self, qapp: QApplication) -> None:
+        """扫描状态为 RUNNING：直接返回（覆盖 877 行）。"""
+        window = MainWindow()
+        window._scan_state = ScanState.RUNNING
+
+        window._on_scan()
+
+        # 不应创建 worker
+        assert window._worker is None
+        window.close()
+
+
+class TestCloseEventWithRunningWorker:
+    """``closeEvent`` 中 worker 仍在运行的分支测试（覆盖 1600-1601 行）。"""
+
+    def test_close_event_cancels_running_worker(self, qapp: QApplication) -> None:
+        """关闭窗口时 worker 仍在运行：调用 cancel 并等待退出。"""
+        try:
+            from PySide2.QtGui import QCloseEvent
+        except ImportError:  # pragma: no cover
+            from PySide6.QtGui import QCloseEvent  # pyrefly: ignore [missing-import]
+
+        window = MainWindow()
+
+        class _FakeWorker:
+            def __init__(self) -> None:
+                self.cancelled = False
+                self._running = True
+
+            def isRunning(self) -> bool:
+                return self._running
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+            def wait(self, ms: int) -> None:
+                self._running = False
+
+            def deleteLater(self) -> None:
+                pass
+
+        fake = _FakeWorker()
+        window._worker = fake  # type: ignore[assignment]
+
+        window.closeEvent(QCloseEvent())
+
+        assert fake.cancelled
+        window._worker = None
+        window.close()
+
+
+class TestOnShowPerfStatsEmpty:
+    """``_on_show_perf_stats`` 无数据分支测试（覆盖 1106->1108 分支）。"""
+
+    def test_no_perf_summary_shows_information(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        """无 perf_summary：弹 information 提示「暂无性能统计数据」。"""
+        window = MainWindow()
+        window._last_report = None
+        informed = {"called": False}
+        monkeypatch.setattr(
+            "fuscan.gui.main_window.QMessageBox.information",
+            lambda *a, **kw: informed.update(called=True),
+        )
+
+        window._on_show_perf_stats()
+
+        assert informed["called"]
+        window.close()
+
+
+class TestOnScanFinishedPerfSummary:
+    """``_on_scan_finished`` perf_summary 显示分支测试（覆盖 1109->1115 行）。"""
+
+    def test_perf_summary_displayed_in_status_bar(self, qapp: QApplication, tmp_path: Path) -> None:
+        """有 perf_summary 时状态栏应包含热点信息。"""
+        from fuscan.scanner.result import ScanStats
+
+        stats = ScanStats(
+            total_files=10,
+            scanned_files=10,
+            duration_seconds=1.0,
+            perf_summary={"scan": {"total_ms": 100.0, "count": 5, "max_ms": 50.0}},
+        )
+        report = ScanReport(root=tmp_path, results=(), stats=stats)
+        window = MainWindow()
+
+        window._on_scan_finished(report)
+
+        assert "热点" in window.stats_label.text()
         window.close()

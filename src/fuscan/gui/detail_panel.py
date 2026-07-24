@@ -95,6 +95,7 @@ class DetailControls:
     preview: QTextEdit
     move_to_staging_btn: QPushButton
     toggle_skip_btn: QPushButton
+    replace_content_btn: QPushButton
 
 
 class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
@@ -105,7 +106,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
     文件操作（复制路径、打开位置、移动至暂存区、标记为跳过）。
 
     主窗口通过 :meth:`show_result` / :meth:`clear` 驱动详情区，通过 :attr:`current_result`
-    读取当前选中结果，通过四个信号响应用户操作（复制路径/打开位置/移动至暂存区/切换跳过）。
+    读取当前选中结果，通过五个信号响应用户操作（复制路径/打开位置/移动至暂存区/切换跳过/替换内容）。
     """
 
     # 复制路径后通知主窗口更新状态栏（携带路径字符串）
@@ -116,6 +117,8 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
     move_to_staging_requested = Signal(object)
     # 请求主窗口切换当前文件的跳过标记（携带 ScanResult）
     toggle_skip_requested = Signal(object)
+    # 请求主窗口对当前文件执行命中内容替换（携带 ScanResult）
+    replace_content_requested = Signal(object)
 
     def __init__(self, controls: DetailControls, parent: QObject | None = None) -> None:
         """初始化详情面板：存储控件引用、初始化状态、配置命中表与信号连接。
@@ -245,6 +248,17 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
             return
         self.toggle_skip_requested.emit(self._current_result)  # pyrefly: ignore [missing-attribute]
 
+    def replace_content(self) -> None:
+        """请求主窗口对当前结果文件执行命中内容替换（iter-93）。
+
+        替换流程由主窗口 :meth:`MainWindow._on_replace_content` 处理：先备份
+        源文件到备份区（``.bak``），再按规则 ``replace`` / ``replace_with``
+        字段对命中文本做替换。无当前结果时直接返回，不发信号。
+        """
+        if self._current_result is None:
+            return
+        self.replace_content_requested.emit(self._current_result)  # pyrefly: ignore [missing-attribute]
+
     # ----------------------------- 内部实现 -----------------------------
 
     def _setup_table(self) -> None:
@@ -262,6 +276,7 @@ class DetailPanel(QObject):  # pyrefly: ignore [invalid-inheritance]
         # 用 clicked 避免与 set_skip_state 内的 setChecked 冲突；clicked 携带 checked 状态
         # 但我们以当前持久化状态为准，故连接到 toggle_skip 由主窗口决定下一步
         self._c.toggle_skip_btn.clicked.connect(self.toggle_skip)
+        self._c.replace_content_btn.clicked.connect(self.replace_content)
 
     def _populate_file_info(self, result: ScanResult) -> None:
         """填充详情区文件元信息。"""

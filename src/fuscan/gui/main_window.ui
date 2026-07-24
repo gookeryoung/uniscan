@@ -176,7 +176,7 @@
           </widget>
           <widget class="QStackedWidget" name="main_stack">
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="setup_page">
             <layout class="QVBoxLayout" name="setup_layout">
@@ -375,179 +375,179 @@
                 <number>6</number>
                </property>
                <widget class="QGroupBox" name="file_types_group">
-               <property name="toolTip">
-                <string>通过 TAB 切换文件类型、忽略目录与忽略扩展名</string>
-               </property>
-               <property name="title">
-                <string>文件类型与忽略项</string>
-               </property>
-               <layout class="QHBoxLayout" name="horizontalLayout_3">
-                <property name="spacing">
-                 <number>8</number>
+                <property name="toolTip">
+                 <string>通过 TAB 切换文件类型、忽略目录与忽略扩展名</string>
                 </property>
-                <property name="leftMargin">
-                 <number>12</number>
+                <property name="title">
+                 <string>文件类型与忽略项</string>
                 </property>
-                <property name="topMargin">
-                 <number>16</number>
-                </property>
-                <property name="rightMargin">
-                 <number>12</number>
-                </property>
-                <property name="bottomMargin">
-                 <number>12</number>
-                </property>
-                <item>
-                 <widget class="QTabWidget" name="content_tab_widget">
-                  <property name="toolTip">
-                   <string>切换文件类型、忽略目录与忽略扩展名</string>
-                  </property>
-                  <property name="currentIndex">
-                   <number>0</number>
-                  </property>
-                  <widget class="QWidget" name="file_types_tab">
-                   <attribute name="title">
-                    <string>文件类型</string>
-                   </attribute>
-                   <layout class="QVBoxLayout" name="file_types_tab_layout">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <property name="leftMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="topMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="rightMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="bottomMargin">
-                     <number>4</number>
-                    </property>
-                    <item>
-                     <layout class="QHBoxLayout" name="file_types_toolbar_layout">
-                      <property name="spacing">
-                       <number>6</number>
-                      </property>
-                      <item>
-                       <widget class="QLabel" name="file_types_count_label">
-                        <property name="text">
-                         <string>已勾选 15/15 项</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item>
-                       <spacer name="file_types_toolbar_spacer">
-                        <property name="orientation">
-                         <enum>Qt::Horizontal</enum>
-                        </property>
-                        <property name="sizeHint" stdset="0">
-                         <size>
-                          <width>40</width>
-                          <height>20</height>
-                         </size>
-                        </property>
-                       </spacer>
-                      </item>
-                      <item>
-                       <widget class="QPushButton" name="select_all_btn">
-                        <property name="toolTip">
-                         <string>勾选所有文件类型</string>
-                        </property>
-                        <property name="text">
-                         <string>全选</string>
-                        </property>
-                       </widget>
-                      </item>
-                      <item>
-                       <widget class="QPushButton" name="unselect_all_btn">
-                        <property name="toolTip">
-                         <string>取消勾选所有文件类型</string>
-                        </property>
-                        <property name="text">
-                         <string>全不选</string>
-                        </property>
-                       </widget>
-                      </item>
-                     </layout>
-                    </item>
-                    <item>
-                     <widget class="QTreeView" name="file_types_view">
-                      <property name="sizePolicy">
-                       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                        <horstretch>0</horstretch>
-                        <verstretch>1</verstretch>
-                       </sizepolicy>
-                      </property>
-                      <property name="toolTip">
-                       <string>勾选要扫描的文件类型，取消可提高扫描速度；点击父类别批量勾选</string>
-                      </property>
-                      <property name="editTriggers">
-                       <set>QAbstractItemView::NoEditTriggers</set>
-                      </property>
-                      <property name="uniformRowHeights">
-                       <bool>true</bool>
-                      </property>
-                      <property name="headerHidden">
-                       <bool>true</bool>
-                      </property>
-                      <property name="expandsOnDoubleClick">
-                       <bool>false</bool>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </widget>
-                  <widget class="QWidget" name="ignore_dirs_tab">
-                   <attribute name="title">
-                    <string>忽略目录</string>
-                   </attribute>
-                   <layout class="QVBoxLayout" name="ignore_dirs_tab_layout">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <property name="leftMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="topMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="rightMargin">
-                     <number>4</number>
-                    </property>
-                    <property name="bottomMargin">
-                     <number>4</number>
-                    </property>
-                    <item>
-                     <widget class="QLabel" name="ignore_dirs_hint_label">
-                      <property name="text">
-                       <string>按目录名匹配任意层级（大小写不敏感），命中即跳过其下所有文件</string>
-                      </property>
-                      <property name="wordWrap">
-                       <bool>true</bool>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QPlainTextEdit" name="ignore_dirs_edit">
-                      <property name="toolTip">
-                       <string>一行一个目录名（大小写不敏感）</string>
-                      </property>
-                      <property name="placeholderText">
-                       <string>一行一个目录名（大小写不敏感）
+                <layout class="QHBoxLayout" name="horizontalLayout_3">
+                 <property name="spacing">
+                  <number>8</number>
+                 </property>
+                 <property name="leftMargin">
+                  <number>12</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>16</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>12</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>12</number>
+                 </property>
+                 <item>
+                  <widget class="QTabWidget" name="content_tab_widget">
+                   <property name="toolTip">
+                    <string>切换文件类型、忽略目录与忽略扩展名</string>
+                   </property>
+                   <property name="currentIndex">
+                    <number>0</number>
+                   </property>
+                   <widget class="QWidget" name="file_types_tab">
+                    <attribute name="title">
+                     <string>文件类型</string>
+                    </attribute>
+                    <layout class="QVBoxLayout" name="file_types_tab_layout">
+                     <property name="spacing">
+                      <number>4</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>4</number>
+                     </property>
+                     <item>
+                      <layout class="QHBoxLayout" name="file_types_toolbar_layout">
+                       <property name="spacing">
+                        <number>6</number>
+                       </property>
+                       <item>
+                        <widget class="QLabel" name="file_types_count_label">
+                         <property name="text">
+                          <string>已勾选 15/15 项</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="file_types_toolbar_spacer">
+                         <property name="orientation">
+                          <enum>Qt::Horizontal</enum>
+                         </property>
+                         <property name="sizeHint" stdset="0">
+                          <size>
+                           <width>40</width>
+                           <height>20</height>
+                          </size>
+                         </property>
+                        </spacer>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="select_all_btn">
+                         <property name="toolTip">
+                          <string>勾选所有文件类型</string>
+                         </property>
+                         <property name="text">
+                          <string>全选</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="unselect_all_btn">
+                         <property name="toolTip">
+                          <string>取消勾选所有文件类型</string>
+                         </property>
+                         <property name="text">
+                          <string>全不选</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <widget class="QTreeView" name="file_types_view">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>1</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="toolTip">
+                        <string>勾选要扫描的文件类型，取消可提高扫描速度；点击父类别批量勾选</string>
+                       </property>
+                       <property name="editTriggers">
+                        <set>QAbstractItemView::NoEditTriggers</set>
+                       </property>
+                       <property name="uniformRowHeights">
+                        <bool>true</bool>
+                       </property>
+                       <property name="headerHidden">
+                        <bool>true</bool>
+                       </property>
+                       <property name="expandsOnDoubleClick">
+                        <bool>false</bool>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                   <widget class="QWidget" name="ignore_dirs_tab">
+                    <attribute name="title">
+                     <string>忽略目录</string>
+                    </attribute>
+                    <layout class="QVBoxLayout" name="ignore_dirs_tab_layout">
+                     <property name="spacing">
+                      <number>4</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>4</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>4</number>
+                     </property>
+                     <item>
+                      <widget class="QLabel" name="ignore_dirs_hint_label">
+                       <property name="text">
+                        <string>按目录名匹配任意层级（大小写不敏感），命中即跳过其下所有文件</string>
+                       </property>
+                       <property name="wordWrap">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QPlainTextEdit" name="ignore_dirs_edit">
+                       <property name="toolTip">
+                        <string>一行一个目录名（大小写不敏感）</string>
+                       </property>
+                       <property name="placeholderText">
+                        <string>一行一个目录名（大小写不敏感）
 如：.git
     node_modules
     Program Files</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
                   </widget>
-                 </widget>
-                </item>
-               </layout>
-              </widget>
+                 </item>
+                </layout>
+               </widget>
                <widget class="QGroupBox" name="rules_group">
                 <property name="title">
                  <string>规则配置</string>
@@ -1430,6 +1430,16 @@
                          </property>
                          <property name="checkable">
                           <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="replace_content_btn">
+                         <property name="toolTip">
+                          <string>先将源文件备份到备份区（.bak），再把命中的敏感内容按规则替换为指定文本</string>
+                         </property>
+                         <property name="text">
+                          <string>替换内容</string>
                          </property>
                         </widget>
                        </item>

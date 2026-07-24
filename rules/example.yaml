@@ -14,10 +14,15 @@ rules:
       pattern: password
       case_sensitive: false
 
-  # 示例 2：检测文件内容包含特定字符串
+  # 示例 2：检测文件内容包含特定字符串（启用替换）
+  # replace: true 表示在详情区点击「替换内容」按钮时，将该规则命中的文本
+  #         替换为 replace_with 字段定义的内容
+  # replace_with: 替换为的文本（缺省时点击替换按钮会提示用户补充）
   - name: 密钥泄露检测
     description: 检测文件内容中包含 AKIA 开头的 AWS Access Key
     severity: critical
+    replace: true
+    replace_with: "***REDACTED***"
     match:
       type: content
       mode: regex
@@ -72,3 +77,15 @@ rules:
             mode: contains
             pattern: backup
             case_sensitive: false
+
+  # 示例 6：启用替换但未定义 replace_with
+  # 点击「替换内容」按钮时会提示用户补充 replace_with 字段
+  - name: 通用密码赋值-待补全替换
+    description: 检测配置文件中的密码赋值语句，需用户补充 replace_with 后才能替换
+    severity: warning
+    replace: true
+    # replace_with 未定义
+    match:
+      type: content
+      mode: regex
+      pattern: '(?i)(password|passwd|pwd)\s*[=:]\s*\S+'

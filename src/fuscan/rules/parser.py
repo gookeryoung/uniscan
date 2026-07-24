@@ -133,11 +133,17 @@ def parse_rule(data: Any) -> Rule:
         raise RuleParseError(f"规则 {name!r} 未知严重等级 {severity_raw!r}，合法值: {valid}") from exc
 
     # file_extensions 已移除：旧规则文件中的该字段被静默忽略，文件后缀过滤由全局 Config 统一管理。
+    # replace/replace_with：可选字段，控制命中内容替换行为（iter-93）。
+    # replace 为 True 时启用替换；replace_with 缺省为空字符串，触发替换时提示用户补充。
+    replace = bool(data.get("replace", False))
+    replace_with = str(data.get("replace_with", ""))
     return Rule(
         name=str(name),
         match=match,
         description=description,
         severity=severity,
+        replace=replace,
+        replace_with=replace_with,
     )
 
 
