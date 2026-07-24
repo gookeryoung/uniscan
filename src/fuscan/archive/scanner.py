@@ -36,7 +36,7 @@ class ArchiveScanner:
 
     - 构造时一次性编译规则集为 Matcher 列表
     - 通过 :func:`get_reader` 工厂分发到 ZipReader/RarReader
-    - 内容提取策略：读取条目字节 → 写入临时文件 → 调用 extract_content
+    - 内容提取策略：读取条目字节 → 通过 ``extract_content_from_bytes`` 从内存直接提取
     - 加密条目未提供密码时跳过并记录错误
     """
 
@@ -44,14 +44,14 @@ class ArchiveScanner:
         self,
         ruleset: RuleSet,
         password: str | None = None,
-        max_entry_size: int = 100 * 1024 * 1024,
+        max_entry_size: int = 50 * 1024 * 1024,
         cache: CacheStore | None = None,
         scan_extensions: frozenset[str] | None = None,
     ) -> None:
         self._ruleset = ruleset
         self._password = password
         self._max_entry_size = max_entry_size
-        # 压缩包内部条目同样按白名单过滤（iter-87）：
+        # 压缩包内部条目同样按白名单过滤：
         #   - None：用户全选，扫所有内部条目（向后兼容全选快速路径）
         #   - 空 frozenset：用户全部取消勾选，不扫任何内部条目
         #   - 非空 frozenset：仅扫扩展名在白名单中的条目
@@ -209,7 +209,7 @@ class ArchiveScanner:
         # 读字节并算哈希（算法由 hash_bytes 按大小决定）
         data = self._read_entry_bytes(archive_path, entry, reader)
         file_hash = hash_bytes(data)
-        # 查提取内容缓存（iter-39）：命中则跳过 extract_content_from_bytes
+        # 查提取内容缓存：命中则跳过 extract_content_from_bytes
         cached_content = self._cache.get_extracted_content(file_hash)
         if cached_content is not None:
             content = cached_content
