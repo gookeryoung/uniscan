@@ -74,9 +74,10 @@ class Config:
     include_network_drives: bool = False
     # 是否扫描压缩包
     scan_archives: bool = True
-    # 最大工作线程数：3 线程减少 GIL 争用方数，避免 CPU 密集型
-    # 提取饿死主线程导致界面卡死（CPython GIL 下 CPU 密集型提取本无真并行）
-    max_workers: int = 3
+    # 最大工作线程数：PyO3 提取器（pdf_oxide/calamine）在 Rust 侧解析时释放 GIL，
+    # 主线程（Qt 事件循环）有足够时间片处理事件，可提升至 5 线程改善 I/O 并行度。
+    # 纯 Python 提取器（如 ods）仍受 GIL 限制，但已通过 max_file_size 跳过大文件缓解。
+    max_workers: int = 5
     # 最大扫描深度（None 表示无限制）
     max_depth: int | None = None
     # 跳过大于此大小的文件（字节），避免单个大文件独占 GIL 数秒冻结界面；0 表示不限制
