@@ -1457,7 +1457,6 @@ class TestScanControlUI:
 class TestScanControlIntegration:
     """扫描控制集成测试：通过 MainWindow 运行完整扫描流程。"""
 
-    @pytest.mark.slow
     def test_scan_completes_through_main_window(self, qapp: QApplication, tmp_path: Path) -> None:
         """通过 MainWindow 启动扫描应完成并填充结果树。"""
         try:
@@ -4711,7 +4710,6 @@ class TestRegexTesterDialog:
         assert "共命中 1 处" in result_cs
         dialog.close()
 
-    @pytest.mark.slow
     def test_text_truncated_silently(self, qapp: QApplication) -> None:
         """测试文本超过 _MAX_TEXT_LEN 应静默截断，命中数对应截断后文本。"""
         from fuscan.gui.regex_tester import _MAX_TEXT_LEN, RegexTesterDialog

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -84,7 +85,8 @@ class _EventHandler(FileSystemEventHandler):
     @override
     def on_any_event(self, event: FileSystemEvent) -> None:
         """处理所有类型事件。"""
-        path = Path(event.src_path)
+        # watchdog 的 src_path 类型为 bytes | str，统一转为 str 再构造 Path
+        path = Path(os.fsdecode(event.src_path))
 
         # 跳过忽略目录
         if self._is_in_ignored_dir(path):

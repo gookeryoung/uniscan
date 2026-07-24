@@ -77,7 +77,6 @@ class TestWatcherLazyImport:
 
 
 class TestFileMonitor:
-    @pytest.mark.slow
     def test_monitor_starts_and_stops(self, tmp_path: Path) -> None:
         config = MonitorConfig(watch_paths=[tmp_path])
         monitor = FileMonitor(config)
@@ -94,7 +93,6 @@ class TestFileMonitor:
         assert len(events) > 0
         assert any(e.path.name == "test.txt" for e in events)
 
-    @pytest.mark.slow
     def test_monitor_ignores_dirs(self, tmp_path: Path) -> None:
         config = MonitorConfig(
             watch_paths=[tmp_path],
@@ -135,7 +133,6 @@ class TestFileMonitor:
         monitor.start(lambda e: None)
         assert not monitor.is_running
 
-    @pytest.mark.slow
     def test_monitor_add_watch(self, tmp_path: Path) -> None:
         config = MonitorConfig(watch_paths=[tmp_path])
         monitor = FileMonitor(config)
@@ -158,7 +155,6 @@ class TestFileMonitor:
             assert monitor.is_running
         assert not monitor.is_running
 
-    @pytest.mark.slow
     def test_monitor_deleted_event_removes_from_tracking(self, tmp_path: Path) -> None:
         """删除事件路径不触发扫描回调（由上层处理）。"""
         config = MonitorConfig(watch_paths=[tmp_path], dedup_interval_seconds=0.0)
