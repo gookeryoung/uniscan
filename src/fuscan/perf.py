@@ -39,7 +39,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Generator
 
 __all__ = ["PERF_ENABLED", "PerfStats", "PerfTimer", "record_event", "set_perf_enabled"]
 
@@ -74,7 +74,7 @@ def set_perf_enabled(enabled: bool) -> None:
 
 
 @contextmanager
-def PerfTimer(name: str, *, threshold_ms: float = 0.0) -> Iterator[None]:
+def PerfTimer(name: str, *, threshold_ms: float = 0.0) -> Generator[None, None, None]:
     """计时上下文管理器：记录代码块耗时。
 
     未启用时（``_PerfState.enabled=False``）直接 yield 不做任何记录，保证零开销。
@@ -153,7 +153,7 @@ class PerfStats:
         self._stages: dict[str, _StageStats] = {}
 
     @contextmanager
-    def measure(self, name: str) -> Iterator[None]:
+    def measure(self, name: str) -> Generator[None, None, None]:
         """计时上下文：累计阶段耗时。始终记录（iter-66 起）。
 
         :param name: 阶段名称（如 ``read_bytes`` / ``hash`` / ``match``）
