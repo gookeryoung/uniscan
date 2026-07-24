@@ -1,8 +1,8 @@
 """旧版 Microsoft Office 提取器：XLS、DOC、PPT。
 
-XLS 通过 calamine（Rust + PyO3）读取 Excel 97-2003 工作簿，与 XLSX/ODS
-共用同一 Rust 后端。DOC/PPT 仍使用 olefile 读取 OLE 复合文档，从文本流中
-提取 UTF-16LE 编码内容。
+XLS 通过 calamine（Rust + PyO3）读取 Excel 97-2003 工作簿，与 XLSX
+共用同一 Rust 后端（``_extract_calamine_workbook``）。DOC/PPT 仍使用 olefile
+读取 OLE 复合文档，从文本流中提取 UTF-16LE 编码内容。
 
 注意：DOC/PPT 为二进制格式，本提取器仅做简单文本提取，不支持复杂格式
 （如修订、嵌入对象等）。如需完整提取，建议先转换为 DOCX/PPTX。

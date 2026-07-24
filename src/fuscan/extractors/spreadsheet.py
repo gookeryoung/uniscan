@@ -3,7 +3,8 @@
 XLSX/XLSM 使用 calamine（Rust + PyO3）提取所有工作表单元格文本，相比
 openpyxl 的纯 Python 逐单元格遍历有 5-10 倍提速，且 Rust 侧执行期间释放
 GIL，避免阻塞 Qt 主线程。ODS 因 calamine 0.3.x 对 odfpy 生成的标准 ODS
-解析不完整（0.4+ 已修复但要求 Python 3.9+），暂保留 odfpy 实现。
+解析不完整，暂保留 odfpy 实现（Python 3.10+ 虽使用 calamine 0.8.2，但
+ODS 提取器未切换以保持行为一致）。
 """
 
 from __future__ import annotations

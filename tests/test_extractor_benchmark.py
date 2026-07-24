@@ -250,9 +250,9 @@ def _make_wps_sample() -> bytes:
 def _make_xls_sample() -> bytes:
     """生成典型 XLS 工作簿样本。
 
-    使用 xlrd 读取测试，但 xlrd 不支持写入；用 mock 跳过。
+    XLS 现由 calamine 读取，但 calamine 仅提供读取能力无法生成样本；用 mock 跳过。
     """
-    pytest.skip("xlrd 不支持写入 XLS，跳过 XLS 基准测试")
+    pytest.skip("calamine 仅读取 XLS 无法生成样本，跳过 XLS 基准测试")
 
 
 def _make_doc_sample() -> bytes:
